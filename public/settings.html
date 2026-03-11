@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Settings</title>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <meta name="robots" content="index,follow"/>
+  <meta name="generator" content="GrapesJS Studio"/>
+  <link rel="stylesheet" href="./style.css">
+  </head>
+  <body id="i098oc" class="body-root"><div class="app-wrapper"><!-- Sidebar --><nav class="sidebar-navigation"><div class="sidebar-header"><div class="logo-text-group"><span class="brand-name" id="i41tvjv">FaceRoll</span><span class="brand-tagline">Instructor</span></div></div><div class="sidebar-menu"><ul class="sidebar-menu-list"><li><a href="#" class="sidebar-link"><span class="sidebar-link-label">Dashboard</span></a></li><li><a href="#" class="sidebar-link"><span class="sidebar-link-label">Live Session</span></a></li><li><a href="#" class="sidebar-link"><span class="sidebar-link-label">Students</span></a></li><li><a href="#" class="sidebar-link"><span class="sidebar-link-label">Attendance Records</span></a></li><li><a href="#" class="sidebar-link"><span class="sidebar-link-label">Reports</span></a></li><li><a href="#" class="sidebar-link-active"><span class="sidebar-link-label">Settings</span></a></li></ul></div></nav><!-- Main Column --><div class="main-column" id="in1lzmo"><main class="main-content"><section id="instructor-settings" aria-labelledby="instructor-settings-title"><div role="region" aria-label="Instructor Settings" class="settings-inner"><h2 id="instructor-settings-title">Instructor Settings</h2><p class="desc">
+            Configure default attendance behavior, grace periods, and integrations.
+          </p><div class="grid-2"><div class="form-group"><label for="default-attendance">Default Attendance</label><div class="input-wrap"><select name="defaultAttendance" id="default-attendance" class="field-select"><option value="absent">Absent</option><option value="late">Late</option><option value="present" selected>Present</option></select></div><div class="help">
+                Select the default attendance status for new sessions.
+              </div></div><div class="form-group"><label for="grace-period">Grace Period</label><div class="input-wrap"><input type="number" name="gracePeriod" min="0" max="120" placeholder="e.g., 10" id="grace-period"/><span class="suffix">min</span></div><div class="help">
+                Minutes after start time students can still be marked present.
+              </div></div></div><section id="attendance-window-input"><div class="form-group"><label for="attendance-window">Attendance Window</label><div class="input-wrap"><input type="number" name="attendanceWindow" min="0" max="240" placeholder="e.g., 30" id="attendance-window"/><span class="suffix">min</span></div><div class="help">
+                This controls how long students are allowed to check in after class starts.
+              </div></div></section><div class="form-group"><div class="toggle"><button type="button" role="switch" aria-checked="false" id="allow-late-toggle" class="toggle-button"><span class="knob"></span></button><span class="toggle-label">Allow Late Attendance</span></div><div class="help">
+              When enabled, students can be marked late after the grace period.
+            </div></div><div class="actions"><button type="button" id="canvas-integration-btn" class="btn-primary"><img src="https://api.iconify.design/mdi:school-outline.svg?color=currentColor&amp;width=20&amp;height=20" class="btn-icon"/><span>Canvas Integration</span></button></div></div></section><section id="page-save-bar"><div class="save-bar-inner"><button type="button" id="save-settings-btn" class="save-btn"><img src="https://api.iconify.design/mdi:content-save-outline.svg?color=currentColor&amp;width=20&amp;height=20" class="btn-icon"/><span>Save</span></button></div></section></main></div></div><script>
+(function() {
+  const toggleBtn = document.getElementById('allow-late-toggle');
+
+  toggleBtn.addEventListener('click', function() {
+    const current = this.getAttribute('aria-checked') === 'true';
+    this.setAttribute('aria-checked', String(!current));
+  });
+
+  const canvasBtn = document.getElementById('canvas-integration-btn');
+
+  canvasBtn.addEventListener('click', function() {
+    alert('Canvas Integration: Proceed to connect your account.');
+  });
+
+  const saveBtn = document.getElementById('save-settings-btn');
+
+  saveBtn.addEventListener('click', function() {
+    alert('Settings saved successfully.');
+  });
+
+})();
+</script></body>
+</html>
