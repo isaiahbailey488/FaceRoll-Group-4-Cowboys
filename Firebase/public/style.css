@@ -148,20 +148,16 @@ body#iel609 .login-section {
 
 /* Login page layout extras */
 .login-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 360px) minmax(0, 420px);
-  gap: 2.5rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   align-items: flex-start;
+  gap: 1rem;
 }
 
-.login-side-panel {
-  max-width: 360px;
-  font-size: 0.9rem;
-  color: #475569;
-}
-
-.how-it-works,
 .login-help {
+  width: 100%;
+  max-width: 420px;
   background: #ffffff;
   border-radius: 0.75rem;
   border: 1px solid #e2e8f0;
@@ -169,11 +165,6 @@ body#iel609 .login-section {
   padding: 1.25rem 1.5rem;
 }
 
-.how-it-works {
-  margin-bottom: 1rem;
-}
-
-.how-title,
 .help-title {
   margin: 0 0 0.75rem;
   font-size: 0.95rem;
@@ -181,21 +172,22 @@ body#iel609 .login-section {
   color: #0f172a;
 }
 
-.how-steps {
+.help-links {
   margin: 0;
-  padding-left: 1.25rem;
+  padding-left: 0;
+  list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.4rem;
 }
 
-.how-steps li {
-  line-height: 1.4;
+.help-links a {
+  color: #2563eb;
+  text-decoration: none;
 }
 
-.how-steps strong {
-  font-weight: 600;
-  color: #111827;
+.help-links a:hover {
+  text-decoration: underline;
 }
 
 /* Student Profile save override controls */
@@ -247,24 +239,6 @@ body#imwtil .attendance-table td:last-child {
   font-weight: 500;
 }
 
-.help-links {
-  margin: 0;
-  padding-left: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-}
-
-.help-links a {
-  color: #2563eb;
-  text-decoration: none;
-}
-
-.help-links a:hover {
-  text-decoration: underline;
-}
-
 /* New login page layout (desktop) */
 body#iel609 {
   min-height: 100vh;
@@ -282,7 +256,7 @@ body#iel609 .login-main {
 
 body#iel609 .login-layout {
   width: 100%;
-  max-width: 980px;
+  max-width: 420px;
   margin: 0 auto;
 }
 
@@ -309,22 +283,16 @@ body#iel609 .login-main {
 }
 
 body#iel609 .login-layout {
-  max-width: 1000px;
-  column-gap: 4rem;
+  max-width: 420px;
 }
 
 body#iel609 .login-card,
-body#iel609 .how-it-works,
 body#iel609 .login-help {
   background-color: #ffffff;
   border: 1px solid #666666;
   border-radius: 0;
   box-shadow: none;
   padding: 1.25rem 1.5rem;
-}
-
-body#iel609 .how-it-works {
-  margin-bottom: 1.25rem;
 }
 
 body#iel609 h2,
@@ -337,18 +305,12 @@ body#iel609 .login-card h2 {
 }
 
 body#iel609 .login-description,
-body#iel609 .how-title,
 body#iel609 .help-title,
-body#iel609 .how-steps,
 body#iel609 .help-links a,
 body#iel609 .register-link,
 body#iel609 .forgot-password {
   color: #4b4b4b;
   font-size: 0.9rem;
-}
-
-body#iel609 .how-steps {
-  margin-top: 0.75rem;
 }
 
 body#iel609 .login-form input[type="email"],
@@ -514,14 +476,6 @@ body#i1rrpa a:hover {
 }
 
 @media (max-width: 900px) {
-  .login-layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .login-side-panel {
-    max-width: none;
-  }
-
   body#iel609 .main-content {
     margin-left: 0;
     margin-right: 0;
