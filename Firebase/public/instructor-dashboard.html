@@ -152,7 +152,12 @@
       color: #1d4ed8 !important;
     }
 
+    .top-header {
+      padding-top: 1.25rem !important;
+    }
+
     .header-title-group {
+      padding-top: 0 !important;
       padding-bottom: 1.50rem;
     }
 
@@ -263,112 +268,9 @@
     }
   </style>
   </head>
-  <body id="i0mho" class="gjs-t-body body-root"><div class="app-wrapper"><aside class="gjs-t-border sidebar-navigation"><div id="izkee" class="sidebar-header sidebar-brand"><div class="sidebar-brand-logo"><img src="./Transparent FaceRoll.png" alt="FaceRoll logo" id="i0pgol" class="logo-image"/></div><div class="sidebar-brand-text"><span class="sidebar-brand-title">FaceRoll</span></div></div><nav id="iqnsp" class="sidebar-menu"><ul class="sidebar-menu-list"><li><a href="./instructor-dashboard.html" aria-current="page" class="sidebar-link-active"><img src="https://api.iconify.design/lucide-home.svg?color=%230f172a" alt="" class="sidebar-icon"/><span class="sidebar-link-label">Dashboard</span></a></li><li><a href="./live-session.html" class="sidebar-link"><img src="https://api.iconify.design/lucide-calendar-check.svg?color=%2364748b" alt="" class="sidebar-icon"/><span class="sidebar-link-label">Live Session</span></a></li><li><a href="./student-roster.html" class="sidebar-link"><img src="https://api.iconify.design/lucide-users.svg?color=%2364748b" alt="" class="sidebar-icon"/><span class="sidebar-link-label">Students</span></a></li><li><a href="./instructor-dashboard.html" class="sidebar-link"><img src="https://api.iconify.design/lucide-calendar-check.svg?color=%2364748b" alt="" class="sidebar-icon"/><span class="sidebar-link-label">Attendance Records</span></a></li><li><a href="./reports.html" id="ii1go" class="sidebar-link"><img src="https://api.iconify.design/lucide-bar-chart-3.svg?color=%2364748b" alt="" class="sidebar-icon"/><span class="sidebar-link-label">Reports</span></a></li><li><a href="./settings.html" class="sidebar-link"><img src="https://api.iconify.design/lucide-settings.svg?color=%2364748b" alt="" class="sidebar-icon"/><span class="sidebar-link-label">Settings</span></a></li></ul></nav><div class="sidebar-footer"><div class="profile-mini"><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36' viewBox='0 0 36 36'%3E%3Ccircle cx='18' cy='18' r='18' fill='%23e2e8f0'/%3E%3Ccircle cx='18' cy='13' r='6' fill='%2394a3b8'/%3E%3Cpath d='M8 29c1.8-5 5.8-7.5 10-7.5S26.2 24 28 29' fill='%2394a3b8'/%3E%3C/svg%3E" alt="Default profile" class="profile-avatar"/><div class="profile-text-group"><p class="profile-name">Dr. Avery Quinn</p><p class="profile-role">Instructor</p></div></div></div></aside><div id="i9v6ek" class="main-column"><header id="iijdaw" class="gjs-t-border top-header"><div class="header-title-group"><h1 class="gjs-t-h1 header-title">Attendance Dashboard</h1><span class="header-subtitle">Monitor and manage daily presence</span></div><div class="header-actions"><div class="header-compact-profile"><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 36 36'%3E%3Ccircle cx='18' cy='18' r='18' fill='%23e2e8f0'/%3E%3Ccircle cx='18' cy='13' r='6' fill='%2394a3b8'/%3E%3Cpath d='M8 29c1.8-5 5.8-7.5 10-7.5S26.2 24 28 29' fill='%2394a3b8'/%3E%3C/svg%3E" alt="Default profile" class="header-avatar"/></div></div></header><main id="ixi2l" class="main-content"><section class="overview-section"><div class="gjs-t-border summary-card"><div class="summary-text"><span class="summary-label">Total Students</span><span id="statTotal" class="summary-value">120</span></div><img src="https://api.iconify.design/lucide-users.svg?color=%231d4ed8" alt="" class="summary-icon"/></div><div id="ibdd1" class="gjs-t-border summary-card"><div class="summary-text"><span class="summary-label">Present Today</span><span id="statPresent" class="summary-value">108</span></div><img src="https://api.iconify.design/lucide-check-circle-2.svg?color=%2316a34a" alt="" class="summary-icon"/></div><div class="gjs-t-border summary-card"><div class="summary-text"><span class="summary-label">Absent Today</span><span id="statAbsent" class="summary-value">8</span></div><img src="https://api.iconify.design/lucide-x-circle.svg?color=%23dc2626" alt="" class="summary-icon"/></div></section><section class="gjs-t-border attendance-panel"><div id="i4qgip" class="attendance-panel-header"><div class="attendance-panel-title-group"><img src="https://api.iconify.design/lucide-clipboard-list.svg?color=%230f172a" alt="" class="attendance-panel-icon"/><h2 class="gjs-t-h2 attendance-panel-title">Attendance Records</h2></div><div class="attendance-panel-actions"><button type="button" id="exportCsvBtn" class="gjs-t-button export-button"><img src="https://api.iconify.design/lucide-download.svg?color=%23ffffff" alt="" class="export-icon"/><span>Export CSV</span></button></div></div><div id="iug9sj" class="filter-bar"><div class="filter-field"><label for="dateFrom" class="filter-label">From</label><input type="date" id="dateFrom" aria-label="From date" class="filter-input-date-from"/></div><div class="filter-field"><label for="dateTo" class="filter-label">To</label><input type="date" id="dateTo" aria-label="To date" class="filter-input-date-to"/></div><div class="filter-field"><label for="statusFilter" class="filter-label">Status</label><select type="text" id="statusFilter" aria-label="Status filter" class="filter-select-status"><option value="">All</option><option value="Present">Present</option><option value="Absent">Absent</option><option value="Late">Late</option></select></div><div class="filter-field"><label for="searchInput" class="filter-label">Search by name or ID</label><div class="filter-search-wrapper"><img src="https://api.iconify.design/lucide-search.svg?color=%2364748b" alt="" class="filter-search-icon"/><input type="text" id="searchInput" placeholder="e.g., Jane or S1021" aria-label="Search text" class="filter-search-input"/></div></div><div id="ii4cru" class="filter-controls"><button type="button" id="applyFilters" class="filter-apply-button">
+  <body id="i0mho" class="gjs-t-body body-root"><div class="app-wrapper"><aside class="gjs-t-border sidebar-navigation"><div id="izkee" class="sidebar-header sidebar-brand"><div class="sidebar-brand-logo"><img src="./Transparent FaceRoll.png" alt="FaceRoll logo" id="i0pgol" class="logo-image"/></div><div class="sidebar-brand-text"><span class="sidebar-brand-title">FaceRoll</span></div></div><nav id="iqnsp" class="sidebar-menu"><ul class="sidebar-menu-list"><li><a href="./instructor-dashboard.html" aria-current="page" class="sidebar-link-active"><img src="https://api.iconify.design/lucide-home.svg?color=%230f172a" alt="" class="sidebar-icon"/><span class="sidebar-link-label">Dashboard</span></a></li><li><a href="./live-session.html" class="sidebar-link"><img src="https://api.iconify.design/lucide-calendar-check.svg?color=%2364748b" alt="" class="sidebar-icon"/><span class="sidebar-link-label">Live Session</span></a></li><li><a href="./student-roster.html" class="sidebar-link"><img src="https://api.iconify.design/lucide-users.svg?color=%2364748b" alt="" class="sidebar-icon"/><span class="sidebar-link-label">Students</span></a></li><li><a href="./instructor-dashboard.html" class="sidebar-link"><img src="https://api.iconify.design/lucide-calendar-check.svg?color=%2364748b" alt="" class="sidebar-icon"/><span class="sidebar-link-label">Attendance Records</span></a></li><li><a href="./reports.html" id="ii1go" class="sidebar-link"><img src="https://api.iconify.design/lucide-bar-chart-3.svg?color=%2364748b" alt="" class="sidebar-icon"/><span class="sidebar-link-label">Reports</span></a></li><li><a href="./settings.html" class="sidebar-link"><img src="https://api.iconify.design/lucide-settings.svg?color=%2364748b" alt="" class="sidebar-icon"/><span class="sidebar-link-label">Settings</span></a></li></ul></nav><div class="sidebar-footer"><div class="profile-mini"><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36' viewBox='0 0 36 36'%3E%3Ccircle cx='18' cy='18' r='18' fill='%23e2e8f0'/%3E%3Ccircle cx='18' cy='13' r='6' fill='%2394a3b8'/%3E%3Cpath d='M8 29c1.8-5 5.8-7.5 10-7.5S26.2 24 28 29' fill='%2394a3b8'/%3E%3C/svg%3E" alt="Default profile" class="profile-avatar"/><div class="profile-text-group"><p class="profile-name">Dr. Avery Quinn</p><p class="profile-role">Instructor</p></div></div></div></aside><div id="i9v6ek" class="main-column"><header id="iijdaw" class="gjs-t-border top-header"><div class="header-title-group"><h1 class="gjs-t-h1 header-title">Attendance Dashboard</h1><span class="header-subtitle">Monitor and manage daily presence</span></div><div class="header-actions"><div class="header-compact-profile"><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 36 36'%3E%3Ccircle cx='18' cy='18' r='18' fill='%23e2e8f0'/%3E%3Ccircle cx='18' cy='13' r='6' fill='%2394a3b8'/%3E%3Cpath d='M8 29c1.8-5 5.8-7.5 10-7.5S26.2 24 28 29' fill='%2394a3b8'/%3E%3C/svg%3E" alt="Default profile" class="header-avatar"/></div></div></header><main id="ixi2l" class="main-content"><section class="overview-section"><div class="gjs-t-border summary-card"><div class="summary-text"><span class="summary-label">Total Students</span><span id="statTotal" class="summary-value">120</span></div><img src="https://api.iconify.design/lucide-users.svg?color=%231d4ed8" alt="" class="summary-icon"/></div><div id="ibdd1" class="gjs-t-border summary-card"><div class="summary-text"><span class="summary-label">Present Today</span><span id="statPresent" class="summary-value">108</span></div><img src="https://api.iconify.design/lucide-check-circle-2.svg?color=%2316a34a" alt="" class="summary-icon"/></div><div class="gjs-t-border summary-card"><div class="summary-text"><span class="summary-label">Absent Today</span><span id="statAbsent" class="summary-value">8</span></div><img src="https://api.iconify.design/lucide-x-circle.svg?color=%23dc2626" alt="" class="summary-icon"/></div></section><section class="gjs-t-border attendance-panel"><div id="i4qgip" class="attendance-panel-header"><div class="attendance-panel-title-group"><img src="https://api.iconify.design/lucide-clipboard-list.svg?color=%230f172a" alt="" class="attendance-panel-icon"/><h2 class="gjs-t-h2 attendance-panel-title">Attendance Records</h2></div><div class="attendance-panel-actions"><button type="button" id="exportCsvBtn" class="gjs-t-button export-button"><img src="https://api.iconify.design/lucide-download.svg?color=%23ffffff" alt="" class="export-icon"/><span>Export CSV</span></button><button type="button" id="seedFirestoreBtn" class="gjs-t-button export-button"><span>Seed Firestore Data</span></button></div></div><div id="iug9sj" class="filter-bar"><div class="filter-field"><label for="dateFrom" class="filter-label">From</label><input type="date" id="dateFrom" aria-label="From date" class="filter-input-date-from"/></div><div class="filter-field"><label for="dateTo" class="filter-label">To</label><input type="date" id="dateTo" aria-label="To date" class="filter-input-date-to"/></div><div class="filter-field"><label for="statusFilter" class="filter-label">Status</label><select type="text" id="statusFilter" aria-label="Status filter" class="filter-select-status"><option value="">All</option><option value="Present">Present</option><option value="Absent">Absent</option><option value="Late">Late</option></select></div><div class="filter-field"><label for="searchInput" class="filter-label">Search by name or ID</label><div class="filter-search-wrapper"><img src="https://api.iconify.design/lucide-search.svg?color=%2364748b" alt="" class="filter-search-icon"/><input type="text" id="searchInput" placeholder="e.g., Jane or S1021" aria-label="Search text" class="filter-search-input"/></div></div><div id="ii4cru" class="filter-controls"><button type="button" id="applyFilters" class="filter-apply-button">
               Apply Filters
             </button><button type="button" id="clearFilters" class="filter-clear-button">
               Clear
-            </button></div></div><div id="itntgg" class="table-wrapper"><div class="table-scroll"><table aria-label="Attendance table" id="attendanceTable" class="attendance-table"><thead class="table-head"><tr><th scope="col" class="table-head-cell">Student Name</th><th scope="col" class="table-head-cell">Student ID</th><th scope="col" class="table-head-cell">Date</th><th scope="col" class="table-head-cell">Status</th><th scope="col" class="table-head-cell">Notes</th></tr></thead><tbody id="attendanceTbody" class="table-body"><tr><td class="cell-name">Jane Doe</td><td class="cell-id">S1001</td><td class="cell-date">2026-03-03</td><td class="cell-status"><span id="irhkmv" class="status-badge">Present</span></td><td id="ihre0t" class="cell-notes">On time</td></tr><tr><td class="cell-name">John Smith</td><td class="cell-id">S1002</td><td class="cell-date">2026-03-03</td><td class="cell-status"><span id="inl0pz" class="status-badge">Absent</span></td><td id="iq5aia" class="cell-notes">Sick leave</td></tr><tr><td class="cell-name">Aisha Khan</td><td class="cell-id">S1015</td><td class="cell-date">2026-03-03</td><td class="cell-status"><span id="ii34o9" class="status-badge">Late</span></td><td class="cell-notes">Traffic delay</td></tr><tr><td class="cell-name">Marco Ruiz</td><td class="cell-id">S1021</td><td class="cell-date">2026-03-03</td><td id="ifcixz" class="cell-status"><span id="iv5kjk" class="status-badge">Present</span></td><td id="iy9wcr" class="cell-notes">Participated actively</td></tr><tr><td class="cell-name">Liu Wei</td><td class="cell-id">S1033</td><td class="cell-date">2026-03-03</td><td class="cell-status"><span id="i8w49g" class="status-badge">Present</span></td><td class="cell-notes">On time</td></tr><tr><td class="cell-name">Emma Wilson</td><td class="cell-id">S1047</td><td class="cell-date">2026-03-02</td><td class="cell-status"><span id="ipaluo" class="status-badge">Late</span></td><td id="iglzgf" class="cell-notes">Bus delay</td></tr><tr><td class="cell-name">Noah Brown</td><td class="cell-id">S1050</td><td class="cell-date">2026-03-02</td><td class="cell-status"><span id="idy70m" class="status-badge">Absent</span></td><td id="ifypzw" class="cell-notes">Unexcused</td></tr></tbody></table></div><div class="table-footer-meta"><div>Showing 1–7 of 120</div><div class="table-footer-controls"><button type="button" class="pagination-prev">Previous</button><button type="button" class="pagination-next">Next</button></div></div></div></section></main><footer id="inkyo6" class="gjs-t-border footer"><div id="itfn6s" class="footer-content">© 2026 FaceRoll. All rights reserved.</div></footer></div></div><script>
-(function(){
-  const tbody = document.getElementById('attendanceTbody');
-  const rows = Array.from(tbody.querySelectorAll('tr'));
-  const dateFrom = document.getElementById('dateFrom');
-  const dateTo = document.getElementById('dateTo');
-  const statusFilter = document.getElementById('statusFilter');
-  const searchInput = document.getElementById('searchInput');
-  const applyBtn = document.getElementById('applyFilters');
-  const clearBtn = document.getElementById('clearFilters');
-  const exportBtn = document.getElementById('exportCsvBtn');
-
-  function normalizeDate(str){
-    const d = new Date(str);
-    return isNaN(d.getTime()) ? null : d;
-  }
-
-  function passesFilters(tr){
-    const tds = tr.querySelectorAll('td');
-    const name = tds[0].textContent.toLowerCase();
-    const id = tds[1].textContent.toLowerCase();
-    const dateStr = tds[2].textContent.trim();
-    const status = tds[3].textContent.trim();
-    const q = (searchInput.value || '').toLowerCase().trim();
-
-    if (q && !(name.includes(q) || id.includes(q))) return false;
-
-    const fromStr = dateFrom.value;
-    const toStr = dateTo.value;
-    if (fromStr){
-      const from = normalizeDate(fromStr);
-      const rowDate = normalizeDate(dateStr);
-      if (from && rowDate && rowDate < from) return false;
-    }
-    if (toStr){
-      const to = normalizeDate(toStr);
-      const rowDate = normalizeDate(dateStr);
-      if (to && rowDate && rowDate > to) return false;
-    }
-
-    const statusVal = statusFilter.value;
-    if (statusVal && status !== statusVal) return false;
-
-    return true;
-  }
-
-  function applyFiltersNow(){
-    rows.forEach(tr=>{
-      tr.style.display = passesFilters(tr) ? '' : 'none';
-    });
-  }
-
-  function clearFiltersNow(){
-    dateFrom.value = '';
-    dateTo.value = '';
-    statusFilter.value = '';
-    searchInput.value = '';
-    applyFiltersNow();
-  }
-
-  function applyStatusBadgeColors(){
-    const badgeClassMap = {
-      present: 'status-present',
-      absent: 'status-absent',
-      late: 'status-late'
-    };
-
-    rows.forEach(tr => {
-      const badge = tr.querySelector('.status-badge');
-      if (!badge) return;
-
-      badge.classList.remove('status-present', 'status-absent', 'status-late');
-      const statusKey = badge.textContent.trim().toLowerCase();
-      const badgeClass = badgeClassMap[statusKey];
-      if (badgeClass) {
-        badge.classList.add(badgeClass);
-      }
-    });
-  }
-
-  function exportVisibleToCSV(){
-    const headers = ['Student Name','Student ID','Date','Status','Notes'];
-    const visibleRows = rows.filter(r => r.style.display !== 'none');
-    const data = visibleRows.map(tr => Array.from(tr.querySelectorAll('td')).map(td => td.textContent.trim()));
-    const csv = [headers].concat(data).map(r => r.map(v => `"${v.replace(/"/g,'""')}"`).join(',')).join('\n');
-    const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    const now = new Date();
-    const stamp = now.toISOString().slice(0,10);
-    a.href = url;
-    a.download = `attendance_${stamp}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  }
-
-  applyBtn.addEventListener('click', applyFiltersNow);
-  clearBtn.addEventListener('click', clearFiltersNow);
-  exportBtn.addEventListener('click', exportVisibleToCSV);
-  applyStatusBadgeColors();
-})();
-</script></body>
+            </button></div></div><div id="itntgg" class="table-wrapper"><div id="firestoreStatus" class="cell-notes" style="padding:0 0 1rem 0;">Waiting for Firestore...</div><div class="table-scroll"><table aria-label="Attendance table" id="attendanceTable" class="attendance-table"><thead class="table-head"><tr><th scope="col" class="table-head-cell">Student Name</th><th scope="col" class="table-head-cell">Student ID</th><th scope="col" class="table-head-cell">Date</th><th scope="col" class="table-head-cell">Status</th><th scope="col" class="table-head-cell">Notes</th></tr></thead><tbody id="attendanceTbody" class="table-body"><tr><td colspan="5" class="cell-notes">Loading attendance records from Firestore...</td></tr></tbody></table></div><div class="table-footer-meta"><div id="tableCount">Showing 0 of 0</div><div class="table-footer-controls"><button type="button" class="pagination-prev">Previous</button><button type="button" class="pagination-next">Next</button></div></div></div></section></main><footer id="inkyo6" class="gjs-t-border footer"><div id="itfn6s" class="footer-content">© 2026 FaceRoll. All rights reserved.</div></footer></div></div><script defer src="/__/firebase/11.6.0/firebase-app-compat.js"></script><script defer src="/__/firebase/11.6.0/firebase-firestore-compat.js"></script><script defer src="/__/firebase/init.js"></script><script defer src="./js/sample-data.js"></script><script defer src="./js/firebase-client.js"></script><script defer src="./js/instructor-dashboard.js"></script></body>
 </html>
