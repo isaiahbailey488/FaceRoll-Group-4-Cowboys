@@ -203,6 +203,13 @@
         text-align: center;
       }
 
+      body#iel609 .auth-message {
+        min-height: 1.25rem;
+        margin: -6px 0 0 0;
+        color: #b91c1c;
+        font-size: 0.92rem;
+      }
+
       body#iel609 .help-title {
         margin: 0 0 14px 0;
         font-size: 1.15rem;
@@ -300,6 +307,8 @@
               <a href="./forgot-password.html">Forgot password?</a>
             </div>
 
+            <p id="loginMessage" class="auth-message" aria-live="polite"></p>
+
             <button type="submit" class="login-button">Login</button>
 
             <p class="register-link">
@@ -323,16 +332,11 @@
     <footer class="gjs-t-border footer">
       <div class="footer-container">© FaceRoll</div>
     </footer>
-    <script>
-      (function () {
-        const loginForm = document.getElementById('loginForm');
-        if (!loginForm) return;
-
-        loginForm.addEventListener('submit', function (event) {
-          event.preventDefault();
-          window.location.href = './instructor-dashboard.html';
-        });
-      })();
-    </script>
+    <script defer src="/__/firebase/11.6.0/firebase-app-compat.js"></script>
+    <script defer src="/__/firebase/11.6.0/firebase-auth-compat.js"></script>
+    <script defer src="/__/firebase/11.6.0/firebase-firestore-compat.js"></script>
+    <script defer src="/__/firebase/init.js"></script>
+    <script defer src="./js/firebase-client.js?v=20260408-1"></script>
+    <script defer src="./js/auth-pages.js?v=20260408-1"></script>
   </body>
 </html>

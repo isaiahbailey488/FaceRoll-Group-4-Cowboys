@@ -13,12 +13,18 @@
   const statAbsent = document.getElementById('statAbsent');
   const tableCount = document.getElementById('tableCount');
   const firestoreStatus = document.getElementById('firestoreStatus');
+  const prevPageBtn =
+    document.getElementById('paginationPrevBtn') || document.querySelector('.pagination-prev');
+  const nextPageBtn =
+    document.getElementById('paginationNextBtn') || document.querySelector('.pagination-next');
   const sidebarProfileName = document.querySelector('.sidebar-footer .profile-name');
   const sidebarProfileRole = document.querySelector('.sidebar-footer .profile-role');
 
   let allAttendanceRows = [];
   let visibleAttendanceRows = [];
   let generatedSampleAssignments = new Map();
+  let currentPage = 1;
+  const rowsPerPage = 10;
   const defaultSeedButtonLabel = seedBtn ? seedBtn.textContent.trim() : 'Seed Firestore Data';
 
   function getSampleDataApi() {
@@ -582,16 +588,56 @@
     });
   }
 
+  function getTotalPages() {
+    return Math.max(1, Math.ceil(visibleAttendanceRows.length / rowsPerPage));
+  }
+
+  function getPagedRows() {
+    const startIndex = (currentPage - 1) * rowsPerPage;
+    return visibleAttendanceRows.slice(startIndex, startIndex + rowsPerPage);
+  }
+
+  function updatePaginationControls() {
+    if (!prevPageBtn || !nextPageBtn) {
+      return;
+    }
+
+    const totalPages = getTotalPages();
+    const hasRows = visibleAttendanceRows.length > 0;
+
+    prevPageBtn.disabled = !hasRows || currentPage <= 1;
+    nextPageBtn.disabled = !hasRows || currentPage >= totalPages;
+
+    prevPageBtn.style.opacity = prevPageBtn.disabled ? '0.55' : '1';
+    nextPageBtn.style.opacity = nextPageBtn.disabled ? '0.55' : '1';
+    prevPageBtn.style.cursor = prevPageBtn.disabled ? 'not-allowed' : 'pointer';
+    nextPageBtn.style.cursor = nextPageBtn.disabled ? 'not-allowed' : 'pointer';
+  }
+
   function updateTableCount() {
     const totalCount = allAttendanceRows.length;
     const visibleCount = visibleAttendanceRows.length;
+    const pagedRows = getPagedRows();
 
     if (!visibleCount) {
       tableCount.textContent = 'Showing 0 of ' + totalCount;
       return;
     }
 
-    tableCount.textContent = 'Showing 1-' + visibleCount + ' of ' + totalCount;
+    const startCount = (currentPage - 1) * rowsPerPage + 1;
+    const endCount = startCount + pagedRows.length - 1;
+    tableCount.textContent =
+      'Showing ' +
+      startCount +
+      '-' +
+      endCount +
+      ' of ' +
+      visibleCount +
+      ' filtered records (Page ' +
+      currentPage +
+      ' of ' +
+      getTotalPages() +
+      ')';
   }
 
   function passesFilters(rowData) {
@@ -626,8 +672,10 @@
 
   function applyFiltersNow() {
     visibleAttendanceRows = allAttendanceRows.filter(passesFilters);
-    renderRows(visibleAttendanceRows);
+    currentPage = 1;
+    renderRows(getPagedRows());
     updateTableCount();
+    updatePaginationControls();
   }
 
   function clearFiltersNow() {
@@ -663,6 +711,28 @@
     anchor.click();
     anchor.remove();
     URL.revokeObjectURL(url);
+  }
+
+  function goToPreviousPage() {
+    if (currentPage <= 1) {
+      return;
+    }
+
+    currentPage -= 1;
+    renderRows(getPagedRows());
+    updateTableCount();
+    updatePaginationControls();
+  }
+
+  function goToNextPage() {
+    if (currentPage >= getTotalPages()) {
+      return;
+    }
+
+    currentPage += 1;
+    renderRows(getPagedRows());
+    updateTableCount();
+    updatePaginationControls();
   }
 
   function updateSummaryCards(users, attendanceRows) {
@@ -712,17 +782,25 @@
       allAttendanceRows = sampleDataApi ? sampleDataApi.getAttendanceTableRows() : [];
     }
     visibleAttendanceRows = allAttendanceRows.slice();
+    currentPage = 1;
 
     updateInstructorProfileCard(users);
     updateSummaryCards(users, allAttendanceRows);
-    renderRows(visibleAttendanceRows);
+    renderRows(getPagedRows());
     updateTableCount();
+    updatePaginationControls();
     setStatus('Firestore data loaded successfully. Sample data will only be added when you click Seed Firestore Data.');
   }
 
   applyBtn.addEventListener('click', applyFiltersNow);
   clearBtn.addEventListener('click', clearFiltersNow);
   exportBtn.addEventListener('click', exportVisibleToCSV);
+  if (prevPageBtn) {
+    prevPageBtn.addEventListener('click', goToPreviousPage);
+  }
+  if (nextPageBtn) {
+    nextPageBtn.addEventListener('click', goToNextPage);
+  }
   if (seedBtn) {
     seedBtn.addEventListener('click', async () => {
       setSeedButtonState(true);
@@ -746,6 +824,7 @@
       const sampleStudents = sampleDataApi.getSampleStudents();
       allAttendanceRows = sampleDataApi.getAttendanceTableRows();
       visibleAttendanceRows = allAttendanceRows.slice();
+      currentPage = 1;
       updateInstructorProfileCard([
         {
           id: 'instructor001',
@@ -755,13 +834,15 @@
         },
       ]);
       updateSummaryCards(sampleStudents, allAttendanceRows);
-      renderRows(visibleAttendanceRows);
+      renderRows(getPagedRows());
       updateTableCount();
+      updatePaginationControls();
       return;
     }
 
     renderMessageRow('Unable to load Firestore data. Check Firebase Hosting auto-init and your Firestore collection fields.');
     tableCount.textContent = 'Showing 0 of 0';
+    updatePaginationControls();
     statTotal.textContent = '0';
     statPresent.textContent = '0';
     statAbsent.textContent = '0';

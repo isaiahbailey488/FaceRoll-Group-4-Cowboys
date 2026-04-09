@@ -1,7 +1,7 @@
 (function (global) {
   const FIREBASE_INIT_TIMEOUT_MS = 10000;
 
-  function waitForFirebase() {
+  function waitForFirebaseServices() {
     return new Promise((resolve, reject) => {
       const startedAt = Date.now();
 
@@ -13,7 +13,7 @@
           global.firebase.apps.length > 0;
 
         if (firebaseReady) {
-          resolve(global.firebase.firestore());
+          resolve(global.firebase);
           return;
         }
 
@@ -33,6 +33,21 @@
     });
   }
 
+  async function waitForFirebase() {
+    const firebase = await waitForFirebaseServices();
+    return firebase.firestore();
+  }
+
+  async function waitForAuth() {
+    const firebase = await waitForFirebaseServices();
+
+    if (typeof firebase.auth !== 'function') {
+      throw new Error('Firebase Auth is not available on this page.');
+    }
+
+    return firebase.auth();
+  }
+
   async function readCollectionDocs(collectionName) {
     const db = await waitForFirebase();
     const snapshot = await db.collection(collectionName).get();
@@ -49,8 +64,28 @@
     await db.collection(collectionName).doc(documentId).set(data, { merge: true });
   }
 
+  async function signInWithEmail(email, password) {
+    const auth = await waitForAuth();
+    const credential = await auth.signInWithEmailAndPassword(email, password);
+    return credential.user;
+  }
+
+  async function registerWithEmail(email, password) {
+    const auth = await waitForAuth();
+    const credential = await auth.createUserWithEmailAndPassword(email, password);
+    return credential.user;
+  }
+
+  async function sendPasswordReset(email) {
+    const auth = await waitForAuth();
+    await auth.sendPasswordResetEmail(email);
+  }
+
   global.FaceRollFirebase = {
     readCollectionDocs,
     writeDocument,
+    signInWithEmail,
+    registerWithEmail,
+    sendPasswordReset,
   };
 })(window);

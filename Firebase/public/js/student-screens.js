@@ -100,6 +100,12 @@
     return '';
   }
 
+  function formatDuration(totalSeconds) {
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
+  }
+
   function readProfileOverrides() {
     try {
       const raw = window.localStorage.getItem(PROFILE_OVERRIDE_STORAGE_KEY);
@@ -504,9 +510,19 @@
 
   function renderLiveSessionPage() {
     const tbody = document.getElementById('liveSessionTbody');
+    const startButton = document.getElementById('iq6lcg');
+    const durationElement = document.getElementById('impi7gl');
+    const sessionDateInput = document.getElementById('liveSessionDate');
     if (!tbody) {
       return;
     }
+
+    const sessionStatusValue =
+      document.getElementById('liveSessionStatus') ||
+      (Array.from(document.querySelectorAll('.filter-field .filter-label'))
+        .find((label) => String(label.textContent || '').trim() === 'Session Status')
+        ?.parentElement?.querySelector('span')) ||
+      null;
 
     const rows = sampleDataApi.getLiveSessionRows();
     const recognizedCount = rows.filter((row) => row.status !== 'Absent').length;
@@ -537,6 +553,86 @@
 
       tbody.appendChild(row);
     });
+
+    let timerHandle = null;
+    let sessionStartedAt = null;
+
+    function setSessionStatus(statusText) {
+      if (sessionStatusValue) {
+        sessionStatusValue.textContent = statusText;
+      }
+    }
+
+    function setStartButtonState(isStarted) {
+      if (!startButton) {
+        return;
+      }
+
+      startButton.textContent = isStarted ? 'Stop Session' : 'Start Session';
+      startButton.disabled = false;
+      startButton.style.opacity = '1';
+      startButton.style.cursor = 'pointer';
+    }
+
+    function updateDurationFromStart(startedAt) {
+      if (!durationElement) {
+        return;
+      }
+
+      const elapsedSeconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+      durationElement.textContent = formatDuration(elapsedSeconds);
+    }
+
+    function beginDurationTimer(startedAt) {
+      if (timerHandle) {
+        window.clearInterval(timerHandle);
+      }
+
+      updateDurationFromStart(startedAt);
+      timerHandle = window.setInterval(function () {
+        updateDurationFromStart(startedAt);
+      }, 1000);
+    }
+
+    function stopDurationTimer() {
+      if (timerHandle) {
+        window.clearInterval(timerHandle);
+        timerHandle = null;
+      }
+    }
+
+    if (sessionDateInput && !sessionDateInput.value) {
+      sessionDateInput.value = new Date().toISOString().slice(0, 10);
+    }
+
+    // The live session should only exist for the current page instance.
+    setSessionStatus('Not Started');
+    stopDurationTimer();
+    if (durationElement) {
+      durationElement.textContent = '00:00';
+    }
+    setStartButtonState(false);
+
+    if (startButton) {
+      startButton.addEventListener('click', function () {
+        if (sessionStartedAt !== null) {
+          sessionStartedAt = null;
+          setSessionStatus('Not Started');
+          setStartButtonState(false);
+          stopDurationTimer();
+          if (durationElement) {
+            durationElement.textContent = '00:00';
+          }
+          return;
+        }
+
+        const startedAt = Date.now();
+        sessionStartedAt = startedAt;
+        setSessionStatus('Started');
+        setStartButtonState(true);
+        beginDurationTimer(startedAt);
+      });
+    }
   }
 
   function renderReportsPage() {
