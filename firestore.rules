@@ -1,0 +1,91 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// FaceRoll — Firestore Security Rules
+//
+// These rules allow:
+//   • Students to read/write their OWN user profile (users/{uid})
+//   • Students to read attendance records they own (where uid == auth.uid)
+//   • Students to create attendance records for themselves only
+//   • Any authenticated user to read courses + active sessions
+//   • Instructors (users with role == "instructor") full read/write access
+//
+// HOW TO DEPLOY:
+//   1. Go to https://console.firebase.google.com/project/rollcall-2669b/firestore/rules
+//   2. Paste the contents of this file into the rules editor
+//   3. Click "Publish"
+//
+// Or via Firebase CLI:
+//   firebase deploy --only firestore:rules
+// ─────────────────────────────────────────────────────────────────────────────
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers ────────────────────────────────────────────────────────────
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isInstructor() {
+      return isSignedIn() &&
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'instructor';
+    }
+
+    // ── users/{uid} ────────────────────────────────────────────────────────
+    // Students can read/write only their own profile.
+    // Instructors can read all profiles (for roster display).
+    match /users/{uid} {
+      allow read:   if isOwner(uid) || isInstructor();
+      allow create: if isOwner(uid);
+      allow update: if isOwner(uid) || isInstructor();
+      allow delete: if isInstructor();
+    }
+
+    // ── courses/{courseId} ─────────────────────────────────────────────────
+    // Any signed-in user can read courses (so students see their classes).
+    // Only instructors can write.
+    match /courses/{courseId} {
+      allow read:  if isSignedIn();
+      allow write: if isInstructor();
+    }
+
+    // ── sessions/{sessionId} ───────────────────────────────────────────────
+    // Any signed-in user can read sessions (so students see active sessions).
+    // Only instructors can create/modify sessions.
+    match /sessions/{sessionId} {
+      allow read:  if isSignedIn();
+      allow write: if isInstructor();
+    }
+
+    // ── attendance/{recordId} ──────────────────────────────────────────────
+    // Students can read/create attendance records they own.
+    // Instructors can read/write all attendance records.
+    match /attendance/{recordId} {
+      allow read:   if isSignedIn() &&
+                       (resource.data.uid == request.auth.uid || isInstructor());
+      allow create: if isSignedIn() &&
+                       request.resource.data.uid == request.auth.uid;
+      allow update: if isInstructor();
+      allow delete: if isInstructor();
+    }
+
+    // ── facialEmbeddings/{uid} (optional, for FaceNet vectors) ─────────────
+    // Stored separately so embeddings can have stricter rules.
+    match /facialEmbeddings/{uid} {
+      allow read:  if isOwner(uid) || isInstructor();
+      allow write: if isOwner(uid);
+    }
+
+    // ── enrollments/{enrollmentId} (optional, course rosters) ──────────────
+    match /enrollments/{enrollmentId} {
+      allow read:  if isSignedIn();
+      allow write: if isInstructor();
+    }
+  }
+}

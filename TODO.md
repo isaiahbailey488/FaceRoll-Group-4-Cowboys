@@ -1,0 +1,5 @@
+- [x] Update .gitignore with venv/cache ignores
+- [ ] Untrack backend/venv and backend/.venv from index
+- [ ] Commit cleanup changes
+- [ ] Rewrite git history to remove large venv files
+- [ ] Force push cleaned main branch

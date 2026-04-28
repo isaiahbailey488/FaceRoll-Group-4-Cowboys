@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>User Registration</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="index,follow" />
+    <meta name="generator" content="GrapesJS Studio" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&amp;family=Playfair+Display:wght@600;700&amp;display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./style.css" />
+    <style>
+      body#i1rrpa {
+        margin: 0 !important;
+        padding: 0 !important;
+        min-height: 100vh;
+        background:
+          radial-gradient(circle at top left, rgba(191, 219, 254, 0.65), transparent 30%),
+          linear-gradient(180deg, #f8fbff 0%, #eef4ff 100%);
+        font-family: Inter, sans-serif;
+        color: #0f172a;
+      }
+
+      body#i1rrpa .header,
+      body#i1rrpa .footer,
+      body#i1rrpa .secondary-section {
+        display: none !important;
+      }
+
+      body#i1rrpa .main-content {
+        min-height: 100vh;
+        width: 100% !important;
+        max-width: none !important;
+        margin: 0 !important;
+        padding: 32px 20px !important;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      body#i1rrpa .registration-page-brand {
+        position: absolute;
+        top: 16px;
+        left: 16px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        z-index: 10;
+      }
+
+      body#i1rrpa .registration-page-brand-logo {
+        width: 86px;
+        height: 86px;
+        object-fit: contain;
+        display: block !important;
+        transform: scale(1.95);
+        transform-origin: center center;
+      }
+
+      body#i1rrpa .registration-page-brand-text {
+        font-size: 1.05rem;
+        line-height: 1;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        color: #0f172a;
+        margin-left: -4px;
+      }
+
+      body#i1rrpa .registration-grid {
+        width: min(720px, 100%);
+        display: flex !important;
+        justify-content: center;
+        margin: 0;
+      }
+
+      body#i1rrpa .registration-form-column {
+        width: 100%;
+        max-width: 620px;
+        margin: 0 auto !important;
+      }
+
+      body#i1rrpa .registration-form-card,
+      body#i1rrpa #i4szb {
+        width: 100%;
+        max-width: 620px;
+        margin: 0 auto !important;
+        padding: 36px 32px 32px !important;
+        background: rgba(255, 255, 255, 0.9) !important;
+        border: 1px solid #dbe4f0 !important;
+        border-radius: 24px !important;
+        box-shadow: 0 24px 60px rgba(15, 23, 42, 0.08) !important;
+        backdrop-filter: blur(10px);
+      }
+
+      body#i1rrpa .registration-form,
+      body#i1rrpa #i6kz3 {
+        width: 100%;
+        max-width: 500px;
+        margin: 0 auto !important;
+      }
+
+      body#i1rrpa .registration-form h2 {
+        margin: 0 0 10px 0 !important;
+        font-size: 2rem !important;
+        line-height: 1.08 !important;
+        font-weight: 700 !important;
+        letter-spacing: -0.03em;
+        color: #0f172a !important;
+      }
+
+      body#i1rrpa .registration-form > div,
+      body#i1rrpa .registration-form .form-group,
+      body#i1rrpa .registration-form #iecf0y,
+      body#i1rrpa .registration-form #i4eib {
+        margin-bottom: 16px;
+      }
+
+      body#i1rrpa .registration-form label,
+      body#i1rrpa .registration-form .help-text,
+      body#i1rrpa .security-note {
+        color: #64748b !important;
+        font-size: 0.95rem !important;
+      }
+
+      body#i1rrpa .registration-form label {
+        display: block;
+        margin-bottom: 8px !important;
+        font-weight: 600;
+        color: #1e293b !important;
+      }
+
+      body#i1rrpa .registration-form input[type="text"],
+      body#i1rrpa .registration-form input[type="email"],
+      body#i1rrpa .registration-form input[type="password"],
+      body#i1rrpa .registration-form select {
+        width: 100%;
+        border-radius: 12px !important;
+        border: 1px solid #cbd5e1 !important;
+        background: #ffffff !important;
+        padding: 14px 16px !important;
+        color: #0f172a !important;
+        box-shadow: none !important;
+        transition: border-color 150ms ease, box-shadow 150ms ease;
+      }
+
+      body#i1rrpa .registration-form input[type="text"]:focus,
+      body#i1rrpa .registration-form input[type="email"]:focus,
+      body#i1rrpa .registration-form input[type="password"]:focus,
+      body#i1rrpa .registration-form select:focus {
+        outline: none !important;
+        border-color: #60a5fa !important;
+        box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12) !important;
+      }
+
+      body#i1rrpa #iecf0y {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      body#i1rrpa .auth-message {
+        min-height: 1.25rem;
+        margin: 0 0 8px 0;
+        color: #b91c1c !important;
+        font-size: 0.92rem !important;
+        text-align: left;
+      }
+
+      body#i1rrpa #irnt2i {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        width: 100%;
+        margin-top: 6px;
+        border: 1px solid #1d4ed8 !important;
+        border-radius: 12px !important;
+        background: #1d4ed8 !important;
+        color: #ffffff !important;
+        padding: 14px 18px !important;
+        font-weight: 700;
+        box-shadow: 0 16px 30px rgba(29, 78, 216, 0.22);
+      }
+
+      body#i1rrpa #irnt2i:hover {
+        background: #1e40af !important;
+        border-color: #1e40af !important;
+      }
+
+      body#i1rrpa .security-note {
+        margin-top: 12px;
+        text-align: center;
+      }
+
+      body#i1rrpa #i4eib {
+        text-align: center;
+      }
+
+      body#i1rrpa #i4eib a,
+      body#i1rrpa #ievkkv {
+        color: #1d4ed8 !important;
+        text-decoration: none;
+        font-weight: 600;
+      }
+
+      @media (max-width: 600px) {
+        body#i1rrpa .main-content {
+          padding: 20px 14px !important;
+        }
+
+        body#i1rrpa .registration-form-card,
+        body#i1rrpa #i4szb {
+          padding: 24px 18px !important;
+          border-radius: 18px !important;
+        }
+
+        body#i1rrpa .registration-form h2 {
+          font-size: 1.75rem !important;
+        }
+
+        body#i1rrpa .registration-page-brand {
+          top: 12px;
+          left: 12px;
+        }
+
+        body#i1rrpa .registration-page-brand-logo {
+          width: 64px;
+          height: 64px;
+          transform: scale(1.6);
+        }
+      }
+    </style>
+  </head>
+  <body id="i1rrpa" class="gjs-t-body body">
+    <div class="registration-page-brand">
+      <img src="./Transparent FaceRoll.png" alt="FaceRoll logo" class="registration-page-brand-logo" />
+      <div class="registration-page-brand-text">FaceRoll</div>
+    </div>
+    <header class="gjs-t-border header">
+      <div id="i1xem" class="header-container">
+        <h1>Registration</h1>
+        <a href="./index.html" id="ievkkv">Login</a>
+      </div>
+    </header>
+    <main id="ilxht" class="main-content">
+      <section class="registration-grid">
+        <div class="registration-form-column">
+          <div id="i4szb" class="gjs-t-border registration-form-card">
+            <form method="post" action="./instructor-dashboard.html" aria-labelledby="registration-title" id="i6kz3" class="registration-form">
+              <h2 id="registration-title">Register</h2>
+              <div class="form-group">
+                <label for="role">Account Role</label>
+                <select type="text" id="role" name="role" required>
+                  <option value="">Select Role</option>
+                  <option value="instructor">Instructor</option>
+                  <option value="admin">Administrator</option>
+                </select>
+              </div>
+              <div>
+                <label for="full-name">Full Name</label>
+                <input type="text" id="full-name" name="full_name" required aria-required="true" autocomplete="name" />
+              </div>
+              <div>
+                <label for="email">Email</label>
+                <input type="email" id="email" name="email" required aria-required="true" autocomplete="email" />
+              </div>
+              <div>
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" required aria-required="true" autocomplete="new-password" />
+                <p class="help-text">Password must be at least 8 characters and include a number.</p>
+              </div>
+              <div>
+                <label for="confirm-password">Confirm Password</label>
+                <input type="password" id="confirm-password" name="confirm_password" required aria-required="true" autocomplete="new-password" />
+              </div>
+              <p id="registerMessage" class="auth-message" aria-live="polite"></p>
+              <div id="iecf0y">
+                <input type="checkbox" id="terms" name="terms" required aria-required="true" />
+                <label for="terms">Agree to Terms</label>
+              </div>
+              <button type="submit" id="irnt2i">Submit</button>
+              <p class="security-note">
+                Your information is securely stored and used only for attendance system access.
+              </p>
+              <div id="i4eib"><a href="./index.html" id="ibupyj">Back to Login</a></div>
+            </form>
+          </div>
+        </div>
+      </section>
+      <section id="in12r" class="secondary-section"><div id="iv79f"></div></section>
+    </main>
+    <footer class="gjs-t-border footer">
+      <div id="iaihz" class="footer-container"><div id="irarf">© FaceRoll</div></div>
+    </footer>
+    <script defer src="/__/firebase/11.6.0/firebase-app-compat.js"></script>
+    <script defer src="/__/firebase/11.6.0/firebase-auth-compat.js"></script>
+    <script defer src="/__/firebase/11.6.0/firebase-firestore-compat.js"></script>
+    <script defer src="/__/firebase/init.js"></script>
+    <script defer src="./js/firebase-client.js?v=20260408-1"></script>
+    <script defer src="./js/auth-pages.js?v=20260408-1"></script>
+  </body>
+</html>

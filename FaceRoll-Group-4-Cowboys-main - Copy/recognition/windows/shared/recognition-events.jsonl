@@ -1,0 +1,3 @@
+{"eventType": "match", "timestamp": "2026-04-28T19:47:15.334156+00:00", "identity": "/app/database/isaiah_bailey2.png", "identityLabel": "isaiah bailey2", "distance": 0.153387, "confidence": 90.22, "faceIndex": 1}
+{"eventType": "match", "timestamp": "2026-04-28T19:47:30.715083+00:00", "identity": "/app/database/isaiah_bailey2.png", "identityLabel": "isaiah bailey2", "distance": 0.233448, "confidence": 76.74, "faceIndex": 1}
+{"eventType": "match", "timestamp": "2026-04-28T19:47:45.352737+00:00", "identity": "/app/database/isaiah_bailey2.png", "identityLabel": "isaiah bailey2", "distance": 0.293115, "confidence": 65.82, "faceIndex": 1}

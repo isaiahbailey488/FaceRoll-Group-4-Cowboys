@@ -1,0 +1,50 @@
+{
+  "expo": {
+    "name": "FaceRoll",
+    "slug": "faceroll-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "faceroll",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#0A2342"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.cowboys.faceroll",
+      "infoPlist": {
+        "NSCameraUsageDescription": "FaceRoll uses your camera for face enrollment and attendance check-in via facial recognition."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0A2342"
+      },
+      "package": "com.cowboys.faceroll",
+      "permissions": [
+        "android.permission.CAMERA"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "FaceRoll uses your camera for face enrollment and attendance check-in via facial recognition."
+        }
+      ],
+      "expo-font"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "backendUrl": "http://192.168.1.164:5000"
+    }
+  }
+}

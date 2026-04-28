@@ -1,0 +1,113 @@
+:root {
+  --fr-font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  --fr-text: #0f172a;
+  --fr-muted: #64748b;
+  --fr-border: #cbd5e1;
+  --fr-border-soft: #e2e8f0;
+  --fr-bg: #f8fafc;
+  --fr-surface: #ffffff;
+  --fr-primary: #1d4ed8;
+  --fr-primary-hover: #1e40af;
+  --fr-ring: rgba(37, 99, 235, 0.18);
+}
+
+html,
+body,
+.body-root,
+.main-content,
+.attendance-panel,
+.settings-inner,
+#instructor-settings {
+  font-family: var(--fr-font-sans) !important;
+  color: var(--fr-text);
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--fr-font-sans) !important;
+  color: var(--fr-text);
+  letter-spacing: -0.01em;
+}
+
+p, label, span, td, th, li, a, button, input, select, textarea {
+  font-family: var(--fr-font-sans) !important;
+}
+
+input[type="text"],
+input[type="email"],
+input[type="number"],
+input[type="date"],
+input[type="search"],
+select,
+textarea {
+  font-size: 0.95rem;
+  line-height: 1.3;
+  border: 1px solid var(--fr-border);
+  border-radius: 10px;
+  padding: 0.65rem 0.8rem;
+  background-color: var(--fr-surface);
+  color: var(--fr-text);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: 2px solid var(--fr-ring);
+  border-color: #60a5fa;
+}
+
+.btn-primary,
+.save-btn,
+.btn-add-course {
+  font-weight: 600;
+  font-size: 0.95rem;
+  border-radius: 10px !important;
+  padding: 0.7rem 1rem !important;
+}
+
+.sidebar-brand-title,
+.sidebar-link-label,
+.profile-name,
+.profile-role {
+  font-family: var(--fr-font-sans) !important;
+}
+
+.attendance-table,
+.attendance-table th,
+.attendance-table td {
+  font-family: var(--fr-font-sans) !important;
+  font-size: 0.92rem;
+}
+
+.status-badge {
+  font-family: var(--fr-font-sans) !important;
+  letter-spacing: 0.01em;
+}
+
+.attendance-panel-title,
+.header-title,
+.header-title-unified,
+h1.gjs-t-h1.header-title,
+.header-title-group .attendance-panel-title,
+.header-title-group h1,
+.header-title-group h2 {
+  font-family: var(--fr-font-sans) !important;
+  font-size: 1.65rem !important;
+  line-height: 1.3 !important;
+  font-weight: 600 !important;
+  color: var(--fr-text) !important;
+  letter-spacing: -0.01em !important;
+  margin: 0 !important;
+}
+
+.header-subtitle,
+.header-subtitle-unified,
+.header-title-group p,
+.attendance-panel-title-group p {
+  font-family: var(--fr-font-sans) !important;
+  font-size: 0.95rem !important;
+  font-weight: 400 !important;
+  color: var(--fr-muted) !important;
+  margin-top: 0.35rem !important;
+}
