@@ -1,6 +1,0 @@
-deepface
-opencv-python-headless
-fastapi
-uvicorn[standard]
-python-multipart
-tf-keras

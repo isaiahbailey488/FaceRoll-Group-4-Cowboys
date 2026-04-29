@@ -37,6 +37,10 @@
   }
 
   function getUserDisplayName(user, authUser) {
+    if (authUser && authUser.displayName) {
+      return String(authUser.displayName);
+    }
+
     const directName = getFirstDefined(user, ['name', 'fullName', 'displayName']);
     if (directName) {
       return String(directName);
@@ -48,10 +52,6 @@
 
     if (joinedName) {
       return joinedName;
-    }
-
-    if (authUser && authUser.displayName) {
-      return String(authUser.displayName);
     }
 
     if (authUser && authUser.email) {

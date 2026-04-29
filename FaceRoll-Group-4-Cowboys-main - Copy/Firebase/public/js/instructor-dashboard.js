@@ -17,53 +17,6 @@
     document.getElementById('paginationPrevBtn') || document.querySelector('.pagination-prev');
   const nextPageBtn =
     document.getElementById('paginationNextBtn') || document.querySelector('.pagination-next');
-  const sidebarProfileName = document.querySelector('.sidebar-footer .profile-name');
-  const sidebarProfileRole = document.querySelector('.sidebar-footer .profile-role');
-
-  function setSidebarProfileQuick(name, role) {
-    if (sidebarProfileName) sidebarProfileName.textContent = name;
-    if (sidebarProfileRole) sidebarProfileRole.textContent = role;
-  }
-
-  function initSidebarProfileFromAuth() {
-    if (!window.firebase || typeof window.firebase.auth !== 'function') return;
-
-    const auth = window.firebase.auth();
-    const current = auth.currentUser;
-    if (current) {
-      setSidebarProfileQuick(current.displayName || current.email || 'Instructor', 'Instructor');
-    }
-
-    auth.onAuthStateChanged(async function (user) {
-      if (!user) return;
-      setSidebarProfileQuick(user.displayName || user.email || 'Instructor', 'Instructor');
-
-      try {
-        if (window.firebase.firestore) {
-          const snap = await window.firebase.firestore().collection('users').doc(user.uid).get();
-          if (snap.exists) {
-            const data = snap.data() || {};
-            const first = data.fname || data.firstName || data.first_name || '';
-            const last = data.lname || data.lastName || data.last_name || '';
-            const joined = [first, last].filter(Boolean).join(' ').trim();
-            const name =
-              data.displayName ||
-              data.fullName ||
-              data.name ||
-              joined ||
-              user.displayName ||
-              user.email ||
-              'Instructor';
-            const rawRole = String(data.role || data.userType || 'Instructor');
-            const role = rawRole.charAt(0).toUpperCase() + rawRole.slice(1);
-            setSidebarProfileQuick(name, role);
-          }
-        }
-      } catch (_error) {}
-    });
-  }
-
-  initSidebarProfileFromAuth();
 
   let allAttendanceRows = [];
   let visibleAttendanceRows = [];
@@ -485,30 +438,6 @@
     return studentId ? String(studentId) : String(fallbackId || 'N/A');
   }
 
-  function updateInstructorProfileCard(users) {
-    const instructorUser =
-      users.find(function (user) { return String(user.id || '') === 'instructor001'; }) ||
-      users.find(function (user) {
-        return String(getFirstDefined(user, ['role', 'userType']) || '').toLowerCase() === 'instructor';
-      });
-
-    if (!instructorUser) return;
-
-    const firstName = getFirstDefined(instructorUser, ['fname', 'firstName', 'first_name']);
-    const lastName = getFirstDefined(instructorUser, ['lname', 'lastName', 'last_name']);
-    const displayName =
-      getFirstDefined(instructorUser, ['name', 'fullName', 'displayName']) ||
-      [firstName, lastName].filter(Boolean).join(' ').trim() ||
-      'Instructor';
-    const roleLabel = getFirstDefined(instructorUser, ['role', 'userType']) || 'Instructor';
-
-    if (sidebarProfileName) sidebarProfileName.textContent = String(displayName);
-    if (sidebarProfileRole) {
-      const formattedRole = String(roleLabel);
-      sidebarProfileRole.textContent = formattedRole.charAt(0).toUpperCase() + formattedRole.slice(1);
-    }
-  }
-
   function getAttendanceDate(attendance, session) {
     return (
       getFirstDefined(attendance, ['time', 'date', 'attendanceDate', 'recordedAt', 'timestamp', 'createdAt']) ||
@@ -827,7 +756,6 @@
     visibleAttendanceRows = allAttendanceRows.slice();
     currentPage = 1;
 
-    updateInstructorProfileCard(users);
     updateSummaryCards(users, allAttendanceRows);
     populateCourseFilter(allAttendanceRows);
     if (hasActiveFilters()) {

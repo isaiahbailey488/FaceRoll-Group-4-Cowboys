@@ -2,8 +2,10 @@
   'use strict';
 
   const firebaseApi = window.FaceRollFirebase || null;
+  const sampleDataApi = window.FaceRollSampleData || null;
   const PROFILE_OVERRIDE_STORAGE_KEY = 'faceroll-profile-overrides';
   const FACEROLL_BRIDGE_URL = 'http://127.0.0.1:8765';
+  window.FaceRollProfileSave = null;
 
   // ---------- Helpers ----------
 
@@ -200,32 +202,204 @@
     } catch (e) {}
   }
 
-  // ---------- Sidebar profile ----------
+  function buildHistoryEntryKey(entry) {
+    return [entry.date, entry.course, entry.recordedTime].join('|');
+  }
 
-  function updateSidebarProfileFromAuth() {
-    if (!window.firebase || typeof window.firebase.auth !== 'function') return;
-    const nameEls = document.querySelectorAll('.profile-name');
-    const roleEls = document.querySelectorAll('.profile-role');
-
-    window.firebase.auth().onAuthStateChanged(async function (user) {
-      if (!user) return;
-      const fallbackName = user.displayName || user.email || 'Instructor';
-      let resolvedName = fallbackName;
-      let resolvedRole = 'Instructor';
-      try {
-        if (window.firebase.firestore) {
-          const snap = await window.firebase.firestore().collection('users').doc(user.uid).get();
-          if (snap.exists) {
-            const data = snap.data() || {};
-            resolvedName = getUserDisplayName(data) || fallbackName;
-            const rawRole = String(data.role || data.userType || 'Instructor');
-            resolvedRole = rawRole.charAt(0).toUpperCase() + rawRole.slice(1);
-          }
-        }
-      } catch (_e) {}
-      nameEls.forEach(function (el) { el.textContent = resolvedName; });
-      roleEls.forEach(function (el) { el.textContent = resolvedRole; });
+  function applyOverridesToHistory(studentId, history) {
+    const overridesByEntryKey = getStudentProfileOverrides(studentId);
+    return (history || []).map(function (entry) {
+      const entryKey = entry.entryKey || buildHistoryEntryKey(entry);
+      const overrideStatus = normalizeStatus(overridesByEntryKey[entryKey]);
+      return {
+        documentId: entry.documentId || '',
+        date: entry.date,
+        course: entry.course,
+        status: overrideStatus || normalizeStatus(entry.status) || 'Present',
+        recordedTime: entry.recordedTime,
+        entryKey: entryKey,
+      };
     });
+  }
+
+  function buildProfileSummary(history) {
+    const totalSessions = history.length;
+    const present = history.filter(function (entry) { return entry.status === 'Present'; }).length;
+    const late = history.filter(function (entry) { return entry.status === 'Late'; }).length;
+    const absent = history.filter(function (entry) { return entry.status === 'Absent'; }).length;
+    return {
+      attendanceRate: totalSessions ? Math.round(((present + late) / totalSessions) * 100) : 0,
+      sessionsAttended: present,
+      lateArrivals: late,
+      totalAbsences: absent,
+    };
+  }
+
+  function updateProfileSummary(summary) {
+    const rate = document.getElementById('iaj9kju');
+    const attended = document.getElementById('iwzjofv');
+    const late = document.getElementById('ip95okd');
+    const absent = document.getElementById('iq9g6ym');
+    if (rate) rate.textContent = String(summary.attendanceRate) + '%';
+    if (attended) attended.textContent = String(summary.sessionsAttended);
+    if (late) late.textContent = String(summary.lateArrivals);
+    if (absent) absent.textContent = String(summary.totalAbsences);
+  }
+
+  function setProfileSaveStatus(message, isError) {
+    const statusElement = document.getElementById('profileSaveStatus');
+    if (!statusElement) return;
+    statusElement.textContent = message;
+    statusElement.style.color = isError ? '#b91c1c' : '#475569';
+  }
+
+  function applyStatusBadge(statusElement, status) {
+    statusElement.textContent = status || 'Present';
+    statusElement.classList.remove('status-present', 'status-late', 'status-absent');
+    const statusClass = getStatusClass(status);
+    if (statusClass) statusElement.classList.add(statusClass);
+  }
+
+  function renderProfileHistoryRows(historyBody, history) {
+    historyBody.innerHTML = '';
+    if (!history.length) {
+      historyBody.innerHTML = '<tr><td colspan="5">No attendance records found for this student.</td></tr>';
+      return;
+    }
+
+    history.forEach(function (entry) {
+      const row = document.createElement('tr');
+      row.innerHTML = [
+        '<td></td>',
+        '<td></td>',
+        '<td><span class="status-badge student-status"></span></td>',
+        '<td></td>',
+        '<td><select><option>No Change</option><option>Present</option><option>Late</option><option>Absent</option></select></td>',
+      ].join('');
+      row.children[0].textContent = entry.date;
+      row.children[1].textContent = entry.course;
+      row.children[3].textContent = entry.recordedTime;
+      row.dataset.entryKey = entry.entryKey;
+      row.dataset.documentId = entry.documentId || '';
+      applyStatusBadge(row.children[2].firstElementChild, entry.status);
+      row.children[4].firstElementChild.value = 'No Change';
+      historyBody.appendChild(row);
+    });
+  }
+
+  function getUserEmail(user, fallbackStudent) {
+    return (
+      getFirstDefined(user, ['email']) ||
+      getFirstDefined(fallbackStudent, ['email']) ||
+      'N/A'
+    );
+  }
+
+  async function loadProfileDataFromFirestore(requestedStudentId) {
+    if (!firebaseApi) return null;
+
+    const results = await Promise.all([
+      firebaseApi.readCollectionDocs('users'),
+      firebaseApi.readCollectionDocs('courses'),
+      firebaseApi.readCollectionDocs('sessions'),
+      firebaseApi.readCollectionDocs('attendance'),
+    ]);
+    const users = results[0], courses = results[1], sessions = results[2], attendance = results[3];
+
+    const params = new URLSearchParams(window.location.search);
+    const requestedKeys = ['studentId', 'docId', 'uid', 'userId', 'email', 'id']
+      .map(function (key) { return params.get(key); })
+      .filter(Boolean)
+      .map(function (value) { return String(value); });
+    if (requestedStudentId && !requestedKeys.includes(String(requestedStudentId))) {
+      requestedKeys.push(String(requestedStudentId));
+    }
+    const studentUser = users.find(function (user) {
+      return [
+        user.id,
+        getFirstDefined(user, ['uid']),
+        getFirstDefined(user, ['userId']),
+        getFirstDefined(user, ['studentId']),
+        getFirstDefined(user, ['email']),
+      ].filter(Boolean).some(function (value) { return requestedKeys.includes(String(value)); });
+    }) || null;
+    if (!studentUser) return null;
+
+    const studentKeys = new Set([
+      studentUser.id,
+      getFirstDefined(studentUser, ['uid', 'userId', 'studentId', 'email']),
+    ].filter(Boolean).map(function (value) { return String(value); }));
+
+    const courseMap = new Map();
+    courses.forEach(function (course) {
+      const id = String(getFirstDefined(course, ['courseId']) || course.id || '');
+      if (id) courseMap.set(id, course);
+    });
+
+    const sessionMap = new Map();
+    sessions.forEach(function (session) {
+      const id = String(getFirstDefined(session, ['sessionId']) || session.id || '');
+      if (id) sessionMap.set(id, session);
+    });
+
+    const studentAttendance = attendance.filter(function (entry) {
+      return [
+        getFirstDefined(entry, ['uid', 'userId', 'studentId', 'email']),
+      ].filter(Boolean).some(function (value) { return studentKeys.has(String(value)); });
+    });
+
+    const history = studentAttendance.map(function (entry) {
+      const sessionId = String(getFirstDefined(entry, ['sessionId']) || '');
+      const session = sessionMap.get(sessionId) || null;
+      const courseId = String(getFirstDefined(entry, ['courseId']) || getFirstDefined(session, ['courseId']) || '');
+      const course = courseMap.get(courseId) || null;
+      const entryDate = getFirstDefined(entry, ['time', 'createdAt', 'date']) || getFirstDefined(session, ['startTime', 'date', 'createdAt']);
+      const status = normalizeStatus(getFirstDefined(entry, ['status'])) || 'Present';
+      const recordedTimeValue = getFirstDefined(entry, ['time', 'createdAt']);
+
+      return {
+        documentId: entry.id,
+        date: formatDateDisplay(entryDate),
+        course: String(getFirstDefined(course, ['courseName', 'name', 'title', 'code']) || courseId || 'Unknown Course'),
+        status: status,
+        recordedTime: status === 'Absent' ? 'N/A' : formatTimeDisplay(recordedTimeValue || entryDate),
+        entryKey: String(entry.id || buildHistoryEntryKey({
+          date: formatDateDisplay(entryDate),
+          course: courseId || 'Unknown Course',
+          recordedTime: formatTimeDisplay(recordedTimeValue || entryDate),
+        })),
+        timeValue: toDate(entryDate) || new Date(0),
+      };
+    }).sort(function (left, right) {
+      return right.timeValue.getTime() - left.timeValue.getTime();
+    }).map(function (entry) {
+      delete entry.timeValue;
+      return entry;
+    });
+
+    const fallbackStudent = sampleDataApi ? sampleDataApi.getStudentByAnyId(requestedStudentId) : null;
+    const derivedCourses = Array.from(new Set(history.map(function (entry) { return entry.course; }).filter(Boolean)));
+    const studentId = String(getFirstDefined(studentUser, ['studentId', 'userId', 'uid']) || studentUser.id || requestedStudentId);
+
+    return {
+      student: {
+        studentId: studentId,
+        name: getUserDisplayName(studentUser),
+        email: getUserEmail(studentUser, fallbackStudent),
+        courses: derivedCourses.length ? derivedCourses : (fallbackStudent ? fallbackStudent.courses : ['No courses found']),
+      },
+      history: applyOverridesToHistory(studentId, history),
+    };
+  }
+
+  function buildFallbackProfileData(requestedStudentId) {
+    if (!sampleDataApi) return null;
+    const student = sampleDataApi.getStudentByAnyId(requestedStudentId);
+    if (!student) return null;
+    return {
+      student: student,
+      history: applyOverridesToHistory(student.studentId, sampleDataApi.getAttendanceHistory(student.studentId)),
+    };
   }
 
   // ---------- Roster ----------
@@ -311,6 +485,10 @@
         return {
           name: getUserDisplayName(u),
           studentId: String(getFirstDefined(u, ['studentId', 'userId']) || u.id || 'N/A'),
+          // Keep every stable identifier we know about so the profile page can
+          // still find the student if Firestore uses doc id, uid, or studentId.
+          docId: String(u.id || ''),
+          uid: String(getFirstDefined(u, ['uid', 'userId']) || ''),
           email: String(getFirstDefined(u, ['email']) || 'N/A'),
           attendanceRate: rate,
           totalAbsences: absent,
@@ -336,7 +514,15 @@
         row.children[2].textContent = s.email;
         row.children[3].textContent = String(s.attendanceRate) + '%';
         row.children[4].textContent = String(s.totalAbsences);
-        row.children[5].firstElementChild.href = './student-profile.html?studentId=' + encodeURIComponent(s.studentId);
+        // Pass redundant lookup keys to avoid the profile page depending on one
+        // Firestore field name. The profile loader tries all of these values.
+        const profileParams = new URLSearchParams();
+        profileParams.set('studentId', s.studentId);
+        if (s.docId) profileParams.set('docId', s.docId);
+        if (s.uid) profileParams.set('uid', s.uid);
+        if (s.email && s.email !== 'N/A') profileParams.set('email', s.email);
+        if (s.name) profileParams.set('name', s.name);
+        row.children[5].firstElementChild.href = './student-profile.html?' + profileParams.toString();
         tbody.appendChild(row);
       });
     }
@@ -914,17 +1100,132 @@
     renderRows();
   }
 
-  // ---------- Profile (stub — real page handled by student-profile.html if present) ----------
+  // ---------- Profile ----------
 
-  function renderProfilePage() {
-    // Intentionally minimal: student-profile has its own inline scripting.
-    // This exists so the dispatcher doesn't crash if invoked.
+  async function renderProfilePage() {
+    const params = new URLSearchParams(window.location.search);
+    const requestedStudentId = params.get('studentId') || 'student001';
+    const historyBody = document.getElementById('profileAttendanceBody');
+    const saveButton = document.getElementById('profileSaveButton') || document.querySelector('#i3wlx77 .gjs-t-button');
+    if (!historyBody) return;
+
+    historyBody.innerHTML = '<tr><td colspan="5">Loading student profile...</td></tr>';
+    setProfileSaveStatus('Loading attendance history...');
+
+    let profileData = null;
+    let dataSource = 'firestore';
+    try {
+      profileData = await loadProfileDataFromFirestore(requestedStudentId);
+    } catch (error) {
+      console.error('Failed to load student profile from Firestore:', error);
+    }
+
+    if (!profileData) {
+      profileData = buildFallbackProfileData(requestedStudentId);
+      dataSource = 'sample';
+    }
+
+    if (!profileData) {
+      const nameEl = document.getElementById('ix63k7g');
+      const coursesEl = document.getElementById('iobn7gg');
+      const emailEl = document.getElementById('inpdknn');
+      if (nameEl) nameEl.textContent = requestedStudentId;
+      if (coursesEl) coursesEl.textContent = 'No courses found';
+      if (emailEl) emailEl.textContent = 'N/A';
+      updateProfileSummary(buildProfileSummary([]));
+      historyBody.innerHTML = '<tr><td colspan="5">Unable to load this student profile.</td></tr>';
+      setProfileSaveStatus('Unable to find this student in Firestore or sample data.', true);
+      return;
+    }
+
+    const student = profileData.student;
+    let history = profileData.history || [];
+    const nameEl = document.getElementById('ix63k7g');
+    const coursesEl = document.getElementById('iobn7gg');
+    const emailEl = document.getElementById('inpdknn');
+    if (nameEl) nameEl.textContent = student.name;
+    if (coursesEl) coursesEl.textContent = (student.courses || []).join(', ') || 'No courses found';
+    if (emailEl) emailEl.textContent = student.email;
+
+    updateProfileSummary(buildProfileSummary(history));
+    renderProfileHistoryRows(historyBody, history);
+    setProfileSaveStatus(
+      dataSource === 'firestore'
+        ? 'Connected to Firestore. Select a new status and click Save override.'
+        : 'Using sample profile data. Saves will stay local until Firestore data is available.',
+      false
+    );
+
+    if (!saveButton) return;
+
+    window.FaceRollProfileSave = async function () {
+      const rows = Array.from(historyBody.querySelectorAll('tr'));
+      const writes = [];
+      let localChanges = 0;
+      const overridesByEntryKey = getStudentProfileOverrides(student.studentId);
+
+      saveButton.disabled = true;
+      saveButton.textContent = 'Saving...';
+      setProfileSaveStatus('Saving attendance override...');
+
+      rows.forEach(function (row) {
+        const select = row.querySelector('select');
+        const nextStatus = normalizeStatus(select && select.value);
+        const entryKey = row.dataset.entryKey;
+        const documentId = row.dataset.documentId;
+
+        if (!entryKey || !select || !nextStatus) return;
+
+        if (dataSource === 'firestore' && firebaseApi && documentId) {
+          writes.push(firebaseApi.writeDocument('attendance', documentId, { status: nextStatus.toLowerCase() }));
+        } else {
+          overridesByEntryKey[entryKey] = nextStatus;
+          localChanges += 1;
+        }
+      });
+
+      try {
+        if (writes.length) {
+          await Promise.all(writes);
+          const refreshedProfileData = await loadProfileDataFromFirestore(student.studentId);
+          if (refreshedProfileData) {
+            history = refreshedProfileData.history || [];
+          }
+        } else if (localChanges) {
+          saveStudentProfileOverrides(student.studentId, overridesByEntryKey);
+          history = applyOverridesToHistory(student.studentId, history);
+        }
+
+        renderProfileHistoryRows(historyBody, history);
+        updateProfileSummary(buildProfileSummary(history));
+        const appliedChanges = writes.length || localChanges;
+        saveButton.textContent = appliedChanges > 0 ? 'Override saved' : 'No changes selected';
+        setProfileSaveStatus(
+          appliedChanges > 0
+            ? dataSource === 'firestore'
+              ? 'Attendance override saved to Firestore.'
+              : 'Attendance override saved locally.'
+            : 'No changes were selected.',
+          false
+        );
+      } catch (error) {
+        console.error('Failed to save attendance override:', error);
+        saveButton.textContent = 'Save failed';
+        setProfileSaveStatus('Save failed: ' + (error && error.message ? error.message : 'Unknown error'), true);
+      } finally {
+        saveButton.disabled = false;
+        window.setTimeout(function () {
+          saveButton.textContent = 'Save override';
+        }, 1400);
+      }
+    };
+
+    saveButton.onclick = window.FaceRollProfileSave;
   }
 
   // ---------- Page dispatcher ----------
 
   function init() {
-    updateSidebarProfileFromAuth();
     const bodyId = document.body ? document.body.id : '';
     switch (bodyId) {
       case 'imwtil':
