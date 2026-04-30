@@ -13,6 +13,7 @@ from urllib.parse import parse_qs, urlparse
 APP_DIR = Path(__file__).resolve().parent
 SHARED_DIR = APP_DIR / "shared"
 DATABASE_DIR = APP_DIR / "database"
+EMBEDDINGS_DIR = APP_DIR / "embeddings"
 # The dashboard polls this jsonl file through /events to learn about matches.
 EVENT_LOG_PATH = SHARED_DIR / "recognition-events.jsonl"
 DOCKER_IMAGE = "faceroll-windows"
@@ -111,6 +112,7 @@ class SessionManager:
         # These folders are mounted into Docker and shared with capture.py.
         SHARED_DIR.mkdir(parents=True, exist_ok=True)
         DATABASE_DIR.mkdir(parents=True, exist_ok=True)
+        EMBEDDINGS_DIR.mkdir(parents=True, exist_ok=True)
         DEEPFACE_DIR.mkdir(parents=True, exist_ok=True)
 
     def _ensure_docker_image(self):
@@ -156,7 +158,7 @@ class SessionManager:
                 "-v",
                 self._docker_mount(SHARED_DIR, "/app/shared"),
                 "-v",
-                self._docker_mount(DATABASE_DIR, "/app/database"),
+                self._docker_mount(EMBEDDINGS_DIR, "/app/embeddings"),
                 "-v",
                 self._docker_mount(DEEPFACE_DIR, "/root/.deepface"),
                 "--name",

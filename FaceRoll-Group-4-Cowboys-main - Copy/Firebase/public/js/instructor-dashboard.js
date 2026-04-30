@@ -10,6 +10,7 @@
   const seedBtn = document.getElementById('seedFirestoreBtn');
   const statTotal = document.getElementById('statTotal');
   const statPresent = document.getElementById('statPresent');
+  const statLate = document.getElementById('statLate');
   const statAbsent = document.getElementById('statAbsent');
   const tableCount = document.getElementById('tableCount');
   const firestoreStatus = document.getElementById('firestoreStatus');
@@ -699,6 +700,7 @@
     if (!todayRows.length) {
       statTotal.textContent = '0';
       statPresent.textContent = '0';
+      if (statLate) statLate.textContent = '0';
       statAbsent.textContent = '0';
       return;
     }
@@ -707,10 +709,12 @@
       return normalizeRecognitionName(row.studentName) || String(row.studentId || '').toLowerCase();
     }));
     const presentCount = todayRows.filter(function (row) { return row.status === 'Present'; }).length;
+    const lateCount = todayRows.filter(function (row) { return row.status === 'Late'; }).length;
     const absentCount = todayRows.filter(function (row) { return row.status === 'Absent'; }).length;
 
     statTotal.textContent = String(studentKeys.size);
     statPresent.textContent = String(presentCount);
+    if (statLate) statLate.textContent = String(lateCount);
     statAbsent.textContent = String(absentCount);
   }
 
@@ -813,6 +817,7 @@
       updatePaginationControls();
       statTotal.textContent = '0';
       statPresent.textContent = '0';
+      if (statLate) statLate.textContent = '0';
       statAbsent.textContent = '0';
     });
 })();

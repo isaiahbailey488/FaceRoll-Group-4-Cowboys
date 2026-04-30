@@ -224,31 +224,38 @@
     .overview-section {
       gap: 0.85rem !important;
       margin-bottom: 0 !important;
+      grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
     }
 
     .summary-card {
+      grid-column: auto !important;
       min-height: 4.6rem;
-      padding: 0.85rem 1rem !important;
+      padding: 0.75rem 0.85rem !important;
       border-radius: 8px !important;
+      min-width: 0;
     }
 
     .summary-text {
       gap: 0.1rem !important;
+      min-width: 0;
     }
 
     .summary-label {
       font-size: 0.78rem !important;
       line-height: 1rem !important;
+      white-space: nowrap;
     }
 
     .summary-value {
       font-size: 1.45rem !important;
       line-height: 1.85rem !important;
+      color: #0f172a !important;
     }
 
     .summary-icon {
-      width: 1.45rem !important;
-      height: 1.45rem !important;
+      width: 1.25rem !important;
+      height: 1.25rem !important;
+      flex-shrink: 0;
     }
 
     .table-head-cell,
@@ -370,6 +377,10 @@
     }
 
     @media (max-width: 992px) {
+      .overview-section {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      }
+
       .filter-bar {
         grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
       }
@@ -389,6 +400,10 @@
     }
 
     @media (max-width: 480px) {
+      .overview-section {
+        grid-template-columns: 1fr !important;
+      }
+
       .sidebar-brand {
         padding: 18px 16px;
         justify-content: flex-start;
@@ -450,6 +465,10 @@
             <div id="ibdd1" class="gjs-t-border summary-card">
               <div class="summary-text"><span class="summary-label">Present Today</span><span id="statPresent" class="summary-value">0</span></div>
               <img src="https://api.iconify.design/lucide-check-circle-2.svg?color=%2316a34a" alt="" class="summary-icon"/>
+            </div>
+            <div class="gjs-t-border summary-card">
+              <div class="summary-text"><span class="summary-label">Late Today</span><span id="statLate" class="summary-value">0</span></div>
+              <img src="https://api.iconify.design/lucide-clock-3.svg?color=%23f59e0b" alt="" class="summary-icon"/>
             </div>
             <div class="gjs-t-border summary-card">
               <div class="summary-text"><span class="summary-label">Absent Today</span><span id="statAbsent" class="summary-value">0</span></div>
@@ -541,6 +560,6 @@
     <script defer src="./js/sample-data.js"></script>
     <script defer src="./js/firebase-client.js"></script>
     <script defer src="./js/sidebar-user.js?v=20260429-3"></script>
-    <script defer src="./js/instructor-dashboard.js?v=20260429-3"></script>
+    <script defer src="./js/instructor-dashboard.js?v=20260429-4"></script>
   </body>
 </html>

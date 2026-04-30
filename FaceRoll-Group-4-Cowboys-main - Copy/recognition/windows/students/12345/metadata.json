@@ -1,0 +1,46 @@
+{
+  "student_id": "12345",
+  "first_name": "Armando",
+  "last_name": "Figueroa",
+  "created_at": "2026-04-30T01:10:21.088138+00:00",
+  "embeddings": [
+    {
+      "embedding_id": "embedding_001",
+      "original_name": "webcam_sample_001",
+      "stored_at": "2026-04-30T01:10:21.088138+00:00",
+      "model": "Facenet"
+    },
+    {
+      "embedding_id": "embedding_002",
+      "original_name": "webcam_sample_002",
+      "stored_at": "2026-04-30T01:10:21.088138+00:00",
+      "model": "Facenet"
+    },
+    {
+      "embedding_id": "embedding_003",
+      "original_name": "webcam_sample_003",
+      "stored_at": "2026-04-30T01:10:21.088138+00:00",
+      "model": "Facenet"
+    },
+    {
+      "embedding_id": "embedding_004",
+      "original_name": "webcam_sample_001",
+      "stored_at": "2026-04-30T01:13:18.582711+00:00",
+      "model": "Facenet"
+    },
+    {
+      "embedding_id": "embedding_005",
+      "original_name": "webcam_sample_002",
+      "stored_at": "2026-04-30T01:13:18.582711+00:00",
+      "model": "Facenet"
+    },
+    {
+      "embedding_id": "embedding_006",
+      "original_name": "webcam_sample_003",
+      "stored_at": "2026-04-30T01:13:18.582711+00:00",
+      "model": "Facenet"
+    }
+  ],
+  "updated_at": "2026-04-30T01:13:18.581959+00:00",
+  "embedding_count": 6
+}
