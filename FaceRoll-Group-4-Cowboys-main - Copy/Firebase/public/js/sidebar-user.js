@@ -1,4 +1,5 @@
 (function () {
+  const sidebarMenuList = document.querySelector('.sidebar-menu-list');
   const profileNameElement = document.querySelector('.sidebar-footer .profile-name');
   const profileRoleElement = document.querySelector('.sidebar-footer .profile-role');
   const profileMiniElement = document.querySelector('.sidebar-footer .profile-mini');
@@ -12,6 +13,48 @@
     authUser: null,
     users: [],
   };
+  const sidebarItems = [
+    { href: './instructor-dashboard.html', label: 'Dashboard', icon: 'lucide-home' },
+    { href: './live-session.html', label: 'Live Session', icon: 'lucide-calendar-check' },
+    { href: './student-roster.html', label: 'Students', icon: 'lucide-users' },
+    { href: './reports.html', label: 'Reports', icon: 'lucide-bar-chart-3' },
+    { href: './settings.html', label: 'Settings', icon: 'lucide-settings' },
+  ];
+
+  function normalizePageName(value) {
+    return String(value || '').split('?')[0].split('#')[0].split('/').pop() || '';
+  }
+
+  function getCurrentPageName() {
+    return normalizePageName(window.location.pathname) || 'index.html';
+  }
+
+  function renderSidebarMenu() {
+    if (!sidebarMenuList) {
+      return;
+    }
+
+    const currentPage = getCurrentPageName();
+
+    sidebarMenuList.innerHTML = sidebarItems.map(function (item) {
+      const itemPage = normalizePageName(item.href);
+      const isActive =
+        currentPage === itemPage ||
+        (currentPage === 'student-profile.html' && itemPage === 'student-roster.html');
+      const linkClass = isActive ? 'sidebar-link-active' : 'sidebar-link';
+      const iconColor = isActive ? '%230f172a' : '%2364748b';
+      const ariaCurrent = isActive ? ' aria-current="page"' : '';
+
+      return [
+        '<li>',
+        '<a href="', item.href, '" class="', linkClass, '"', ariaCurrent, '>',
+        '<img src="https://api.iconify.design/', item.icon, '.svg?color=', iconColor, '" alt="" class="sidebar-icon"/>',
+        '<span class="sidebar-link-label">', item.label, '</span>',
+        '</a>',
+        '</li>',
+      ].join('');
+    }).join('');
+  }
 
   function getFirstDefined(source, keys) {
     if (!source) {
@@ -217,6 +260,7 @@
     });
   }
 
+  renderSidebarMenu();
   initAccountMenu();
 
   firebaseApi
