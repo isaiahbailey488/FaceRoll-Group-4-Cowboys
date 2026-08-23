@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Settings</title>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <meta name="robots" content="index,follow"/>
+  <meta name="generator" content="GrapesJS Studio"/>
+  <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./css/shared-consistency.css">
+  <style>
+    .sidebar-navigation {
+      width: 15rem;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      align-self: flex-start;
+    }
+
+    .sidebar-brand {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 15px 14px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .sidebar-brand-logo {
+      width: 58px;
+      height: 58px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    .sidebar-brand-logo img {
+      display: block !important;
+      width: 58px !important;
+      max-width: 58px !important;
+      height: auto !important;
+      border-radius: 0;
+      object-fit: contain;
+      box-shadow: none;
+      transform: scale(2.2);
+      transform-origin: center center;
+    }
+
+    .sidebar-brand-text {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      min-width: 0;
+    }
+
+    .sidebar-brand-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      line-height: 1.2;
+      letter-spacing: -0.02em;
+      color: #0f172a;
+    }
+
+    .sidebar-menu {
+      flex: 1 1 auto;
+      overflow-y: auto;
+      padding-top: 18px;
+      padding-left: 0.5rem;
+      padding-right: 0.5rem;
+    }
+
+    .sidebar-link-active {
+      background-color: #eff6ff !important;
+      color: #1d4ed8 !important;
+      border-left: 3px solid #1d4ed8;
+      padding-left: calc(0.75rem - 3px);
+    }
+
+    .sidebar-link-active .sidebar-link-label {
+      color: #1d4ed8 !important;
+      font-weight: 600;
+    }
+
+    .sidebar-footer {
+      flex-shrink: 0;
+      background-color: transparent;
+      border-top: 1px solid #dbe4f0;
+      padding: 14px 14px 12px;
+      box-shadow: none !important;
+    }
+
+    .profile-mini {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      background-color: transparent;
+      border: none;
+      border-radius: 0;
+      padding: 0;
+      box-shadow: none !important;
+    }
+
+    .profile-avatar {
+      display: block !important;
+    }
+
+    .main-column {
+      width: 100%;
+    }
+
+    .main-content {
+      width: 100% !important;
+      max-width: none !important;
+      margin-left: 0 !important;
+      margin-right: 0 !important;
+      padding: 1.5rem 2rem 3rem !important;
+      background: #f8fafc;
+    }
+
+    .settings-page-header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 1rem;
+      width: 100%;
+      max-width: none;
+      margin: 0 0 1rem;
+    }
+
+    .settings-page-header h1 {
+      margin: 0;
+      color: #0f172a;
+      font-size: 1.75rem;
+      line-height: 1.2;
+      font-weight: 750;
+      letter-spacing: 0;
+    }
+
+    .settings-page-header p {
+      margin: 0.35rem 0 0;
+      color: #64748b;
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+
+    #instructor-settings {
+      width: 100%;
+      max-width: none !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      border: 1px solid #dbe4f0;
+      border-radius: 10px !important;
+      background: #ffffff;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+      overflow: hidden;
+    }
+
+    #instructor-settings .settings-inner {
+      max-width: 100% !important;
+      margin: 0 !important;
+      padding: 1.25rem 1.5rem 1.5rem !important;
+    }
+
+    .settings-section-label {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin: 1.25rem 0 0.75rem;
+      color: #334155;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0;
+      text-transform: uppercase;
+    }
+
+    .settings-section-label:first-of-type {
+      margin-top: 0;
+    }
+
+    #instructor-settings .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1rem;
+      margin-bottom: 0;
+    }
+
+    #instructor-settings .form-group {
+      margin-bottom: 0;
+    }
+
+    #instructor-settings label,
+    #instructor-settings .toggle-label {
+      color: #0f172a;
+      font-size: 0.9rem;
+      font-weight: 650;
+      letter-spacing: 0;
+    }
+
+    #instructor-settings .help {
+      margin-top: 0.4rem;
+      color: #64748b;
+      font-size: 0.82rem;
+      line-height: 1.4;
+    }
+
+    #instructor-settings .input-wrap {
+      min-height: 42px;
+      margin-top: 0.45rem;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      background: #ffffff;
+      box-shadow: none;
+    }
+
+    #instructor-settings .input-wrap:focus-within {
+      border-color: #2563eb;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+    }
+
+    #instructor-settings input,
+    #instructor-settings select {
+      min-height: 40px;
+      color: #0f172a;
+      font-size: 0.92rem;
+      border: 0 !important;
+      background: transparent;
+      box-shadow: none !important;
+    }
+
+    #instructor-settings .suffix {
+      color: #64748b;
+      font-size: 0.82rem;
+      font-weight: 600;
+    }
+
+    #attendance-window-input {
+      max-width: none !important;
+      margin: 1rem 0 0 !important;
+      padding: 1rem 0 0 !important;
+      border-top: 1px solid #e2e8f0;
+    }
+
+    #attendance-window-input .form-group {
+      max-width: calc(50% - 0.5rem);
+    }
+
+    #attendance-window-input + .form-group {
+      margin-top: 1rem;
+    }
+
+    #instructor-settings .toggle {
+      align-items: center;
+      gap: 0.85rem;
+      margin-top: 0;
+      padding: 0.85rem 1rem;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+
+    #instructor-settings .actions {
+      margin-top: 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+    }
+
+    #instructor-settings .btn-icon,
+    #page-save-bar .btn-icon {
+      display: inline-block !important;
+      width: 20px;
+      height: 20px;
+    }
+
+    .btn-primary,
+    .save-btn {
+      background-color: #1d4ed8 !important;
+      color: #ffffff !important;
+      border: 1px solid #1d4ed8 !important;
+      border-radius: 10px !important;
+    }
+
+    .btn-primary:hover,
+    .save-btn:hover {
+      background-color: #1e40af !important;
+      border-color: #1e40af !important;
+    }
+
+    #page-save-bar {
+      position: static !important;
+      width: 100%;
+      max-width: none;
+      margin: 1rem 0 0;
+      padding: 0 !important;
+      background: transparent;
+      border: 0;
+      box-shadow: none;
+    }
+
+    #page-save-bar .save-bar-inner {
+      max-width: none;
+      margin: 0;
+      padding: 0;
+      justify-content: flex-end;
+    }
+
+    .save-btn {
+      min-height: 42px;
+      padding: 0.65rem 1.05rem !important;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+    }
+
+    #settings-status {
+      margin-top: 1rem;
+      padding: 0.65rem 0.75rem;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      background: #f8fafc;
+      font-size: 0.9rem;
+      min-height: 1.25rem;
+    }
+    #settings-status.success { color: #16a34a; }
+    #settings-status.error { color: #dc2626; }
+    #settings-status.info { color: #475569; }
+
+    @media (max-width: 992px) {
+      .sidebar-brand {
+        padding: 18px 12px;
+        justify-content: center;
+      }
+
+      .sidebar-brand-text {
+        display: none;
+      }
+
+      .main-content {
+        padding: 1.25rem !important;
+      }
+    }
+
+    @media (max-width: 640px) {
+      #instructor-settings .grid-2 {
+        grid-template-columns: 1fr;
+      }
+
+      #attendance-window-input .form-group {
+        max-width: none;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .sidebar-brand {
+        padding: 18px 16px;
+        justify-content: flex-start;
+      }
+
+      .sidebar-brand-text {
+        display: flex;
+      }
+
+      #page-save-bar .save-btn {
+        width: auto;
+        justify-content: center;
+      }
+    }
+  </style>
+  </head>
+  <body id="i098oc" class="body-root">
+    <div class="app-wrapper">
+      <!-- Sidebar navigation -->
+      <nav class="sidebar-navigation">
+        <div class="sidebar-header sidebar-brand">
+          <div class="sidebar-brand-logo"><img src="./Transparent FaceRoll.png" alt="FaceRoll logo"/></div>
+          <div class="sidebar-brand-text"><span class="sidebar-brand-title">FaceRoll</span></div>
+        </div>
+        <div class="sidebar-menu">
+          <ul class="sidebar-menu-list">
+            <li><a href="./instructor-dashboard.html" class="sidebar-link"><span class="sidebar-link-label">Dashboard</span></a></li>
+            <li><a href="./live-session.html" class="sidebar-link"><span class="sidebar-link-label">Live Session</span></a></li>
+            <li><a href="./student-roster.html" class="sidebar-link"><span class="sidebar-link-label">Students</span></a></li>
+            <li><a href="./reports.html" class="sidebar-link"><span class="sidebar-link-label">Reports</span></a></li>
+            <li><a href="./settings.html" class="sidebar-link-active"><span class="sidebar-link-label">Settings</span></a></li>
+          </ul>
+        </div>
+        <div class="sidebar-footer">
+          <div class="profile-mini">
+            <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36' viewBox='0 0 36 36'%3E%3Ccircle cx='18' cy='18' r='18' fill='%23e2e8f0'/%3E%3Ccircle cx='18' cy='13' r='6' fill='%2394a3b8'/%3E%3Cpath d='M8 29c1.8-5 5.8-7.5 10-7.5S26.2 24 28 29' fill='%2394a3b8'/%3E%3C/svg%3E" alt="Default profile" class="profile-avatar"/>
+            <div class="profile-text-group">
+              <p class="profile-name">Loading...</p>
+              <p class="profile-role">Loading...</p>
+            </div>
+          </div>
+        </div>
+      </nav>
+      <!-- Main content -->
+      <div class="main-column" id="in1lzmo">
+        <main class="main-content">
+          <!-- Settings header -->
+          <section class="settings-page-header" aria-label="Settings overview">
+            <div>
+              <h1>Settings</h1>
+              <p>Manage attendance defaults, late check-ins, and instructor integrations.</p>
+            </div>
+          </section>
+          <!-- Attendance settings form -->
+          <section id="instructor-settings" aria-label="Instructor settings">
+            <div role="region" aria-label="Instructor settings" class="settings-inner">
+              <div class="settings-section-label">Attendance Rules</div>
+              <div class="grid-2">
+                <div class="form-group">
+                  <label for="default-attendance">Default Attendance</label>
+                  <div class="input-wrap">
+                    <select name="defaultAttendance" id="default-attendance" class="field-select">
+                      <option value="absent">Absent</option>
+                      <option value="late">Late</option>
+                      <option value="present" selected>Present</option>
+                    </select>
+                  </div>
+                  <div class="help">Select the default attendance status for new sessions.</div>
+                </div>
+                <div class="form-group">
+                  <label for="grace-period">Grace Period</label>
+                  <div class="input-wrap">
+                    <input type="number" name="gracePeriod" min="0" max="120" placeholder="e.g., 10" id="grace-period"/>
+                    <span class="suffix">min</span>
+                  </div>
+                  <div class="help">Minutes after start time students can still be marked present.</div>
+                </div>
+              </div>
+              <section id="attendance-window-input">
+                <div class="form-group">
+                  <label for="attendance-window">Attendance Window</label>
+                  <div class="input-wrap">
+                    <input type="number" name="attendanceWindow" min="0" max="240" placeholder="e.g., 30" id="attendance-window"/>
+                    <span class="suffix">min</span>
+                  </div>
+                  <div class="help">This controls how long students are allowed to check in after class starts.</div>
+                </div>
+              </section>
+              <div class="form-group">
+                <div class="toggle">
+                  <button type="button" role="switch" aria-checked="false" id="allow-late-toggle" class="toggle-button"><span class="knob"></span></button>
+                  <span class="toggle-label">Allow Late Attendance</span>
+                </div>
+                <div class="help">When enabled, students can be marked late after the grace period.</div>
+              </div>
+              <div class="settings-section-label">Integrations</div>
+              <div class="actions">
+                <button type="button" id="canvas-integration-btn" class="btn-primary">
+                  <img src="https://api.iconify.design/mdi:school-outline.svg?color=currentColor&amp;width=20&amp;height=20" class="btn-icon"/>
+                  <span>Canvas Integration</span>
+                </button>
+              </div>
+              <div id="settings-status" class="info">Loading your settings...</div>
+            </div>
+          </section>
+          <!-- Save settings button -->
+          <section id="page-save-bar">
+            <div class="save-bar-inner">
+              <button type="button" id="save-settings-btn" class="save-btn">
+                <img src="https://api.iconify.design/mdi:content-save-outline.svg?color=currentColor&amp;width=20&amp;height=20" class="btn-icon"/>
+                <span>Save</span>
+              </button>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+    <!-- Firebase and settings scripts -->
+    <script defer src="/__/firebase/11.6.0/firebase-app-compat.js"></script>
+    <script defer src="/__/firebase/11.6.0/firebase-firestore-compat.js"></script>
+    <script defer src="/__/firebase/11.6.0/firebase-auth-compat.js"></script>
+    <script defer src="/__/firebase/init.js"></script>
+    <script defer src="./js/firebase-client.js?v=20260424-2"></script>
+    <script defer src="./js/sidebar-user.js?v=20260430-1"></script>
+    <script>
+(function() {
+  const toggleBtn = document.getElementById('allow-late-toggle');
+  const canvasBtn = document.getElementById('canvas-integration-btn');
+  const saveBtn = document.getElementById('save-settings-btn');
+  const statusEl = document.getElementById('settings-status');
+  const defaultAttendanceEl = document.getElementById('default-attendance');
+  const gracePeriodEl = document.getElementById('grace-period');
+  const attendanceWindowEl = document.getElementById('attendance-window');
+
+  let currentUid = null;
+
+  function setStatus(message, variant) {
+    if (!statusEl) return;
+    statusEl.textContent = message || '';
+    statusEl.classList.remove('success', 'error', 'info');
+    statusEl.classList.add(variant || 'info');
+  }
+
+  function setAllowLate(checked) {
+    toggleBtn.setAttribute('aria-checked', String(Boolean(checked)));
+  }
+
+  function getAllowLate() {
+    return toggleBtn.getAttribute('aria-checked') === 'true';
+  }
+
+  toggleBtn.addEventListener('click', function() {
+    setAllowLate(!getAllowLate());
+  });
+
+  canvasBtn.addEventListener('click', function() {
+    alert('Canvas Integration: Proceed to connect your account.');
+  });
+
+  function waitForAuth() {
+    return new Promise(function(resolve, reject) {
+      const startedAt = Date.now();
+      const TIMEOUT_MS = 10000;
+
+      (function check() {
+        if (window.firebase && typeof window.firebase.auth === 'function' && window.firebase.apps && window.firebase.apps.length) {
+          const auth = window.firebase.auth();
+          const unsub = auth.onAuthStateChanged(function(user) {
+            unsub();
+            resolve(user);
+          });
+          return;
+        }
+        if (Date.now() - startedAt >= TIMEOUT_MS) {
+          reject(new Error('Firebase Auth did not initialize.'));
+          return;
+        }
+        setTimeout(check, 100);
+      })();
+    });
+  }
+
+  async function loadSettings() {
+    try {
+      const user = await waitForAuth();
+      if (!user) {
+        setStatus('Sign in as an instructor to save settings. Using defaults for now.', 'info');
+        return;
+      }
+
+      currentUid = user.uid;
+
+      if (!window.FaceRollFirebase || typeof window.FaceRollFirebase.readCollectionDocs !== 'function') {
+        setStatus('Firebase client not ready. Defaults loaded.', 'error');
+        return;
+      }
+
+      const db = window.firebase.firestore();
+      const snap = await db.collection('instructor_settings').doc(currentUid).get();
+
+      if (snap.exists) {
+        const data = snap.data() || {};
+        if (data.defaultAttendance) {
+          defaultAttendanceEl.value = String(data.defaultAttendance).toLowerCase();
+        }
+        if (data.gracePeriodMinutes !== undefined && data.gracePeriodMinutes !== null) {
+          gracePeriodEl.value = String(data.gracePeriodMinutes);
+        }
+        if (data.attendanceWindowMinutes !== undefined && data.attendanceWindowMinutes !== null) {
+          attendanceWindowEl.value = String(data.attendanceWindowMinutes);
+        }
+        setAllowLate(Boolean(data.allowLate));
+        setStatus('Settings loaded from your instructor profile.', 'success');
+      } else {
+        setStatus('No saved settings yet. Configure and click Save.', 'info');
+      }
+    } catch (err) {
+      console.error('Failed to load instructor settings:', err);
+      setStatus('Could not load settings: ' + (err && err.message ? err.message : 'unknown error'), 'error');
+    }
+  }
+
+  async function saveSettings() {
+    if (!currentUid) {
+      try {
+        const user = await waitForAuth();
+        if (!user) {
+          setStatus('You must be signed in to save settings.', 'error');
+          return;
+        }
+        currentUid = user.uid;
+      } catch (err) {
+        setStatus('Authentication unavailable. Cannot save.', 'error');
+        return;
+      }
+    }
+
+    const payload = {
+      defaultAttendance: String(defaultAttendanceEl.value || 'present').toLowerCase(),
+      gracePeriodMinutes: Number.parseInt(gracePeriodEl.value, 10) || 0,
+      attendanceWindowMinutes: Number.parseInt(attendanceWindowEl.value, 10) || 0,
+      allowLate: getAllowLate(),
+      updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
+    };
+
+    saveBtn.disabled = true;
+    setStatus('Saving...', 'info');
+
+    try {
+      await window.FaceRollFirebase.writeDocument('instructor_settings', currentUid, payload);
+      setStatus('Settings saved successfully.', 'success');
+    } catch (err) {
+      console.error('Failed to save instructor settings:', err);
+      setStatus('Save failed: ' + (err && err.message ? err.message : 'unknown error'), 'error');
+    } finally {
+      saveBtn.disabled = false;
+    }
+  }
+
+  saveBtn.addEventListener('click', saveSettings);
+
+  document.addEventListener('DOMContentLoaded', loadSettings);
+  if (document.readyState === 'interactive' || document.readyState === 'complete') {
+    loadSettings();
+  }
+})();
+</script>
+  </body>
+</html>

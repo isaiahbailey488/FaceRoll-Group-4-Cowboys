@@ -1,0 +1,7 @@
+deepface==0.0.99
+opencv-python
+fastapi
+uvicorn[standard]
+python-multipart
+firebase-admin
+tf-keras

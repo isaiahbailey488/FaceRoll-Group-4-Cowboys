@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Instructor Admin Dashboard — Attendance Monitor</title>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="robots" content="index,follow">
+  <meta name="generator" content="GrapesJS Studio">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Poppins:wght@600;700&amp;display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./css/shared-consistency.css">
+  <style>
+    .sidebar-navigation {
+      width: 15rem;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      align-self: flex-start;
+    }
+
+    .sidebar-brand {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 15px 14px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .sidebar-brand-logo {
+      width: 58px;
+      height: 58px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    .sidebar-brand-logo img {
+      display: block !important;
+      width: 58px !important;
+      max-width: 58px !important;
+      height: auto !important;
+      border-radius: 0;
+      object-fit: contain;
+      box-shadow: none;
+      transform: scale(2.2);
+      transform-origin: center center;
+    }
+
+    .sidebar-brand-text {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      min-width: 0;
+    }
+
+    .sidebar-brand-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      line-height: 1.2;
+      letter-spacing: -0.02em;
+      color: #0f172a;
+    }
+
+    .sidebar-brand-subtitle {
+      margin-top: 2px;
+      font-size: 0.85rem;
+      line-height: 1.3;
+      color: #6b7280;
+    }
+
+    #iqnsp {
+      flex: 1 1 auto;
+      overflow-y: auto;
+      padding-top: 18px;
+      padding-left: 0.5rem;
+      padding-right: 0.5rem;
+    }
+
+    .sidebar-footer {
+      flex-shrink: 0;
+      border-top: 1px solid #e5e7eb;
+      padding: 14px 14px 12px;
+      box-shadow: none !important;
+      background-color: transparent;
+    }
+
+    .status-badge.status-present {
+      color: #166534 !important;
+      background-color: #dcfce7 !important;
+      border: 1px solid #86efac !important;
+    }
+
+    .status-badge.status-absent {
+      color: #991b1b !important;
+      background-color: #fee2e2 !important;
+      border: 1px solid #fca5a5 !important;
+    }
+
+    .status-badge.status-late {
+      color: #92400e !important;
+      background-color: #fef3c7 !important;
+      border: 1px solid #fcd34d !important;
+    }
+
+    .header-quick-export-button,
+    .export-button {
+      background-color: #1d4ed8 !important;
+      color: #ffffff !important;
+      border: 1px solid #1d4ed8 !important;
+      border-radius: 10px !important;
+      padding: 0.65rem 0.9rem !important;
+      transition: background-color 150ms ease, border-color 150ms ease;
+    }
+
+    .header-quick-export-button:hover,
+    .export-button:hover {
+      background-color: #1e40af !important;
+      border-color: #1e40af !important;
+    }
+
+    .filter-apply-button {
+      background-color: #2563eb !important;
+      color: #ffffff !important;
+      border: 1px solid #2563eb !important;
+      border-radius: 10px !important;
+      padding: 0.65rem 1rem !important;
+      font-weight: 600;
+    }
+
+    .filter-apply-button:hover {
+      background-color: #1d4ed8 !important;
+      border-color: #1d4ed8 !important;
+    }
+
+    .filter-clear-button,
+    .pagination-prev,
+    .pagination-next {
+      background-color: #ffffff !important;
+      color: #334155 !important;
+      border: 1px solid #cbd5e1 !important;
+      border-radius: 10px !important;
+      padding: 0.6rem 0.95rem !important;
+      transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+    }
+
+    .filter-clear-button:hover,
+    .pagination-prev:hover,
+    .pagination-next:hover {
+      background-color: #eff6ff !important;
+      border-color: #93c5fd !important;
+      color: #1d4ed8 !important;
+    }
+
+    .top-header {
+      padding-top: 1.25rem !important;
+    }
+
+    .header-title-group {
+      padding-top: 0 !important;
+      padding-bottom: 1.50rem;
+    }
+
+    .sidebar-link-active {
+      background-color: #eff6ff !important;
+      color: #1d4ed8 !important;
+      border-left: 3px solid #1d4ed8;
+      padding-left: calc(0.75rem - 3px);
+    }
+
+    .sidebar-link-active .sidebar-link-label {
+      color: #1d4ed8 !important;
+      font-weight: 600;
+    }
+
+    .table-head {
+      background-color: #eff6ff !important;
+    }
+
+    .table-head-cell {
+      color: #1e3a8a !important;
+    }
+
+    .sidebar-footer {
+      background-color: #f8fafc;
+      border-top: 1px solid #dbe4f0;
+    }
+
+    .profile-mini {
+      background-color: transparent;
+      border: none;
+      border-radius: 0;
+      padding: 0;
+      box-shadow: none !important;
+    }
+
+    .profile-avatar,
+    .header-avatar {
+      display: block !important;
+    }
+
+    .main-column {
+      width: 100%;
+    }
+
+    .main-content {
+      width: 100% !important;
+      max-width: none !important;
+      margin-left: 0 !important;
+      margin-right: 0 !important;
+      padding: 2rem 2rem 3rem !important;
+    }
+
+    .attendance-panel,
+    .overview-section {
+      width: 100%;
+    }
+
+    .main-content {
+      gap: 1rem !important;
+    }
+
+    .overview-section {
+      gap: 0.85rem !important;
+      margin-bottom: 0 !important;
+      grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    }
+
+    .summary-card {
+      grid-column: auto !important;
+      min-height: 4.6rem;
+      padding: 0.75rem 0.85rem !important;
+      border-radius: 8px !important;
+      min-width: 0;
+    }
+
+    .summary-text {
+      gap: 0.1rem !important;
+      min-width: 0;
+    }
+
+    .summary-label {
+      font-size: 0.78rem !important;
+      line-height: 1rem !important;
+      white-space: nowrap;
+    }
+
+    .summary-value {
+      font-size: 1.45rem !important;
+      line-height: 1.85rem !important;
+      color: #0f172a !important;
+    }
+
+    .summary-icon {
+      width: 1.25rem !important;
+      height: 1.25rem !important;
+      flex-shrink: 0;
+    }
+
+    .table-head-cell,
+    .cell-name,
+    .cell-id,
+    .cell-course,
+    .cell-date,
+    .cell-status,
+    .cell-notes {
+      padding-top: 0.65rem !important;
+      padding-bottom: 0.65rem !important;
+    }
+
+    .status-badge {
+      padding-top: 0.2rem !important;
+      padding-bottom: 0.2rem !important;
+    }
+
+    .attendance-panel-header {
+      padding-top: 1.1rem !important;
+      padding-bottom: 1.1rem !important;
+    }
+
+    .filter-bar {
+      padding-top: 1rem !important;
+      padding-bottom: 1rem !important;
+      grid-template-columns: minmax(8.5rem, 1fr) minmax(8.5rem, 1fr) minmax(7.5rem, 0.9fr) minmax(9rem, 1.1fr) minmax(13rem, 1.8fr) auto !important;
+      gap: 0.75rem !important;
+      align-items: end !important;
+      overflow: visible;
+    }
+
+    .filter-bar .filter-field {
+      grid-column: auto !important;
+      min-width: 0;
+    }
+
+    .filter-bar .filter-label {
+      white-space: nowrap;
+      font-size: 0.8rem;
+    }
+
+    .filter-bar input,
+    .filter-bar select,
+    .filter-search-wrapper {
+      min-height: 2.45rem;
+    }
+
+    .filter-search-wrapper {
+      width: 100%;
+      gap: 0.45rem !important;
+      border: 1px solid #cbd5e1 !important;
+      border-radius: 8px !important;
+      background: #ffffff !important;
+      padding: 0 0.65rem !important;
+      box-shadow: none !important;
+    }
+
+    .filter-search-wrapper:focus-within {
+      border-color: #60a5fa !important;
+      box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.16) !important;
+    }
+
+    .filter-search-input {
+      border: 0 !important;
+      outline: 0 !important;
+      box-shadow: none !important;
+      background: transparent !important;
+      padding: 0 !important;
+      min-height: 2.35rem;
+    }
+
+    .filter-search-input:hover,
+    .filter-search-input:focus {
+      border: 0 !important;
+      outline: 0 !important;
+      box-shadow: none !important;
+    }
+
+    .filter-controls {
+      grid-column: auto !important;
+      display: flex !important;
+      gap: 0.5rem !important;
+      align-items: end !important;
+      white-space: nowrap;
+    }
+
+    .filter-apply-button,
+    .filter-clear-button {
+      min-height: 2.45rem;
+      padding: 0.55rem 0.75rem !important;
+    }
+
+    .table-wrapper {
+      padding-bottom: 1rem !important;
+    }
+
+    .table-footer-meta {
+      align-items: center !important;
+      gap: 1rem !important;
+      margin-top: 0.7rem !important;
+    }
+
+    .table-meta-left {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.15rem;
+      min-width: 0;
+      flex-wrap: nowrap;
+      text-align: left;
+    }
+
+    #firestoreStatus {
+      padding: 0 !important;
+      color: #64748b !important;
+      font-size: 0.78rem !important;
+      line-height: 1rem !important;
+    }
+
+    @media (max-width: 992px) {
+      .overview-section {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      }
+
+      .filter-bar {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      }
+
+      .filter-controls {
+        grid-column: span 2 !important;
+      }
+
+      .sidebar-brand {
+        padding: 18px 12px;
+        justify-content: center;
+      }
+
+      .sidebar-brand-text {
+        display: none;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .overview-section {
+        grid-template-columns: 1fr !important;
+      }
+
+      .sidebar-brand {
+        padding: 18px 16px;
+        justify-content: flex-start;
+      }
+
+      .sidebar-brand-text {
+        display: flex;
+      }
+    }
+  </style>
+  </head>
+  <body id="i0mho" class="gjs-t-body body-root">
+    <div class="app-wrapper">
+      <!-- Sidebar navigation -->
+      <aside class="gjs-t-border sidebar-navigation">
+        <div id="izkee" class="sidebar-header sidebar-brand">
+          <div class="sidebar-brand-logo"><img src="./Transparent FaceRoll.png" alt="FaceRoll logo" id="i0pgol" class="logo-image"/></div>
+          <div class="sidebar-brand-text"><span class="sidebar-brand-title">FaceRoll</span></div>
+        </div>
+        <nav id="iqnsp" class="sidebar-menu">
+          <ul class="sidebar-menu-list">
+            <li><a href="./instructor-dashboard.html" aria-current="page" class="sidebar-link-active"><img src="https://api.iconify.design/lucide-home.svg?color=%230f172a" alt="" class="sidebar-icon"/><span class="sidebar-link-label">Dashboard</span></a></li>
+            <li><a href="./live-session.html" class="sidebar-link"><img src="https://api.iconify.design/lucide-calendar-check.svg?color=%2364748b" alt="" class="sidebar-icon"/><span class="sidebar-link-label">Live Session</span></a></li>
+            <li><a href="./student-roster.html" class="sidebar-link"><img src="https://api.iconify.design/lucide-users.svg?color=%2364748b" alt="" class="sidebar-icon"/><span class="sidebar-link-label">Students</span></a></li>
+            <li><a href="./reports.html" id="ii1go" class="sidebar-link"><img src="https://api.iconify.design/lucide-bar-chart-3.svg?color=%2364748b" alt="" class="sidebar-icon"/><span class="sidebar-link-label">Reports</span></a></li>
+            <li><a href="./settings.html" class="sidebar-link"><img src="https://api.iconify.design/lucide-settings.svg?color=%2364748b" alt="" class="sidebar-icon"/><span class="sidebar-link-label">Settings</span></a></li>
+          </ul>
+        </nav>
+        <div class="sidebar-footer">
+          <div class="profile-mini">
+            <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36' viewBox='0 0 36 36'%3E%3Ccircle cx='18' cy='18' r='18' fill='%23e2e8f0'/%3E%3Ccircle cx='18' cy='13' r='6' fill='%2394a3b8'/%3E%3Cpath d='M8 29c1.8-5 5.8-7.5 10-7.5S26.2 24 28 29' fill='%2394a3b8'/%3E%3C/svg%3E" alt="Default profile" class="profile-avatar"/>
+            <div class="profile-text-group">
+              <p class="profile-name">Loading...</p>
+              <p class="profile-role">Loading...</p>
+            </div>
+          </div>
+        </div>
+      </aside>
+      <div id="i9v6ek" class="main-column">
+        <!-- Page header -->
+        <header id="iijdaw" class="gjs-t-border top-header">
+          <div class="header-title-group">
+            <h2 class="attendance-panel-title header-title-unified">Attendance Dashboard</h2>
+            <span class="header-subtitle header-subtitle-unified">Monitor and manage daily presence</span>
+          </div>
+          <div class="header-actions">
+            <div class="header-compact-profile">
+              <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 36 36'%3E%3Ccircle cx='18' cy='18' r='18' fill='%23e2e8f0'/%3E%3Ccircle cx='18' cy='13' r='6' fill='%2394a3b8'/%3E%3Cpath d='M8 29c1.8-5 5.8-7.5 10-7.5S26.2 24 28 29' fill='%2394a3b8'/%3E%3C/svg%3E" alt="Default profile" class="header-avatar"/>
+            </div>
+          </div>
+        </header>
+        <main id="ixi2l" class="main-content">
+          <!-- Today's summary cards -->
+          <section class="overview-section">
+            <div class="gjs-t-border summary-card">
+              <div class="summary-text"><span class="summary-label">Students Today</span><span id="statTotal" class="summary-value">0</span></div>
+              <img src="https://api.iconify.design/lucide-users.svg?color=%231d4ed8" alt="" class="summary-icon"/>
+            </div>
+            <div id="ibdd1" class="gjs-t-border summary-card">
+              <div class="summary-text"><span class="summary-label">Present Today</span><span id="statPresent" class="summary-value">0</span></div>
+              <img src="https://api.iconify.design/lucide-check-circle-2.svg?color=%2316a34a" alt="" class="summary-icon"/>
+            </div>
+            <div class="gjs-t-border summary-card">
+              <div class="summary-text"><span class="summary-label">Late Today</span><span id="statLate" class="summary-value">0</span></div>
+              <img src="https://api.iconify.design/lucide-clock-3.svg?color=%23f59e0b" alt="" class="summary-icon"/>
+            </div>
+            <div class="gjs-t-border summary-card">
+              <div class="summary-text"><span class="summary-label">Absent Today</span><span id="statAbsent" class="summary-value">0</span></div>
+              <img src="https://api.iconify.design/lucide-x-circle.svg?color=%23dc2626" alt="" class="summary-icon"/>
+            </div>
+          </section>
+          <!-- Attendance records panel -->
+          <section class="gjs-t-border attendance-panel">
+            <button type="button" id="seedFirestoreBtn" class="gjs-t-button export-button" style="display:none;"><span>Seed Firestore Data</span></button>
+            <!-- Dashboard filters -->
+            <div id="iug9sj" class="filter-bar">
+              <div class="filter-field">
+                <label for="dateFrom" class="filter-label">From</label>
+                <input type="date" id="dateFrom" aria-label="From date" class="filter-input-date-from"/>
+              </div>
+              <div class="filter-field">
+                <label for="dateTo" class="filter-label">To</label>
+                <input type="date" id="dateTo" aria-label="To date" class="filter-input-date-to"/>
+              </div>
+              <div class="filter-field">
+                <label for="statusFilter" class="filter-label">Status</label>
+                <select type="text" id="statusFilter" aria-label="Status filter" class="filter-select-status">
+                  <option value="">All</option>
+                  <option value="Present">Present</option>
+                  <option value="Absent">Absent</option>
+                  <option value="Late">Late</option>
+                </select>
+              </div>
+              <div class="filter-field">
+                <label for="courseFilter" class="filter-label">Course</label>
+                <select type="text" id="courseFilter" aria-label="Course filter" class="filter-select-status">
+                  <option value="">All Courses</option>
+                </select>
+              </div>
+              <div class="filter-field">
+                <label for="searchInput" class="filter-label">Search name, ID, or course</label>
+                <div class="filter-search-wrapper">
+                  <img src="https://api.iconify.design/lucide-search.svg?color=%2364748b" alt="" class="filter-search-icon"/>
+                  <input type="text" id="searchInput" placeholder="e.g., Jane or S1021" aria-label="Search text" class="filter-search-input"/>
+                </div>
+              </div>
+              <div id="ii4cru" class="filter-controls">
+                <button type="button" id="applyFilters" class="filter-apply-button">Apply Filters</button>
+                <button type="button" id="clearFilters" class="filter-clear-button">Clear</button>
+              </div>
+            </div>
+            <!-- Attendance table -->
+            <div id="itntgg" class="table-wrapper">
+              <div class="table-scroll">
+                <table aria-label="Attendance table" id="attendanceTable" class="attendance-table">
+                  <thead class="table-head">
+                    <tr>
+                      <th scope="col" class="table-head-cell">Student Name</th>
+                      <th scope="col" class="table-head-cell">Student ID</th>
+                      <th scope="col" class="table-head-cell">Course</th>
+                      <th scope="col" class="table-head-cell">Date</th>
+                      <th scope="col" class="table-head-cell">Status</th>
+                      <th scope="col" class="table-head-cell">Method</th>
+                    </tr>
+                  </thead>
+                  <tbody id="attendanceTbody" class="table-body">
+                    <tr><td colspan="6" class="cell-notes">Loading attendance records from Firestore...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="table-footer-meta">
+                <div class="table-meta-left">
+                  <div id="tableCount">Showing 0 of 0</div>
+                  <div id="firestoreStatus" class="cell-notes">Waiting for data...</div>
+                </div>
+                <div class="table-footer-controls">
+                  <button type="button" id="paginationPrevBtn" class="pagination-prev">Previous</button>
+                  <button type="button" id="paginationNextBtn" class="pagination-next">Next</button>
+                </div>
+              </div>
+            </div>
+          </section>
+        </main>
+        <footer id="inkyo6" class="gjs-t-border footer">
+          <div id="itfn6s" class="footer-content">© 2026 FaceRoll. All rights reserved.</div>
+        </footer>
+      </div>
+    </div>
+    <!-- Firebase and dashboard scripts -->
+    <script defer src="/__/firebase/11.6.0/firebase-app-compat.js"></script>
+    <script defer src="/__/firebase/11.6.0/firebase-auth-compat.js"></script>
+    <script defer src="/__/firebase/11.6.0/firebase-firestore-compat.js"></script>
+    <script defer src="/__/firebase/init.js"></script>
+    <script defer src="./js/sample-data.js"></script>
+    <script defer src="./js/firebase-client.js"></script>
+    <script defer src="./js/sidebar-user.js?v=20260430-1"></script>
+    <script defer src="./js/instructor-dashboard.js?v=20260429-4"></script>
+  </body>
+</html>

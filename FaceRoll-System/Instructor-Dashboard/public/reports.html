@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Reports</title>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <meta name="robots" content="index,follow"/>
+  <meta name="generator" content="GrapesJS Studio"/>
+  <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./css/shared-consistency.css">
+  <style>
+    .sidebar-navigation {
+      width: 15rem;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      align-self: flex-start;
+    }
+
+    .sidebar-brand {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 15px 14px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .sidebar-brand-logo {
+      width: 58px;
+      height: 58px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    .sidebar-brand-logo img {
+      display: block !important;
+      width: 58px !important;
+      max-width: 58px !important;
+      height: auto !important;
+      border-radius: 0;
+      object-fit: contain;
+      box-shadow: none;
+      transform: scale(2.2);
+      transform-origin: center center;
+    }
+
+    .sidebar-brand-text {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      min-width: 0;
+    }
+
+    .sidebar-brand-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      line-height: 1.2;
+      letter-spacing: -0.02em;
+      color: #0f172a;
+    }
+
+    .sidebar-menu {
+      flex: 1 1 auto;
+      overflow-y: auto;
+      padding-top: 18px;
+      padding-left: 0.5rem;
+      padding-right: 0.5rem;
+    }
+
+    .sidebar-link-active {
+      background-color: #eff6ff !important;
+      color: #1d4ed8 !important;
+      border-left: 3px solid #1d4ed8;
+      padding-left: calc(0.75rem - 3px);
+    }
+
+    .sidebar-link-active .sidebar-link-label {
+      color: #1d4ed8 !important;
+      font-weight: 600;
+    }
+
+    .sidebar-footer {
+      flex-shrink: 0;
+      background-color: transparent;
+      border-top: 1px solid #dbe4f0;
+      padding: 14px 14px 12px;
+      box-shadow: none !important;
+    }
+
+    .profile-mini {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      background-color: transparent;
+      border: none;
+      border-radius: 0;
+      padding: 0;
+      box-shadow: none !important;
+    }
+
+    .profile-avatar {
+      display: block !important;
+    }
+
+    .main-column {
+      width: 100%;
+    }
+
+    .main-content {
+      width: 100% !important;
+      max-width: none !important;
+      margin-left: 0 !important;
+      margin-right: 0 !important;
+      padding: 2rem 2rem 3rem !important;
+    }
+
+    .attendance-panel,
+    .overview-section {
+      width: 100%;
+    }
+
+    .attendance-panel-header {
+      padding: 1.25rem 1.5rem !important;
+    }
+
+    .attendance-panel-title {
+      font-size: 1.65rem;
+      font-weight: 700;
+      line-height: 1.2;
+      color: #0f172a;
+    }
+
+    .export-button {
+      background-color: #1d4ed8 !important;
+      color: #ffffff !important;
+      border: 1px solid #1d4ed8 !important;
+      border-radius: 10px !important;
+      padding: 0.65rem 0.9rem !important;
+      transition: background-color 150ms ease, border-color 150ms ease;
+    }
+
+    .export-button:hover {
+      background-color: #1e40af !important;
+      border-color: #1e40af !important;
+    }
+
+    .filter-bar {
+      padding: 1rem 1.5rem !important;
+      gap: 1.25rem !important;
+    }
+
+    .filter-bar input,
+    .filter-bar select {
+      width: 100%;
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      padding: 0.7rem 0.85rem;
+      background-color: #ffffff;
+      color: #0f172a;
+    }
+
+    .filter-bar input:focus,
+    .filter-bar select:focus {
+      outline: 2px solid rgba(37, 99, 235, 0.18);
+      border-color: #60a5fa;
+    }
+
+    .table-wrapper {
+      padding: 0 1.5rem 1rem !important;
+    }
+
+    .table-head {
+      background-color: #eff6ff !important;
+    }
+
+    .table-head-cell {
+      color: #1e3a8a !important;
+      padding-top: 0.7rem !important;
+      padding-bottom: 0.7rem !important;
+    }
+
+    .table-body td {
+      padding-top: 0.7rem;
+      padding-bottom: 0.7rem;
+    }
+
+    @media (max-width: 992px) {
+      .sidebar-brand {
+        padding: 18px 12px;
+        justify-content: center;
+      }
+
+      .sidebar-brand-text {
+        display: none;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .sidebar-brand {
+        padding: 18px 16px;
+        justify-content: flex-start;
+      }
+
+      .sidebar-brand-text {
+        display: flex;
+      }
+    }
+  </style>
+  </head>
+  <body id="iw11pz" class="body-root">
+    <div class="app-wrapper">
+      <!-- Sidebar navigation -->
+      <nav class="sidebar-navigation">
+        <div class="sidebar-header sidebar-brand">
+          <div class="sidebar-brand-logo"><img src="./Transparent FaceRoll.png" alt="FaceRoll logo"/></div>
+          <div class="sidebar-brand-text"><span class="sidebar-brand-title">FaceRoll</span></div>
+        </div>
+        <div class="sidebar-menu">
+          <ul class="sidebar-menu-list">
+            <li><a href="./instructor-dashboard.html" class="sidebar-link"><span class="sidebar-link-label">Dashboard</span></a></li>
+            <li><a href="./live-session.html" class="sidebar-link"><span class="sidebar-link-label">Live Session</span></a></li>
+            <li><a href="./student-roster.html" class="sidebar-link"><span class="sidebar-link-label">Students</span></a></li>
+            <li><a href="./reports.html" class="sidebar-link-active"><span class="sidebar-link-label">Reports</span></a></li>
+            <li><a href="./settings.html" class="sidebar-link"><span class="sidebar-link-label">Settings</span></a></li>
+          </ul>
+        </div>
+        <div class="sidebar-footer">
+          <div class="profile-mini">
+            <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36' viewBox='0 0 36 36'%3E%3Ccircle cx='18' cy='18' r='18' fill='%23e2e8f0'/%3E%3Ccircle cx='18' cy='13' r='6' fill='%2394a3b8'/%3E%3Cpath d='M8 29c1.8-5 5.8-7.5 10-7.5S26.2 24 28 29' fill='%2394a3b8'/%3E%3C/svg%3E" alt="Default profile" class="profile-avatar"/>
+            <div class="profile-text-group">
+              <p class="profile-name">Loading...</p>
+              <p class="profile-role">Loading...</p>
+            </div>
+          </div>
+        </div>
+      </nav>
+      <!-- Main content -->
+      <div class="main-column" id="icpyfdv">
+        <main id="i0s0r5-2" class="main-content">
+          <!-- Reports panel -->
+          <section id="iocbwu-2" class="gjs-t-border attendance-panel">
+            <div id="i51v7w-2" class="attendance-panel-header">
+              <div id="ii7cvn-2" class="attendance-panel-title-group">
+                <h2 id="in3e7q" class="attendance-panel-title">Attendance Reports</h2>
+              </div>
+              <button type="button" id="iaq1jh-2" class="gjs-t-button export-button">Export Report</button>
+            </div>
+            <!-- Report summary cards -->
+            <div id="imnjgo-2" class="overview-section">
+              <div id="imqkiu-2" class="gjs-t-border summary-card">
+                <div id="ic1wy8-2" class="summary-text"><span id="i7mb3i-2" class="summary-label">Average Attendance</span><span id="ikkzfr" class="summary-value">88%</span></div>
+              </div>
+              <div id="ik5jek-2" class="gjs-t-border summary-card">
+                <div id="ibhf9v-2" class="summary-text"><span id="i5xcd6-2" class="summary-label">Total Sessions</span><span id="i8cefo" class="summary-value">30</span></div>
+              </div>
+              <div id="ip7213-2" class="gjs-t-border summary-card">
+                <div id="ivmnrd-2" class="summary-text"><span id="i92krl-2" class="summary-label">Total Students</span><span id="injzav" class="summary-value">10</span></div>
+              </div>
+            </div>
+            <!-- Report filters -->
+            <div id="i3q3vj-2" class="filter-bar">
+              <div id="is47cb-2" class="filter-field">
+                <label id="i240fk-2" class="filter-label">Course</label>
+                <select type="text" id="reportsCourseFilter" class="filter-select-status">
+                  <option value="">All Courses</option>
+                </select>
+              </div>
+              <div id="iyt37q-2" class="filter-field">
+                <label id="i6fg48-2" class="filter-label">From Date</label>
+                <input type="date" id="reportsFromDate"/>
+              </div>
+              <div id="inf4m1-2" class="filter-field">
+                <label id="i8m6dw-2" class="filter-label">To Date</label>
+                <input type="date" id="reportsToDate"/>
+              </div>
+              <div id="i31y3y-2" class="filter-field">
+                <label id="ivzyhe-2" class="filter-label">Attendance Status</label>
+                <select type="text" id="reportsStatusFilter" class="filter-select-status">
+                  <option value="">All</option>
+                  <option value="present">Present</option>
+                  <option value="late">Late</option>
+                  <option value="absent">Absent</option>
+                </select>
+              </div>
+            </div>
+            <!-- Report table -->
+            <div id="iyppfn-2" class="table-wrapper">
+              <table id="idagey-2" class="attendance-table">
+                <thead id="i3l289-2" class="table-head">
+                  <tr id="idpvec-2">
+                    <th id="ixmknq-2" class="table-head-cell">Student Name</th>
+                    <th id="izxxqk-2" class="table-head-cell">Course</th>
+                    <th id="ilbn0j" class="table-head-cell">Sessions Attended</th>
+                    <th id="iaduen-2" class="table-head-cell">Sessions Missed</th>
+                    <th id="iswgvq-2" class="table-head-cell">Late Arrivals</th>
+                    <th id="igpxeg-2" class="table-head-cell">Attendance Rate</th>
+                  </tr>
+                </thead>
+                <tbody id="reportsTbody" class="table-body">
+                  <tr><td colspan="6">Loading reports...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+    <!-- Firebase and reports scripts -->
+    <script defer src="/__/firebase/11.6.0/firebase-app-compat.js"></script>
+    <script defer src="/__/firebase/11.6.0/firebase-firestore-compat.js"></script>
+    <script defer src="/__/firebase/11.6.0/firebase-auth-compat.js"></script>
+    <script defer src="/__/firebase/init.js"></script>
+    <script defer src="./js/sample-data.js"></script>
+    <script defer src="./js/firebase-client.js"></script>
+    <script defer src="./js/sidebar-user.js?v=20260430-1"></script>
+    <script defer src="./js/student-screens.js?v=20260429-4"></script>
+  </body>
+</html>
