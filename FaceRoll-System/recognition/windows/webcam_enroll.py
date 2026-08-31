@@ -1,5 +1,6 @@
 import argparse
 import time
+import sys
 
 import cv2
 
@@ -159,7 +160,13 @@ def main():
     if face_cascade.empty():
         raise RuntimeError("Could not load OpenCV face detector.")
 
-    cap = cv2.VideoCapture(args.camera, cv2.CAP_DSHOW)
+    if sys.platform == "win32":
+        cap = cv2.VideoCapture(args.camera, cv2.CAP_DSHOW)
+    elif sys.platform.startswith("linux"):
+        cap = cv2.VideoCapture(args.camera, cv2.CAP_V4L2)
+    else:
+        cap = cv2.VideoCapture(args.camera)
+
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
     if not cap.isOpened():

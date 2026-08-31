@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 from pathlib import Path
 
@@ -27,7 +28,12 @@ SHARED_DIR.mkdir(parents=True, exist_ok=True)
 
 # Use DirectShow on Windows so OpenCV opens the webcam faster and more
 # consistently than the default backend.
-cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+if sys.platform == "win32":
+    cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+elif sys.platform.startswith("linux"):
+    cap = cv2.VideoCapture(0, cv2.CAP_V4L2)
+else:
+    cap = cv2.VideoCapture(0)
 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 

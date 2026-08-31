@@ -5,14 +5,14 @@ import {
   signInWithEmailAndPassword,
   signOut,
   User as FirebaseUser,
-} from '@firebase/auth';
+} from 'firebase/auth';
 import {
   doc,
   getDoc,
   serverTimestamp,
   setDoc,
   updateDoc,
-} from '@firebase/firestore';
+} from 'firebase/firestore';
 import { auth, db } from './firebase';
 
 export interface User {

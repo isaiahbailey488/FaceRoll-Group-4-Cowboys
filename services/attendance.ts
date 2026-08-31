@@ -7,7 +7,7 @@ import {
   limit as limitDocs,
   setDoc,
   getDoc,
-} from '@firebase/firestore';
+} from 'firebase/firestore';
 import Constants from 'expo-constants';
 import { db } from './firebase';
 
