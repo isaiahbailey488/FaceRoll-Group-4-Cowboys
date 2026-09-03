@@ -59,6 +59,7 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.egg-info/
 
 # FaceRoll biometric enrollment data
 backend/face_data/*.json

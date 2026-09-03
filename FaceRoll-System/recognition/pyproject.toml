@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "faceroll-recognition"
+version = "0.1.0"
+description = "Shared Facenet512 recognition core for FaceRoll mobile and classroom workflows."
+requires-python = ">=3.10,<3.13"
+dependencies = [
+  "deepface==0.0.99",
+  "numpy==1.26.4",
+  "opencv-python==4.9.0.80",
+  "tensorflow==2.16.1",
+  "tf-keras==2.16.0",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest==8.3.5",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["faceroll_recognition*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+

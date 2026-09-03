@@ -24,6 +24,10 @@ This directory contains the planning, requirements, design, architecture, and te
 - [FaceRoll Test Plan](<Test-Plan FaceRoll.docx.pdf>)
 - Additional test cases and result tracking are available in the repository's [`Testing/`](../Testing/README.md) directory.
 
+## Setup Guides
+
+- [Windows Recognition Setup](recongtion_setup.md)
+
 ## Related Project Information
 
 - The root [`README.md`](../README.md) explains the complete system, installation, and run instructions.
