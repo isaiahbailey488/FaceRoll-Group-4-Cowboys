@@ -1,5 +1,25 @@
 (function (global) {
   const FIREBASE_INIT_TIMEOUT_MS = 10000;
+  let localEmulatorsConfigured = false;
+
+  function isLocalDashboard() {
+    return (
+      global.location &&
+      (global.location.hostname === 'localhost' || global.location.hostname === '127.0.0.1')
+    );
+  }
+
+  function configureLocalEmulators(firebase) {
+    if (!isLocalDashboard() || localEmulatorsConfigured) return;
+
+    // Keep local dashboard testing isolated from the live Firebase project.
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+    auth.useEmulator('http://127.0.0.1:9099', { disableWarnings: true });
+    db.useEmulator('127.0.0.1', 8080);
+    localEmulatorsConfigured = true;
+    console.info('FaceRoll is using the local Firebase Auth and Firestore emulators.');
+  }
 
   function waitForFirebaseServices() {
     // Firebase Hosting injects the app config, but it can arrive after our page scripts.
@@ -14,6 +34,7 @@
           global.firebase.apps.length > 0;
 
         if (firebaseReady) {
+          configureLocalEmulators(global.firebase);
           resolve(global.firebase);
           return;
         }

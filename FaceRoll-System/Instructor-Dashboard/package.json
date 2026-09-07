@@ -1,0 +1,14 @@
+{
+  "name": "faceroll-instructor-dashboard",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Static Firebase-hosted instructor dashboard for FaceRoll",
+  "scripts": {
+    "build": "node scripts/generate-runtime-config.js",
+    "lint": "node --check public/js/firebase-client.js && node --check public/js/course-location-utils.js && node --check public/js/course-location.js && node --check public/js/sidebar-user.js && node --check scripts/generate-runtime-config.js",
+    "typecheck": "npm run lint",
+    "test": "node tests/course-location-utils.test.js",
+    "start": "npm run build && firebase emulators:start",
+    "deploy": "npm run build && firebase deploy --only firestore,hosting"
+  }
+}

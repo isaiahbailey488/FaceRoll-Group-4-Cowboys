@@ -65,5 +65,8 @@ node_modules/
 # dotenv environment variables file
 .env
 
+# Generated browser runtime configuration (created from .env/environment)
+public/js/runtime-config.js
+
 # dataconnect generated files
 .dataconnect
