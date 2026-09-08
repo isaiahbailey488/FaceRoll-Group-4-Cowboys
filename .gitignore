@@ -16,8 +16,6 @@ pids
 
 # Expo
 .expo/*
-!.expo/
-!.expo/shared/
 
 # macOS
 .DS_Store

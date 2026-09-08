@@ -16,7 +16,7 @@ Students who opt out of facial recognition remain visible in the instructor rost
 
 ### Student Mobile App
 
-The student-facing application handles account registration, profiles, facial enrollment, attendance check-in, and attendance activity. It is built with Expo SDK 54, React Native, TypeScript, and Expo Router.
+The student-facing application handles account registration, profiles, facial enrollment, attendance check-in, and attendance activity. It is built with Expo SDK 57, React Native, TypeScript, and Expo Router.
 
 ### Instructor Dashboard
 

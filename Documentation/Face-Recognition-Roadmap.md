@@ -139,7 +139,7 @@ Implementation validation:
 
 - TypeScript strict-mode validation passes.
 - Expo public configuration resolution passes.
-- Android production bundling passes with Expo SDK 54.
+- iOS production JavaScript bundling passes with Expo SDK 57.
 - The app rejects non-loopback plain HTTP API addresses; physical-device endpoints must use HTTPS.
 - Real-device camera and navigation validation remains part of the Phase 9 end-to-end test.
 

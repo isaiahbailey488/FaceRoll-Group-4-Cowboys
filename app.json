@@ -6,10 +6,6 @@
     "orientation": "portrait",
     "scheme": "faceroll",
     "userInterfaceStyle": "light",
-    "splash": {
-      "resizeMode": "contain",
-      "backgroundColor": "#0A2342"
-    },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.cowboys.faceroll",
@@ -38,7 +34,15 @@
           "cameraPermission": "FaceRoll uses your camera for face enrollment and attendance check-in via facial recognition."
         }
       ],
-      "expo-font"
+      "expo-font",
+      "expo-status-bar",
+      [
+        "expo-splash-screen",
+        {
+          "resizeMode": "contain",
+          "backgroundColor": "#0A2342"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

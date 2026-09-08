@@ -4,11 +4,10 @@ const { getDefaultConfig } = require('expo/metro-config');
 /** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(__dirname);
 
-// CRITICAL: Firebase JS SDK 10.x + Expo SDK 54 (Metro w/ package exports
-// enabled by default) cause "Component auth has not been registered yet"
-// because Metro's exports-map resolution can pick the wrong build of
-// @firebase/auth, which then registers its component on a different
-// @firebase/component instance than the one used at lookup time.
+// Firebase JS SDK 10.x previously produced "Component auth has not been
+// registered yet" in this project when Metro package exports were enabled.
+// Metro selected a build of @firebase/auth that registered against a
+// different @firebase/component instance than the one used at lookup time.
 //
 // Disabling unstable_enablePackageExports forces Metro to use the legacy
 // `react-native` and `browser` field resolution, which Firebase ships
