@@ -217,6 +217,7 @@ class MobileRecognitionApiTests(unittest.TestCase):
             headers=AUTHORIZATION,
         )
         self.assertEqual(response.status_code, 422)
+        self.assertIn("Enrollment photo 2", response.get_json()["message"])
         self.assertEqual(self.store.load("firebase-uid-123"), original)
 
     def test_recognition_compares_against_the_authenticated_students_samples(self):

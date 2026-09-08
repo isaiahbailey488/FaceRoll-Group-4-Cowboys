@@ -6,6 +6,7 @@ import base64
 import binascii
 import math
 from dataclasses import dataclass
+from numbers import Real
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -41,6 +42,36 @@ class EmbeddingCandidate:
     uid: str
     vector: Sequence[float]
     embedding_id: str = ""
+
+
+@dataclass(frozen=True)
+class FaceRegion:
+    """Pixel bounds returned by the configured face detector."""
+
+    x: int
+    y: int
+    width: int
+    height: int
+
+    def is_obviously_clipped(self, image_width: int, image_height: int) -> bool:
+        """Return true when detector bounds touch or cross an image edge."""
+
+        if self.width <= 0 or self.height <= 0:
+            return True
+        return (
+            self.x <= 0
+            or self.y <= 0
+            or self.x + self.width >= image_width
+            or self.y + self.height >= image_height
+        )
+
+
+@dataclass(frozen=True)
+class DetectedFaceEmbedding:
+    """Validated embedding plus optional detector bounds for one face."""
+
+    vector: Sequence[float]
+    region: FaceRegion | None = None
 
 
 @dataclass(frozen=True)
@@ -173,12 +204,32 @@ def validate_embedding(
     return vector
 
 
-def generate_embeddings(
+def _face_region(result: Mapping[str, Any]) -> FaceRegion | None:
+    area = result.get("facial_area")
+    if not isinstance(area, Mapping):
+        return None
+    values = [area.get(field) for field in ("x", "y", "w", "h")]
+    if any(
+        not isinstance(value, Real)
+        or isinstance(value, bool)
+        or not math.isfinite(float(value))
+        for value in values
+    ):
+        return None
+    return FaceRegion(
+        x=int(values[0]),
+        y=int(values[1]),
+        width=int(values[2]),
+        height=int(values[3]),
+    )
+
+
+def generate_detected_embeddings(
     image: Any,
     *,
     settings: RecognitionSettings = SETTINGS,
-) -> list[Any]:
-    """Generate one Facenet512 embedding for every detected face in an image."""
+) -> list[DetectedFaceEmbedding]:
+    """Generate validated Facenet512 embeddings with available face bounds."""
 
     validate_image(image)
     deepface = _require_deepface()
@@ -206,12 +257,30 @@ def generate_embeddings(
     if not results:
         raise NoFaceDetectedError("No face was detected in the image.")
 
-    embeddings = []
+    embeddings: list[DetectedFaceEmbedding] = []
     for result in results:
         if not isinstance(result, Mapping) or "embedding" not in result:
             raise InvalidEmbeddingError("DeepFace result is missing an embedding.")
-        embeddings.append(validate_embedding(result["embedding"], settings=settings))
+        embeddings.append(
+            DetectedFaceEmbedding(
+                vector=validate_embedding(result["embedding"], settings=settings),
+                region=_face_region(result),
+            )
+        )
     return embeddings
+
+
+def generate_embeddings(
+    image: Any,
+    *,
+    settings: RecognitionSettings = SETTINGS,
+) -> list[Any]:
+    """Generate one Facenet512 embedding for every detected face in an image."""
+
+    return [
+        detected.vector
+        for detected in generate_detected_embeddings(image, settings=settings)
+    ]
 
 
 def generate_single_embedding(
@@ -333,4 +402,3 @@ def find_best_match(
         uid=best_candidate.uid if recognized else None,
         embedding_id=best_candidate.embedding_id if recognized else "",
     )
-

@@ -5,6 +5,13 @@ than defining their own model, preprocessing, or matching configuration.
 """
 
 from .config import SETTINGS, RecognitionSettings
+from .classroom import (
+    ClassroomFaceResult,
+    ClassroomRecognitionBatch,
+    ClassroomRecognizer,
+    IgnoredClassroomFace,
+    RecognitionCooldown,
+)
 from .errors import (
     DependencyUnavailableError,
     EnrollmentNotFoundError,
@@ -18,12 +25,15 @@ from .errors import (
     StorageAuthorizationError,
 )
 from .engine import (
+    DetectedFaceEmbedding,
     EmbeddingCandidate,
+    FaceRegion,
     IdentificationResult,
     VerificationResult,
     cosine_distance,
     decode_base64_image,
     find_best_match,
+    generate_detected_embeddings,
     generate_embeddings,
     generate_single_embedding,
     load_image_file,
@@ -42,6 +52,11 @@ from .storage import (
 __all__ = [
     "SETTINGS",
     "RecognitionSettings",
+    "ClassroomRecognizer",
+    "ClassroomRecognitionBatch",
+    "ClassroomFaceResult",
+    "IgnoredClassroomFace",
+    "RecognitionCooldown",
     "RecognitionCoreError",
     "DependencyUnavailableError",
     "EnrollmentNotFoundError",
@@ -53,6 +68,8 @@ __all__ = [
     "StorageError",
     "StorageAuthorizationError",
     "EmbeddingCandidate",
+    "FaceRegion",
+    "DetectedFaceEmbedding",
     "VerificationResult",
     "IdentificationResult",
     "decode_base64_image",
@@ -60,6 +77,7 @@ __all__ = [
     "validate_image",
     "validate_embedding",
     "generate_embeddings",
+    "generate_detected_embeddings",
     "generate_single_embedding",
     "cosine_distance",
     "verify_embedding",

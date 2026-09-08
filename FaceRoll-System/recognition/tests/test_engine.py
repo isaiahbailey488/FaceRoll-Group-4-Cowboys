@@ -16,6 +16,7 @@ from faceroll_recognition import (
     cosine_distance,
     decode_base64_image,
     find_best_match,
+    generate_detected_embeddings,
     generate_embeddings,
     generate_single_embedding,
     load_image_file,
@@ -131,6 +132,35 @@ class EmbeddingGenerationTests(unittest.TestCase):
         with patch("faceroll_recognition.engine.DeepFace", FakeDeepFace):
             embeddings = generate_embeddings(self.image)
         self.assertEqual(len(embeddings), 2)
+
+    def test_detected_embeddings_include_valid_face_bounds(self):
+        FakeDeepFace.results = [
+            {
+                "embedding": unit_vector(0).tolist(),
+                "facial_area": {"x": 10, "y": 20, "w": 30, "h": 40},
+            }
+        ]
+        with patch("faceroll_recognition.engine.DeepFace", FakeDeepFace):
+            detected = generate_detected_embeddings(self.image)
+
+        self.assertEqual(len(detected), 1)
+        self.assertEqual(detected[0].region.x, 10)
+        self.assertEqual(detected[0].region.y, 20)
+        self.assertEqual(detected[0].region.width, 30)
+        self.assertEqual(detected[0].region.height, 40)
+
+    def test_malformed_face_bounds_do_not_break_embedding_generation(self):
+        FakeDeepFace.results = [
+            {
+                "embedding": unit_vector(0).tolist(),
+                "facial_area": {"x": "bad", "y": 20, "w": 30, "h": 40},
+            }
+        ]
+        with patch("faceroll_recognition.engine.DeepFace", FakeDeepFace):
+            detected = generate_detected_embeddings(self.image)
+
+        self.assertEqual(len(detected), 1)
+        self.assertIsNone(detected[0].region)
 
     def test_single_embedding_rejects_multiple_faces(self):
         FakeDeepFace.results = [

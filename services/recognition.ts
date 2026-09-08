@@ -5,6 +5,15 @@ import { auth } from './firebase';
 const REQUEST_TIMEOUT_MS = 120_000;
 const ENROLLMENT_SAMPLE_COUNT = 3;
 
+function logRecognitionStage(
+  stage: string,
+  details: Record<string, string | number | boolean | null> = {}
+): void {
+  if (__DEV__) {
+    console.info(`[FaceRoll recognition] ${stage}`, details);
+  }
+}
+
 type ApiErrorPayload = {
   error?: string;
   message?: string;
@@ -111,6 +120,7 @@ async function authenticatedRequest<T>(
   method: 'POST' | 'DELETE',
   body?: Record<string, unknown>
 ): Promise<{ data: T; authenticatedUid: string }> {
+  const startedAt = Date.now();
   const currentUser = auth.currentUser;
   if (!currentUser) {
     throw new RecognitionApiError(
@@ -120,31 +130,72 @@ async function authenticatedRequest<T>(
     );
   }
 
-  let idToken: string;
-  try {
-    idToken = await currentUser.getIdToken();
-  } catch {
-    throw new RecognitionApiError(
-      'authentication_required',
-      'Your login could not be verified. Sign in again and retry.',
-      401
-    );
-  }
+  const apiUrl = configuredApiUrl();
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let timedOut = false;
+  let timeout: ReturnType<typeof setTimeout>;
 
-  try {
-    const response = await fetch(`${configuredApiUrl()}${path}`, {
+  logRecognitionStage('request_started', { method, path });
+
+  const requestOperation = async (): Promise<{
+    data: T;
+    authenticatedUid: string;
+  }> => {
+    let idToken: string;
+    logRecognitionStage('firebase_token_requested', { path });
+    try {
+      idToken = await currentUser.getIdToken();
+    } catch {
+      throw new RecognitionApiError(
+        'authentication_required',
+        'Your login could not be verified. Sign in again and retry.',
+        401
+      );
+    }
+    logRecognitionStage('firebase_token_ready', {
+      path,
+      elapsedMs: Date.now() - startedAt,
+    });
+    if (timedOut) {
+      throw new RecognitionApiError(
+        'recognition_timeout',
+        'The recognition server took too long to respond. Please try again.'
+      );
+    }
+
+    const serializedBody = body ? JSON.stringify(body) : undefined;
+    logRecognitionStage('request_payload_ready', {
+      path,
+      bodyCharacters: serializedBody?.length ?? 0,
+      elapsedMs: Date.now() - startedAt,
+    });
+    if (timedOut) {
+      throw new RecognitionApiError(
+        'recognition_timeout',
+        'The recognition server took too long to respond. Please try again.'
+      );
+    }
+
+    logRecognitionStage('request_sending', {
+      path,
+      elapsedMs: Date.now() - startedAt,
+    });
+    const response = await fetch(`${apiUrl}${path}`, {
       method,
       headers: {
         Accept: 'application/json',
         Authorization: `Bearer ${idToken}`,
-        ...(body ? { 'Content-Type': 'application/json' } : {}),
+        ...(serializedBody ? { 'Content-Type': 'application/json' } : {}),
       },
-      body: body ? JSON.stringify(body) : undefined,
+      body: serializedBody,
       signal: controller.signal,
     });
 
+    logRecognitionStage('response_received', {
+      path,
+      status: response.status,
+      elapsedMs: Date.now() - startedAt,
+    });
     const payload = (await response.json().catch(() => ({}))) as T & ApiErrorPayload;
     if (!response.ok) {
       const code = payload.error || `http_${response.status}`;
@@ -155,9 +206,35 @@ async function authenticatedRequest<T>(
       );
     }
     return { data: payload, authenticatedUid: currentUser.uid };
+  };
+
+  const deadline = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+      logRecognitionStage('request_timed_out', {
+        path,
+        elapsedMs: Date.now() - startedAt,
+      });
+      reject(
+        new RecognitionApiError(
+          'recognition_timeout',
+          'The recognition server took too long to respond. Please try again.'
+        )
+      );
+    }, REQUEST_TIMEOUT_MS);
+  });
+
+  try {
+    return await Promise.race([requestOperation(), deadline]);
   } catch (error: any) {
+    logRecognitionStage('request_failed', {
+      path,
+      code: error?.code || error?.name || 'unknown_error',
+      elapsedMs: Date.now() - startedAt,
+    });
     if (error instanceof RecognitionApiError) throw error;
-    if (error?.name === 'AbortError') {
+    if (timedOut || error?.name === 'AbortError') {
       throw new RecognitionApiError(
         'recognition_timeout',
         'The recognition server took too long to respond. Please try again.'
@@ -168,7 +245,7 @@ async function authenticatedRequest<T>(
       'Could not reach the recognition server. Check its address and connection.'
     );
   } finally {
-    clearTimeout(timeout);
+    clearTimeout(timeout!);
   }
 }
 

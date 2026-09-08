@@ -1,185 +1,192 @@
+"""Classroom worker backed exclusively by the shared Facenet512 core."""
+
+from __future__ import annotations
+
 import json
-import re
+import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
-import numpy as np
-from deepface import DeepFace
+from faceroll_recognition import (
+    SETTINGS,
+    ClassroomFaceResult,
+    ClassroomRecognizer,
+    EnrollmentReader,
+    RecognitionCooldown,
+    RecognitionCoreError,
+    load_image_file,
+)
 
 
 APP_DIR = Path(__file__).resolve().parent
 IMAGE_PATH = APP_DIR / "shared" / "input.jpg"
 PROCESSING_IMAGE_PATH = APP_DIR / "shared" / "input.processing.jpg"
 EVENT_LOG_PATH = APP_DIR / "shared" / "recognition-events.jsonl"
-EMBEDDINGS_DIR = APP_DIR / "embeddings"
+DEFAULT_ENROLLMENTS_DIR = Path.home() / ".local" / "share" / "faceroll" / "enrollments"
 POLL_INTERVAL_SECONDS = 1
-# Avoid writing duplicate attendance events when the same face is captured
-# several times in a row.
 MATCH_COOLDOWN_SECONDS = 10
-MODEL_NAME = "Facenet"
-DETECTOR_BACKEND = "opencv"
-DISTANCE_THRESHOLD = 0.30
-recent_match_times = {}
 
 
-def identity_to_label(identity):
-    normalized = re.sub(r"[_-]+", " ", str(identity or "")).strip()
-    return normalized or "unknown"
+def configured_enrollment_directory() -> Path:
+    configured = os.getenv("FACEROLL_ENROLLMENT_DIR")
+    return Path(configured).expanduser() if configured else DEFAULT_ENROLLMENTS_DIR
 
 
-def append_recognition_event(payload):
-    # The bridge reads this append-only file and exposes new lines through
-    # /events, where the dashboard turns them into Firestore attendance records.
+def configured_allowed_uids() -> frozenset[str] | None:
+    """Read an optional course roster supplied by the future bridge layer."""
+
+    raw = os.getenv("FACEROLL_ALLOWED_UIDS")
+    if raw is None:
+        return None
+    return frozenset(uid.strip() for uid in raw.split(",") if uid.strip())
+
+
+def append_recognition_event(payload: dict[str, Any]) -> None:
+    """Append one non-biometric match event for the dashboard bridge."""
+
     EVENT_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
     with EVENT_LOG_PATH.open("a", encoding="utf-8") as event_log:
-        event_log.write(json.dumps(payload) + "\n")
+        event_log.write(json.dumps(payload, allow_nan=False) + "\n")
+        event_log.flush()
 
 
-def generate_embedding(image_path):
-    results = DeepFace.represent(
-        img_path=str(image_path),
-        model_name=MODEL_NAME,
-        detector_backend=DETECTOR_BACKEND,
-        enforce_detection=False,
-        align=True,
+def build_recognition_event(
+    face: ClassroomFaceResult,
+    *,
+    timestamp: str | None = None,
+) -> dict[str, Any]:
+    """Build a dashboard event whose authoritative identity is Firebase UID."""
+
+    result = face.identification
+    if not result.recognized or not result.uid:
+        raise ValueError("Only a recognized Firebase UID can produce a match event.")
+
+    payload: dict[str, Any] = {
+        "eventType": "match",
+        "timestamp": timestamp
+        or datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "uid": result.uid,
+        "identity": result.uid,
+        "identityLabel": face.display_name or face.student_id or "Recognized student",
+        "distance": result.distance,
+        "threshold": result.threshold,
+        "confidence": result.confidence,
+        "model": result.model,
+        "faceIndex": face.face_index,
+        "embeddingId": result.embedding_id,
+    }
+    if face.student_id:
+        payload["studentId"] = face.student_id
+    return payload
+
+
+def process_classroom_image(
+    recognizer: ClassroomRecognizer,
+    cooldown: RecognitionCooldown,
+    *,
+    image_path: Path = PROCESSING_IMAGE_PATH,
+) -> int:
+    """Process all usable faces in one frame and return emitted event count."""
+
+    image = load_image_file(image_path)
+    batch = recognizer.recognize(image)
+
+    for rejection in batch.rejected_files:
+        print(
+            f"SKIPPED ENROLLMENT: {rejection.filename}: {rejection.message}",
+            flush=True,
+        )
+
+    if batch.candidate_count == 0:
+        print("No compatible Facenet512 enrollments found.", flush=True)
+        return 0
+
+    for ignored in batch.ignored_faces:
+        print(
+            f"IGNORED FACE {ignored.face_index}: {ignored.reason}",
+            flush=True,
+        )
+
+    emitted = 0
+    for face in batch.faces:
+        result = face.identification
+        if not result.recognized or not result.uid:
+            distance = "none" if result.distance is None else f"{result.distance:.4f}"
+            print(
+                f"NO MATCH: face={face.face_index} best_distance={distance}",
+                flush=True,
+            )
+            continue
+
+        if not cooldown.allow(result.uid):
+            print(
+                f"MATCH ON COOLDOWN: uid={result.uid} face={face.face_index}",
+                flush=True,
+            )
+            continue
+
+        append_recognition_event(build_recognition_event(face))
+        emitted += 1
+        print(
+            f"MATCH: uid={result.uid} face={face.face_index} "
+            f"distance={result.distance:.4f} confidence={result.confidence:.2f}",
+            flush=True,
+        )
+
+    return emitted
+
+
+def claim_pending_image() -> bool:
+    if not IMAGE_PATH.exists():
+        return False
+    try:
+        IMAGE_PATH.replace(PROCESSING_IMAGE_PATH)
+        return True
+    except FileNotFoundError:
+        return False
+    except OSError as error:
+        print(f"Error claiming image: {error}", flush=True)
+        return False
+
+
+def main() -> None:
+    enrollment_directory = configured_enrollment_directory()
+    allowed_uids = configured_allowed_uids()
+    recognizer = ClassroomRecognizer(
+        EnrollmentReader(enrollment_directory),
+        allowed_uids=allowed_uids,
     )
-    if not results:
-        return None
-    return np.asarray(results[0]["embedding"], dtype=np.float32)
+    cooldown = RecognitionCooldown(MATCH_COOLDOWN_SECONDS)
 
+    print(
+        f"Recognizer ready: model={SETTINGS.model_name} "
+        f"dimension={SETTINGS.embedding_dimension} "
+        f"enrollments={enrollment_directory}",
+        flush=True,
+    )
+    if allowed_uids is not None:
+        print(f"Course roster filter enabled: {len(allowed_uids)} UIDs", flush=True)
+    print("Waiting for classroom image...", flush=True)
 
-def cosine_distance(left, right):
-    left = np.asarray(left, dtype=np.float32)
-    right = np.asarray(right, dtype=np.float32)
-    denom = (np.linalg.norm(left) * np.linalg.norm(right)) + 1e-10
-    return float(1.0 - (np.dot(left, right) / denom))
-
-
-def load_embedding_database():
-    records = []
-    if not EMBEDDINGS_DIR.exists():
-        return records
-
-    for embedding_file in EMBEDDINGS_DIR.glob("*.json"):
-        try:
-            with embedding_file.open("r", encoding="utf-8") as file:
-                payload = json.load(file)
-        except (OSError, json.JSONDecodeError) as error:
-            print(f"Skipping invalid embedding file {embedding_file}: {error}", flush=True)
-            continue
-
-        student_id = str(payload.get("student_id") or embedding_file.stem)
-        full_name = " ".join(
-            part for part in [payload.get("first_name"), payload.get("last_name")] if part
-        ).strip()
-        identity_label = full_name or student_id
-
-        for item in payload.get("embeddings", []):
-            vector = item.get("vector")
-            if not vector:
-                continue
-            records.append(
-                {
-                    "student_id": student_id,
-                    "identity_label": identity_label,
-                    "embedding_id": item.get("embedding_id", ""),
-                    "vector": vector,
-                }
-            )
-
-    return records
-
-
-def find_best_match(query_embedding, database_records):
-    best_record = None
-    best_distance = float("inf")
-
-    for record in database_records:
-        distance = cosine_distance(query_embedding, record["vector"])
-        if distance < best_distance:
-            best_record = record
-            best_distance = distance
-
-    if best_record is None or best_distance > DISTANCE_THRESHOLD:
-        return None, best_distance
-
-    return best_record, best_distance
-
-
-print("Recognizer ready. Waiting for image...", flush=True)
-
-while True:
-    if IMAGE_PATH.exists():
-        print("Image detected. Claiming shared/input.jpg...", flush=True)
-        try:
-            # Rename first so capture.py knows the recognizer has claimed the
-            # image and can safely save the next one later.
-            IMAGE_PATH.replace(PROCESSING_IMAGE_PATH)
-        except FileNotFoundError:
+    try:
+        while True:
+            if claim_pending_image():
+                print("Image detected and claimed.", flush=True)
+                try:
+                    process_classroom_image(recognizer, cooldown)
+                except RecognitionCoreError as error:
+                    print(f"IGNORED FRAME: {error}", flush=True)
+                except (OSError, ValueError) as error:
+                    print(f"ERROR PROCESSING FRAME: {error}", flush=True)
+                finally:
+                    PROCESSING_IMAGE_PATH.unlink(missing_ok=True)
+                print("Processed image. Waiting for next one...", flush=True)
             time.sleep(POLL_INTERVAL_SECONDS)
-            continue
-        except OSError as error:
-            print("Error claiming image:", error, flush=True)
-            time.sleep(POLL_INTERVAL_SECONDS)
-            continue
+    except KeyboardInterrupt:
+        print("Recognizer stopped.", flush=True)
 
-        try:
-            print("Loading face embeddings...", flush=True)
-            database_records = load_embedding_database()
-            if not database_records:
-                print("No enrolled embeddings found.", flush=True)
-                continue
 
-            print("Generating embedding for captured face...", flush=True)
-            query_embedding = generate_embedding(PROCESSING_IMAGE_PATH)
-            if query_embedding is None:
-                print("No face embedding generated for captured image.", flush=True)
-                continue
-
-            best_match, best_distance = find_best_match(query_embedding, database_records)
-            if best_match is None:
-                print(f"NO MATCH. Best distance: {best_distance:.4f}", flush=True)
-                continue
-
-            print("Embedding comparison completed.", flush=True)
-            current_time = time.time()
-            identity = best_match["student_id"]
-            last_match_time = recent_match_times.get(identity)
-
-            # The webcam may save several frames of the same person. Cool down
-            # each identity so one student does not spam Firestore.
-            if (
-                last_match_time is not None
-                and current_time - last_match_time < MATCH_COOLDOWN_SECONDS
-            ):
-                print(f"MATCH ON COOLDOWN: {identity}", flush=True)
-                continue
-
-            confidence = max(0.0, 1.0 - (best_distance / DISTANCE_THRESHOLD))
-            recent_match_times[identity] = current_time
-            print(f"MATCH: {identity}", flush=True)
-            print(f"Distance: {best_distance:.4f}", flush=True)
-            print(f"Confidence: {confidence:.2f}", flush=True)
-            append_recognition_event(
-                {
-                    "eventType": "match",
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "uid": str(identity),
-                    "studentId": str(identity),
-                    "identity": str(identity),
-                    "identityLabel": identity_to_label(best_match["identity_label"]),
-                    "distance": float(best_distance),
-                    "confidence": float(confidence),
-                    "faceIndex": 1,
-                    "embeddingId": best_match["embedding_id"],
-                }
-            )
-        except Exception as error:
-            print("Error:", error, flush=True)
-
-        if PROCESSING_IMAGE_PATH.exists():
-            PROCESSING_IMAGE_PATH.unlink()
-        print("Processed image. Waiting for next one...", flush=True)
-
-    time.sleep(POLL_INTERVAL_SECONDS)
+if __name__ == "__main__":
+    main()

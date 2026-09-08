@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import os
+import time
 from dataclasses import dataclass
 from functools import wraps
 from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol
 
-from flask import Flask, Response, jsonify, request
+from flask import Flask, Response, g, jsonify, request
 from werkzeug.exceptions import RequestEntityTooLarge
 
 from .config import SETTINGS
@@ -234,12 +236,62 @@ def create_mobile_app(
 
     app = Flask(__name__)
     app.config["MAX_CONTENT_LENGTH"] = max_request_bytes
+    request_logging = os.getenv("FACEROLL_REQUEST_LOGGING", "").lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if request_logging:
+        app.logger.setLevel(logging.INFO)
+
+    def log_request_stage(stage: str, **fields: Any) -> None:
+        if not request_logging:
+            return
+        details = " ".join(f"{key}={value}" for key, value in fields.items())
+        app.logger.info("faceroll_stage=%s %s", stage, details)
+
+    @app.before_request
+    def log_request_started() -> None:
+        g.faceroll_started_at = time.monotonic()
+        log_request_stage(
+            "request_started",
+            method=request.method,
+            path=request.path,
+            content_length=request.content_length or 0,
+        )
+
+    @app.after_request
+    def log_request_completed(response: Response) -> Response:
+        started_at = getattr(g, "faceroll_started_at", None)
+        elapsed_ms = (
+            round((time.monotonic() - started_at) * 1000)
+            if isinstance(started_at, float)
+            else -1
+        )
+        log_request_stage(
+            "request_completed",
+            method=request.method,
+            path=request.path,
+            status=response.status_code,
+            elapsed_ms=elapsed_ms,
+        )
+        return response
 
     def student_required(handler: Callable[..., Response | tuple[Response, int]]):
         @wraps(handler)
         def wrapped(*args: Any, **kwargs: Any):
             try:
+                authentication_started_at = time.monotonic()
+                log_request_stage("authentication_started", path=request.path)
                 student = verifier.verify(_bearer_token())
+                log_request_stage(
+                    "authentication_completed",
+                    path=request.path,
+                    elapsed_ms=round(
+                        (time.monotonic() - authentication_started_at) * 1000
+                    ),
+                )
             except AuthenticationError as error:
                 return _error_response(401, "authentication_required", str(error))
             except StudentAuthorizationError as error:
@@ -288,14 +340,32 @@ def create_mobile_app(
                 )
 
             vectors = []
-            for value in images:
-                encoded = _image_string(value, max_characters=max_image_characters)
-                decoded = image_decoder(encoded)
+            log_request_stage("enrollment_payload_validated", sample_count=len(images))
+            for sample_number, value in enumerate(images, start=1):
+                sample_started_at = time.monotonic()
+                log_request_stage(
+                    "embedding_started",
+                    sample=sample_number,
+                    sample_count=ENROLLMENT_SAMPLE_COUNT,
+                )
                 try:
-                    generated = embedding_generator(decoded)
-                    vectors.append(tuple(float(item) for item in generated))
-                finally:
-                    del decoded
+                    encoded = _image_string(value, max_characters=max_image_characters)
+                    decoded = image_decoder(encoded)
+                    try:
+                        generated = embedding_generator(decoded)
+                        vectors.append(tuple(float(item) for item in generated))
+                    finally:
+                        del decoded
+                except InvalidImageError as error:
+                    raise InvalidImageError(
+                        f"Enrollment photo {sample_number}: {error}"
+                    ) from error
+                log_request_stage(
+                    "embedding_completed",
+                    sample=sample_number,
+                    sample_count=ENROLLMENT_SAMPLE_COUNT,
+                    elapsed_ms=round((time.monotonic() - sample_started_at) * 1000),
+                )
 
             record = EnrollmentRecord.create(
                 student_uid=student.uid,
@@ -306,6 +376,11 @@ def create_mobile_app(
             enrollment_store.save_mobile_enrollment(
                 record,
                 authenticated_uid=student.uid,
+            )
+            log_request_stage(
+                "enrollment_saved",
+                sample_count=len(record.embeddings),
+                model=record.model,
             )
             return jsonify(
                 {

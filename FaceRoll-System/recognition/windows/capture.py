@@ -63,6 +63,10 @@ while True:
     if not ret:
         break
 
+    # Keep the recognition handoff free of preview rectangles and text. The
+    # preview below is annotated only after this clean camera frame is copied.
+    recognition_frame = frame.copy()
+
     # Downscale before detection to keep webcam preview responsive.
     small_frame = cv2.resize(frame, None, fx=detection_scale, fy=detection_scale)
     gray_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2GRAY)
@@ -99,7 +103,7 @@ while True:
     ):
         # Write to a temporary filename first, then atomically rename it. This
         # prevents app.py from reading a half-written image.
-        if cv2.imwrite(str(PENDING_IMAGE_PATH), frame):
+        if cv2.imwrite(str(PENDING_IMAGE_PATH), recognition_frame):
             os.replace(PENDING_IMAGE_PATH, IMAGE_PATH)
             last_capture_time = current_time
             print("Face detected. Saved shared/input.jpg", flush=True)
@@ -133,7 +137,7 @@ while True:
 
     if key == ord(" ") and not IMAGE_PATH.exists() and not PENDING_IMAGE_PATH.exists():
         # Manual capture uses the same pending-file handoff as auto capture.
-        if cv2.imwrite(str(PENDING_IMAGE_PATH), frame):
+        if cv2.imwrite(str(PENDING_IMAGE_PATH), recognition_frame):
             os.replace(PENDING_IMAGE_PATH, IMAGE_PATH)
             last_capture_time = time.time()
             print("Manual capture. Saved shared/input.jpg", flush=True)
