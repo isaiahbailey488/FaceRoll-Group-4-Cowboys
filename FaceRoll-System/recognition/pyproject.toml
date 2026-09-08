@@ -19,6 +19,14 @@ dependencies = [
 test = [
   "pytest==8.3.5",
 ]
+api = [
+  "firebase-admin==6.6.0",
+  "flask==3.0.3",
+  "gunicorn==22.0.0",
+]
+
+[project.scripts]
+faceroll-recognition-api = "faceroll_recognition.mobile_api:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -26,4 +34,3 @@ include = ["faceroll_recognition*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-

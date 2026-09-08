@@ -28,7 +28,7 @@ Firebase Authentication manages student and instructor accounts, while Cloud Fir
 
 ### Mobile Recognition API
 
-The Python and Flask backend receives facial-enrollment and attendance check-in images from the mobile app and provides the integration path for DeepFace recognition.
+The authenticated Python API under `FaceRoll-System/recognition` receives three-photo enrollment and one-photo verification requests from the mobile app. It uses the shared `Facenet512` core and stores only local embeddings.
 
 ### Instructor Recognition Bridge
 
@@ -40,8 +40,8 @@ The local Python bridge connects the instructor dashboard to the computer's webc
 
 - Register and sign in with Firebase Authentication
 - Manage a profile and facial-recognition preferences
-- Enroll a face using the device camera
-- Check in during an active attendance session
+- Enroll a face using three guided device-camera captures
+- Check in through authenticated one-to-one face verification
 - View recent attendance activity
 
 ### Instructor Dashboard
@@ -78,14 +78,14 @@ FaceRoll is maintained as a monorepo. The student mobile application was initial
 ├── components/                  # Reusable React Native components
 ├── constants/                   # Mobile theme constants
 ├── services/                    # Firebase, authentication, and attendance services
-├── backend/                     # Flask API used by mobile enrollment/check-in
+├── backend/                     # Temporary legacy one-photo Flask API
 ├── Documentation/               # Architecture, user, design, and maintenance documents
 ├── Testing/                     # System test cases and recorded test results
 ├── firestore.rules              # Firestore rules used by the mobile project
 └── FaceRoll-System/
     ├── Instructor-Dashboard/    # Instructor web app and Firebase configuration
     │   └── public/              # Dashboard HTML, CSS, JavaScript, and assets
-    └── recognition/
+    └── recognition/             # Shared Facenet512 core and authenticated mobile API
         ├── windows/             # Windows webcam recognition and bridge
         └── archived/mac/        # Unsupported archived macOS prototype
 ```
@@ -124,32 +124,38 @@ firebase deploy --only firestore
 
 ## Run the Student Mobile App
 
-From the repository root:
+Configure the authenticated recognition API before starting Expo. For an Android Studio emulator on Linux or Windows:
 
 ```bash
+export EXPO_PUBLIC_RECOGNITION_API_URL=http://10.0.2.2:5055
 npm install
 npx expo start
 ```
 
-Scan the QR code with Expo Go or select an emulator/simulator from the Expo terminal.
+The special Android emulator address `10.0.2.2` routes to the development computer's loopback interface. Copy `.env.example` to the ignored `.env` file if you prefer persistent local development configuration.
+
+Physical devices must use an HTTPS API address trusted by the device. FaceRoll intentionally rejects plain LAN HTTP because recognition requests contain a Firebase token and temporary face photographs.
 
 ### Run the Mobile Recognition API
 
-In another terminal:
+In another terminal, create and activate the shared recognition environment:
 
 ```bash
-cd backend
-python -m pip install -r requirements.txt
-python app.py
+cd FaceRoll-System/recognition
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install -e '.[api,test]'
 ```
 
-The Flask service listens on `http://0.0.0.0:5001` by default. For a physical phone, update the `backendUrl` value in `app.json` to the development computer's LAN address:
+Configure Firebase Admin and start the API:
 
-```json
-"backendUrl": "http://192.168.1.100:5001"
+```bash
+export GOOGLE_APPLICATION_CREDENTIALS=/secure/path/firebase-service-account.json
+python -m faceroll_recognition.mobile_api
 ```
 
-The phone and computer must be on the same network, and the firewall must permit connections to port 5001.
+The API defaults to `http://127.0.0.1:5055`. It derives student identity from the verified Firebase token, requires a Firestore student profile, accepts exactly three enrollment images, and never persists raw photographs. See [`Documentation/Mobile-Recognition-API.md`](Documentation/Mobile-Recognition-API.md) for emulator configuration and the complete endpoint contract.
 
 ## Run the Instructor Dashboard
 
@@ -253,9 +259,10 @@ The current suite contains manual end-to-end tests because FaceRoll depends on c
 
 ### The mobile app cannot reach the recognition API
 
-- Use the computer's LAN IP instead of `localhost` for `backendUrl` in `app.json`.
-- Keep the phone and computer on the same network.
-- Confirm Flask is running and port 5001 is allowed through the firewall.
+- Confirm `EXPO_PUBLIC_RECOGNITION_API_URL` was set before Expo started.
+- Use `http://10.0.2.2:5055` from an Android Studio emulator.
+- Confirm the shared API's `/health` endpoint is available on port `5055`.
+- Use a device-trusted HTTPS endpoint for physical phones; plain LAN HTTP is blocked.
 
 ### The instructor live session cannot start
 

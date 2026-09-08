@@ -8,13 +8,7 @@ import {
   setDoc,
   getDoc,
 } from 'firebase/firestore';
-import Constants from 'expo-constants';
 import { db } from './firebase';
-
-const BACKEND_URL: string =
-  (Constants?.expoConfig?.extra as any)?.backendUrl ||
-  (Constants as any)?.manifest?.extra?.backendUrl ||
-  'http://127.0.0.1:5001';
 
 export interface AttendanceRecord {
   id: string;
@@ -34,12 +28,6 @@ export interface Session {
   startTime: string;
   gracePeriodMinutes: number;
   status: 'active' | 'closed';
-}
-
-export interface RecognitionResult {
-  success: boolean;
-  recognized: boolean;
-  confidence: number;
 }
 
 export interface SubmitAttendanceInput {
@@ -221,91 +209,6 @@ export async function submitAttendance(
   });
 
   return { success: true, id: attendanceDocId, duplicate: false };
-}
-
-export async function enrollFace(
-  uid: string,
-  imageBase64: string
-): Promise<{ success: boolean; message?: string }> {
-  try {
-    const res = await fetch(`${BACKEND_URL}/enroll`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ uid, image: imageBase64 }),
-    });
-
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      return {
-        success: false,
-        message: data?.message || `Enrollment failed (HTTP ${res.status}).`,
-      };
-    }
-    return {
-      success: Boolean(data?.success),
-      message: data?.message,
-    };
-  } catch (err: any) {
-    return {
-      success: false,
-      message:
-        err?.message ||
-        'Could not reach the recognition server. Make sure the backend is running.',
-    };
-  }
-}
-
-export async function recognizeFaceForCheckIn(
-  imageBase64: string,
-  sessionId?: string,
-  uid?: string
-): Promise<RecognitionResult & { uid?: string; message?: string }> {
-  try {
-    const res = await fetch(`${BACKEND_URL}/recognize`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        image: imageBase64,
-        sessionId: sessionId || '',
-        uid: uid || '',
-      }),
-    });
-
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      return {
-        success: false,
-        recognized: false,
-        confidence: 0,
-        message: data?.message || `Recognition failed (HTTP ${res.status}).`,
-      };
-    }
-
-    return {
-      success: Boolean(data?.success),
-      recognized: Boolean(data?.recognized),
-      confidence: Number(data?.confidence ?? 0),
-      uid: data?.uid || undefined,
-      message: data?.message,
-    };
-  } catch (err: any) {
-    return {
-      success: false,
-      recognized: false,
-      confidence: 0,
-      message:
-        err?.message ||
-        'Could not reach the recognition server. Make sure the backend is running.',
-    };
-  }
-}
-
-export async function recognizeFace(
-  imageBase64: string,
-  sessionId?: string,
-  uid?: string
-): Promise<RecognitionResult & { uid?: string; message?: string }> {
-  return recognizeFaceForCheckIn(imageBase64, sessionId, uid);
 }
 
 export function formatAttendanceDate(isoDate: string): string {

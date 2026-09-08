@@ -18,6 +18,8 @@ This directory contains the planning, requirements, design, architecture, and te
 - [Design Document 1](<Design/Design Document 1- FaceRoll.pdf>)
 - [Design Document 2](<Design/Design Document 2- FaceRoll- Cowboys.docx.pdf>)
 - [System Architecture](System-Architecture.md)
+- [Face Recognition Consolidation Roadmap](Face-Recognition-Roadmap.md)
+- [Mobile Recognition API](Mobile-Recognition-API.md)
 
 ## Testing
 

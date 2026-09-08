@@ -15,12 +15,16 @@ import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import Colors from '../constants/Colors';
 import {
-  recognizeFaceForCheckIn,
   submitAttendance,
   getActiveSessions,
   Session,
 } from '../services/attendance';
 import { getCurrentUser, getUserProfile, UserProfile } from '../services/auth';
+import {
+  discardTemporaryCameraFile,
+  recognizeFace,
+  RecognitionApiError,
+} from '../services/recognition';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -145,6 +149,7 @@ export default function AttendanceCheckInScreen() {
       return;
     }
 
+    let capturedImage: string | null = null;
     try {
       setCheckInState('capturing');
 
@@ -155,8 +160,11 @@ export default function AttendanceCheckInScreen() {
       });
 
       if (!photo?.base64) {
+        discardTemporaryCameraFile(photo?.uri);
         throw new Error('Failed to capture image.');
       }
+      capturedImage = photo.base64;
+      discardTemporaryCameraFile(photo.uri);
 
       setCheckInState('processing');
 
@@ -169,9 +177,9 @@ export default function AttendanceCheckInScreen() {
         return;
       }
 
-      const result = await recognizeFaceForCheckIn(photo.base64, sessionForCourse.sessionId);
+      const result = await recognizeFace(capturedImage);
 
-      if (!result.success || !result.recognized) {
+      if (!result.recognized || result.uid !== user.uid) {
         setCheckInState('not_recognized');
         return;
       }
@@ -206,8 +214,36 @@ export default function AttendanceCheckInScreen() {
         router.back();
       }, 2500);
     } catch (error: any) {
-      console.error('Check-in error:', error);
-      setCheckInState('error');
+      if (__DEV__) {
+        console.warn('Check-in error:', error?.code || error?.message || error);
+      }
+      if (error instanceof RecognitionApiError) {
+        if (error.code === 'not_enrolled') {
+          setCheckInState('error');
+          Alert.alert('Face Not Enrolled', error.message, [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Enroll Now', onPress: () => router.push('/face-enrollment') },
+          ]);
+        } else if (error.code === 'invalid_face_image') {
+          setCheckInState('not_recognized');
+          Alert.alert('Face Could Not Be Verified', error.message);
+        } else if (
+          error.code === 'authentication_required' ||
+          error.code === 'student_required' ||
+          error.code === 'identity_mismatch'
+        ) {
+          setCheckInState('error');
+          Alert.alert('Verification Blocked', error.message);
+        } else {
+          setCheckInState('error');
+          Alert.alert('Recognition Unavailable', error.message);
+        }
+      } else {
+        setCheckInState('error');
+        Alert.alert('Check-In Failed', error?.message || 'Please try again.');
+      }
+    } finally {
+      capturedImage = null;
     }
   };
 
