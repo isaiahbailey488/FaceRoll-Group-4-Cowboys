@@ -1,6 +1,7 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
+import { connectFirestoreEmulator, getFirestore } from 'firebase/firestore';
 import {
+  connectAuthEmulator,
   initializeAuth,
   // @ts-ignore
   getReactNativePersistence,
@@ -35,5 +36,42 @@ try {
 
 export const auth = _auth;
 export const db = getFirestore(app);
+
+type FaceRollGlobal = typeof globalThis & {
+  __faceRollFirebaseEmulatorsConnected?: boolean;
+};
+
+function parseEmulatorPort(value: string | undefined, fallback: number): number {
+  const parsed = Number(value || fallback);
+  return Number.isInteger(parsed) && parsed > 0 && parsed <= 65535 ? parsed : fallback;
+}
+
+function connectConfiguredEmulators(): void {
+  const host = String(process.env.EXPO_PUBLIC_FIREBASE_EMULATOR_HOST || '').trim();
+  if (!host) return;
+  if (!/^[a-zA-Z0-9.-]+$/.test(host)) {
+    throw new Error(
+      'EXPO_PUBLIC_FIREBASE_EMULATOR_HOST must be a hostname or IP address without http:// or a port.'
+    );
+  }
+
+  const sharedGlobal = globalThis as FaceRollGlobal;
+  if (sharedGlobal.__faceRollFirebaseEmulatorsConnected) return;
+
+  const authPort = parseEmulatorPort(
+    process.env.EXPO_PUBLIC_FIREBASE_AUTH_EMULATOR_PORT,
+    9099
+  );
+  const firestorePort = parseEmulatorPort(
+    process.env.EXPO_PUBLIC_FIRESTORE_EMULATOR_PORT,
+    8080
+  );
+
+  connectAuthEmulator(auth, `http://${host}:${authPort}`, { disableWarnings: true });
+  connectFirestoreEmulator(db, host, firestorePort);
+  sharedGlobal.__faceRollFirebaseEmulatorsConnected = true;
+}
+
+connectConfiguredEmulators();
 
 export default app;

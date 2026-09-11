@@ -199,7 +199,8 @@ export default function AttendanceCheckInScreen() {
         sessionId: sessionForCourse.sessionId,
         courseId: sessionForCourse.courseId,
         status: attendanceStatus,
-        method: 'face recognition',
+        method: 'Phone face verification',
+        source: 'phone_face_verification',
       });
 
       if (submitResult.duplicate) {

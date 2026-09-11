@@ -1,26 +1,89 @@
 import json
+import os
+import re
 import signal
 import subprocess
 import sys
 import threading
 import time
 from collections import deque
+from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 
 APP_DIR = Path(__file__).resolve().parent
+RECOGNITION_DIR = APP_DIR.parent
 SHARED_DIR = APP_DIR / "shared"
-DATABASE_DIR = APP_DIR / "database"
-EMBEDDINGS_DIR = APP_DIR / "embeddings"
+DEFAULT_ENROLLMENTS_DIR = Path.home() / ".local" / "share" / "faceroll" / "enrollments"
+DEFAULT_DEEPFACE_HOME = Path.home() / ".local" / "share" / "faceroll-deepface"
+ENROLLMENTS_DIR = Path(
+    os.getenv("FACEROLL_ENROLLMENT_DIR", str(DEFAULT_ENROLLMENTS_DIR))
+).expanduser()
+DEEPFACE_HOME = Path(
+    os.getenv("FACEROLL_DEEPFACE_HOME")
+    or os.getenv("DEEPFACE_HOME")
+    or str(DEFAULT_DEEPFACE_HOME)
+).expanduser()
 # The dashboard polls this jsonl file through /events to learn about matches.
 EVENT_LOG_PATH = SHARED_DIR / "recognition-events.jsonl"
-DOCKER_IMAGE = "faceroll-windows"
+DOCKER_IMAGE = "faceroll-recognition:0.1.0"
 CONTAINER_NAME = "faceroll-recognizer-windows"
-DEEPFACE_DIR = Path.home() / ".deepface"
 HOST = "127.0.0.1"
 PORT = 8765
+MAX_REQUEST_BYTES = 64_000
+MAX_ROSTER_UIDS = 5_000
+SAFE_FIREBASE_UID = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+
+
+@dataclass(frozen=True)
+class SessionConfiguration:
+    session_id: str | None = None
+    course_id: str | None = None
+    allowed_uids: frozenset[str] | None = None
+
+
+def _optional_identifier(value, label):
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"{label} must be a string.")
+    normalized = value.strip()
+    if not normalized:
+        return None
+    if len(normalized) > 200 or any(ord(character) < 32 for character in normalized):
+        raise ValueError(f"{label} is invalid.")
+    return normalized
+
+
+def parse_session_configuration(payload):
+    """Validate the dashboard context passed to a new recognition session."""
+
+    if payload is None:
+        payload = {}
+    if not isinstance(payload, dict):
+        raise ValueError("Session request must be a JSON object.")
+
+    allowed_uids = None
+    if "allowedUids" in payload:
+        raw_uids = payload["allowedUids"]
+        if not isinstance(raw_uids, list):
+            raise ValueError("allowedUids must be an array.")
+        if len(raw_uids) > MAX_ROSTER_UIDS:
+            raise ValueError("Course roster is too large.")
+        normalized_uids = set()
+        for uid in raw_uids:
+            if not isinstance(uid, str) or not SAFE_FIREBASE_UID.fullmatch(uid.strip()):
+                raise ValueError("Course roster contains an invalid Firebase UID.")
+            normalized_uids.add(uid.strip())
+        allowed_uids = frozenset(normalized_uids)
+
+    return SessionConfiguration(
+        session_id=_optional_identifier(payload.get("sessionId"), "sessionId"),
+        course_id=_optional_identifier(payload.get("courseId"), "courseId"),
+        allowed_uids=allowed_uids,
+    )
 
 
 class FaceRollBridgeServer(ThreadingHTTPServer):
@@ -35,6 +98,7 @@ class SessionManager:
         self.capture_process = None
         self.recognizer_process = None
         self.session_started_at = None
+        self.session_configuration = SessionConfiguration()
         self.log_lines = deque(maxlen=200)
 
     def _log(self, message):
@@ -51,10 +115,10 @@ class SessionManager:
         for line in process.stdout:
             self._log(f"{name}: {line.rstrip()}")
 
-    def _run_command(self, command):
+    def _run_command(self, command, *, cwd=APP_DIR):
         return subprocess.run(
             command,
-            cwd=str(APP_DIR),
+            cwd=str(cwd),
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -95,6 +159,14 @@ class SessionManager:
     def _is_running(self, process):
         return process is not None and process.poll() is None
 
+    def _wait_for_process_startup(self, process, name, timeout_seconds=2):
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() < deadline:
+            if process.poll() is not None:
+                recent_logs = "\n".join(self.log_lines)
+                raise RuntimeError(f"{name} exited during startup.\n{recent_logs}")
+            time.sleep(0.1)
+
     def _terminate_process(self, process, name):
         if not self._is_running(process):
             return
@@ -109,19 +181,38 @@ class SessionManager:
             process.wait(timeout=5)
 
     def _ensure_directories(self):
-        # These folders are mounted into Docker and shared with capture.py.
+        # The host writes enrollments; the recognizer receives a read-only mount.
         SHARED_DIR.mkdir(parents=True, exist_ok=True)
-        DATABASE_DIR.mkdir(parents=True, exist_ok=True)
-        EMBEDDINGS_DIR.mkdir(parents=True, exist_ok=True)
-        DEEPFACE_DIR.mkdir(parents=True, exist_ok=True)
+        ENROLLMENTS_DIR.mkdir(parents=True, exist_ok=True)
+        DEEPFACE_HOME.mkdir(parents=True, exist_ok=True)
+        if os.name == "posix":
+            ENROLLMENTS_DIR.chmod(0o700)
+            DEEPFACE_HOME.chmod(0o700)
 
     def _ensure_docker_image(self):
+        docker_info = self._run_command(["docker", "info"])
+        if docker_info.returncode != 0:
+            raise RuntimeError(
+                "Docker is unavailable. Start Docker Desktop or the Docker engine."
+            )
+
         inspect = self._run_command(["docker", "image", "inspect", DOCKER_IMAGE])
         if inspect.returncode == 0:
             return
 
-        self._log("Docker image not found locally. Building faceroll-windows image.")
-        build = self._run_command(["docker", "build", "-t", DOCKER_IMAGE, "."])
+        self._log("Recognition image not found locally. Building it now.")
+        build = self._run_command(
+            [
+                "docker",
+                "build",
+                "-f",
+                "windows/Dockerfile",
+                "-t",
+                DOCKER_IMAGE,
+                ".",
+            ],
+            cwd=RECOGNITION_DIR,
+        )
         if build.returncode != 0:
             raise RuntimeError(
                 build.stderr.strip() or build.stdout.strip() or "Docker build failed."
@@ -130,66 +221,91 @@ class SessionManager:
     def _remove_stale_container(self):
         self._run_command(["docker", "rm", "-f", CONTAINER_NAME])
 
-    def _docker_mount(self, host_path, container_path):
-        return f"{host_path.resolve()}:{container_path}"
+    def _docker_mount(self, host_path, container_path, *, read_only=False):
+        mount = f"{host_path.resolve()}:{container_path}"
+        return f"{mount}:ro" if read_only else mount
 
-    def start_session(self):
+    def build_recognizer_command(self, configuration):
+        command = [
+            "docker",
+            "run",
+            "--rm",
+            "-i",
+            "-e",
+            "PYTHONUNBUFFERED=1",
+            "-e",
+            "PYTHONIOENCODING=utf-8",
+            "-e",
+            "DEEPFACE_HOME=/model-cache",
+            "-e",
+            "FACEROLL_ENROLLMENT_DIR=/data/enrollments",
+            "-v",
+            self._docker_mount(SHARED_DIR, "/app/shared"),
+            "-v",
+            self._docker_mount(
+                ENROLLMENTS_DIR,
+                "/data/enrollments",
+                read_only=True,
+            ),
+            "-v",
+            self._docker_mount(DEEPFACE_HOME, "/model-cache"),
+        ]
+        if configuration.session_id:
+            command.extend(
+                ["-e", f"FACEROLL_SESSION_ID={configuration.session_id}"]
+            )
+        if configuration.course_id:
+            command.extend(["-e", f"FACEROLL_COURSE_ID={configuration.course_id}"])
+        if configuration.allowed_uids is not None:
+            command.extend(
+                [
+                    "-e",
+                    "FACEROLL_ALLOWED_UIDS="
+                    + ",".join(sorted(configuration.allowed_uids)),
+                ]
+            )
+        command.extend(["--name", CONTAINER_NAME, DOCKER_IMAGE])
+        return command
+
+    def start_session(self, configuration=None):
+        configuration = configuration or SessionConfiguration()
         with self._lock:
-            self._ensure_directories()
-            # A new live session should start with no unread recognition events.
-            EVENT_LOG_PATH.write_text("", encoding="utf-8")
-
             if self._is_running(self.capture_process) or self._is_running(self.recognizer_process):
                 self._log("Session start requested while processes are already running.")
                 return self.get_status()
 
+            self._ensure_directories()
+            # A new live session should start with no unread recognition events.
+            EVENT_LOG_PATH.write_text("", encoding="utf-8")
             self._remove_stale_container()
             self._ensure_docker_image()
 
-            recognizer_command = [
-                "docker",
-                "run",
-                "--rm",
-                "-i",
-                "-e",
-                "PYTHONUNBUFFERED=1",
-                "-e",
-                "PYTHONIOENCODING=utf-8",
-                "-v",
-                self._docker_mount(SHARED_DIR, "/app/shared"),
-                "-v",
-                self._docker_mount(EMBEDDINGS_DIR, "/app/embeddings"),
-                "-v",
-                self._docker_mount(DEEPFACE_DIR, "/root/.deepface"),
-                "--name",
-                CONTAINER_NAME,
-                DOCKER_IMAGE,
-            ]
+            recognizer_command = self.build_recognizer_command(configuration)
             # Capture runs on the host because Docker on Windows cannot access
             # the laptop webcam reliably. The recognizer runs in Docker.
             capture_command = [sys.executable, "-u", "capture.py"]
 
             self.recognizer_process = self._spawn_process("recognizer", recognizer_command, APP_DIR)
-            time.sleep(1)
-            if self.recognizer_process.poll() is not None:
-                self.recognizer_process = None
-                recent_logs = "\n".join(self.log_lines)
-                raise RuntimeError(
-                    "Recognizer container exited immediately.\n" + recent_logs
+            try:
+                self._wait_for_process_startup(
+                    self.recognizer_process,
+                    "Recognizer container",
                 )
+            except RuntimeError:
+                self.recognizer_process = None
+                raise
 
             self.capture_process = self._spawn_process("capture", capture_command, APP_DIR)
-            time.sleep(1)
-            if self.capture_process.poll() is not None:
+            try:
+                self._wait_for_process_startup(self.capture_process, "capture.py")
+            except RuntimeError:
                 self._terminate_process(self.recognizer_process, "recognizer")
                 self.capture_process = None
                 self.recognizer_process = None
-                recent_logs = "\n".join(self.log_lines)
-                raise RuntimeError(
-                    "capture.py exited immediately.\n" + recent_logs
-                )
+                raise
 
             self.session_started_at = time.time()
+            self.session_configuration = configuration
             self._log("Live session processes started")
             return self.get_status()
 
@@ -201,6 +317,7 @@ class SessionManager:
             self.capture_process = None
             self.recognizer_process = None
             self.session_started_at = None
+            self.session_configuration = SessionConfiguration()
 
             self._remove_stale_container()
 
@@ -239,6 +356,15 @@ class SessionManager:
             "bridgeHost": HOST,
             "bridgePort": PORT,
             "eventLogPath": str(EVENT_LOG_PATH),
+            "model": "Facenet512",
+            "sessionId": self.session_configuration.session_id,
+            "courseId": self.session_configuration.course_id,
+            "rosterFilterEnabled": self.session_configuration.allowed_uids is not None,
+            "rosterSize": (
+                len(self.session_configuration.allowed_uids)
+                if self.session_configuration.allowed_uids is not None
+                else None
+            ),
         }
 
 
@@ -267,6 +393,24 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.send_header("Access-Control-Allow-Private-Network", "true")
         self.end_headers()
+
+    def _read_json_body(self):
+        raw_length = self.headers.get("Content-Length", "0")
+        try:
+            content_length = int(raw_length)
+        except ValueError as error:
+            raise ValueError("Invalid Content-Length header.") from error
+        if content_length < 0 or content_length > MAX_REQUEST_BYTES:
+            raise ValueError("Bridge request body is too large.")
+        if content_length == 0:
+            return {}
+        try:
+            payload = json.loads(self.rfile.read(content_length).decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise ValueError("Bridge request body must be valid JSON.") from error
+        if not isinstance(payload, dict):
+            raise ValueError("Bridge request body must be a JSON object.")
+        return payload
 
     def do_GET(self):
         parsed = urlparse(self.path)
@@ -300,7 +444,8 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
 
         try:
             if parsed.path == "/start-session":
-                status = SESSION_MANAGER.start_session()
+                configuration = parse_session_configuration(self._read_json_body())
+                status = SESSION_MANAGER.start_session(configuration)
                 self._write_json(200, {"ok": True, "status": status})
                 return
 
@@ -308,6 +453,16 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
                 status = SESSION_MANAGER.stop_session()
                 self._write_json(200, {"ok": True, "status": status})
                 return
+        except ValueError as error:
+            self._write_json(
+                400,
+                {
+                    "ok": False,
+                    "error": str(error),
+                    "status": SESSION_MANAGER.get_status(),
+                },
+            )
+            return
         except Exception as error:
             self._write_json(
                 500,

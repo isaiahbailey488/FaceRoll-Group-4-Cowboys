@@ -163,6 +163,17 @@
     await db.collection(collectionName).doc(documentId).set(data, { merge: true });
   }
 
+  async function createDocumentIfAbsent(collectionName, documentId, data) {
+    const db = await waitForFirebase();
+    const documentRef = db.collection(collectionName).doc(documentId);
+    return db.runTransaction(async (transaction) => {
+      const existing = await transaction.get(documentRef);
+      if (existing.exists) return false;
+      transaction.set(documentRef, data);
+      return true;
+    });
+  }
+
   async function deleteDocument(collectionName, documentId) {
     const db = await waitForFirebase();
     await db.collection(collectionName).doc(documentId).delete();
@@ -228,6 +239,7 @@
     subscribeCollectionDocs,
     subscribeCollections,
     writeDocument,
+    createDocumentIfAbsent,
     deleteDocument,
     signInWithEmail,
     registerWithEmail,

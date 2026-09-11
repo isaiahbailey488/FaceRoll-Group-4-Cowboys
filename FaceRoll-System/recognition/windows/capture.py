@@ -3,6 +3,11 @@ import sys
 import time
 from pathlib import Path
 
+# The OpenCV wheels bundle the XCB Qt plugin but not the Wayland plugin. Linux
+# desktop sessions can still display the preview through XWayland.
+if sys.platform.startswith("linux") and os.getenv("DISPLAY"):
+    os.environ.setdefault("QT_QPA_PLATFORM", "xcb")
+
 try:
     import cv2
 except ModuleNotFoundError as error:

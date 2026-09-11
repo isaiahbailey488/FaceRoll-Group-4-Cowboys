@@ -43,6 +43,16 @@ class ClassroomWorkerEventTests(unittest.TestCase):
         self.assertNotEqual(event["identity"], event["identityLabel"])
         self.assertEqual(event["model"], "Facenet512")
 
+    def test_event_includes_bridge_session_context(self):
+        event = CLASSROOM_WORKER.build_recognition_event(
+            self.recognized_face(),
+            session_id="session-123",
+            course_id="course-456",
+        )
+
+        self.assertEqual(event["sessionId"], "session-123")
+        self.assertEqual(event["courseId"], "course-456")
+
     def test_nonmatch_cannot_produce_an_event(self):
         face = ClassroomFaceResult(
             face_index=1,

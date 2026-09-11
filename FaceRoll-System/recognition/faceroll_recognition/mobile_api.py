@@ -49,6 +49,27 @@ class AuthenticatedStudent:
     display_name: str | None = None
 
 
+def _firebase_project_id() -> str | None:
+    for variable in ("GCLOUD_PROJECT", "GOOGLE_CLOUD_PROJECT", "FIREBASE_PROJECT_ID"):
+        value = os.getenv(variable)
+        if value and value.strip():
+            return value.strip()
+    return None
+
+
+def _firebase_app_options() -> dict[str, str] | None:
+    """Use an explicit project in emulator mode without requiring cloud credentials."""
+
+    if not (os.getenv("FIREBASE_AUTH_EMULATOR_HOST") or os.getenv("FIRESTORE_EMULATOR_HOST")):
+        return None
+    project_id = _firebase_project_id()
+    if not project_id:
+        raise DependencyUnavailableError(
+            "A Firebase project ID is required when Firebase emulators are enabled."
+        )
+    return {"projectId": project_id}
+
+
 class StudentTokenVerifier(Protocol):
     """Boundary used by the API to authenticate and authorize a student."""
 
@@ -72,7 +93,11 @@ class FirebaseStudentTokenVerifier:
             try:
                 firebase_admin.get_app()
             except ValueError:
-                firebase_admin.initialize_app()
+                options = _firebase_app_options()
+                if options is None:
+                    firebase_admin.initialize_app()
+                else:
+                    firebase_admin.initialize_app(options=options)
         except Exception as error:
             raise DependencyUnavailableError(
                 "Firebase Admin could not be initialized."
@@ -135,11 +160,7 @@ def _firestore_client(admin_firestore: Any) -> Any:
     if not os.getenv("FIRESTORE_EMULATOR_HOST"):
         return admin_firestore.client()
 
-    project_id = (
-        os.getenv("GCLOUD_PROJECT")
-        or os.getenv("GOOGLE_CLOUD_PROJECT")
-        or os.getenv("FIREBASE_PROJECT_ID")
-    )
+    project_id = _firebase_project_id()
     if not project_id:
         raise DependencyUnavailableError(
             "A Firebase project ID is required with the Firestore emulator."
@@ -493,7 +514,12 @@ def main() -> None:
 
     host = os.getenv("FACEROLL_API_HOST", "127.0.0.1")
     port = int(os.getenv("FACEROLL_API_PORT", "5055"))
-    create_mobile_app().run(host=host, port=port, debug=False)
+    tls_cert = os.getenv("FACEROLL_TLS_CERT")
+    tls_key = os.getenv("FACEROLL_TLS_KEY")
+    if bool(tls_cert) != bool(tls_key):
+        raise RuntimeError("FACEROLL_TLS_CERT and FACEROLL_TLS_KEY must be configured together.")
+    ssl_context = (tls_cert, tls_key) if tls_cert and tls_key else None
+    create_mobile_app().run(host=host, port=port, debug=False, ssl_context=ssl_context)
 
 
 if __name__ == "__main__":

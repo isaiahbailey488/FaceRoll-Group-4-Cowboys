@@ -45,45 +45,85 @@ service cloud.firestore {
         );
     }
 
+    function hasNoBiometricPayload() {
+      return !request.resource.data.keys().hasAny([
+          'image',
+          'images',
+          'photo',
+          'photos',
+          'base64',
+          'embedding',
+          'embeddings',
+          'vector',
+          'vectors'
+        ]);
+    }
+
+    function isValidAttendanceRecord(recordId) {
+      return request.resource.data.uid is string
+        && request.resource.data.sessionId is string
+        && recordId == request.resource.data.sessionId + '_' + request.resource.data.uid
+        && hasNoBiometricPayload();
+    }
+
     match /users/{uid} {
       allow read: if isOwner(uid) || isInstructorOrAdmin();
-      allow create: if isOwner(uid);
-      allow update: if isInstructorOrAdmin()
-        || (isOwner(uid) && request.resource.data.role == resource.data.role);
+      allow create: if isOwner(uid) && hasNoBiometricPayload();
+      allow update: if hasNoBiometricPayload()
+        && (
+          isInstructorOrAdmin()
+          || (isOwner(uid) && request.resource.data.role == resource.data.role)
+        );
       allow delete: if isInstructorOrAdmin();
     }
 
     match /courses/{courseId} {
       allow read: if isSignedIn();
-      allow create, update: if isInstructorOrAdmin() && hasValidCourseLocation();
+      allow create, update: if isInstructorOrAdmin()
+        && hasValidCourseLocation()
+        && hasNoBiometricPayload();
       allow delete: if isInstructorOrAdmin();
     }
 
     match /sessions/{sessionId} {
       allow read: if isSignedIn();
-      allow write: if isInstructorOrAdmin();
+      allow create, update: if isInstructorOrAdmin() && hasNoBiometricPayload();
+      allow delete: if isInstructorOrAdmin();
     }
 
     match /attendance/{recordId} {
-      allow read: if isSignedIn()
-        && (resource.data.uid == request.auth.uid || isInstructorOrAdmin());
-      allow create: if isInstructorOrAdmin()
-        || (isSignedIn() && request.resource.data.uid == request.auth.uid);
-      allow update, delete: if isInstructorOrAdmin();
+      // Reading a missing deterministic record is required by the create-only
+      // attendance transaction. Existing records remain owner/instructor only.
+      allow get: if isSignedIn()
+        && (resource == null || resource.data.uid == request.auth.uid || isInstructorOrAdmin());
+      allow list: if isSignedIn()
+        && (isInstructorOrAdmin() || resource.data.uid == request.auth.uid);
+      allow create: if isValidAttendanceRecord(recordId)
+        && (
+          isInstructorOrAdmin()
+          || (isSignedIn() && request.resource.data.uid == request.auth.uid)
+        );
+      allow update: if isInstructorOrAdmin() && hasNoBiometricPayload();
+      allow delete: if isInstructorOrAdmin();
     }
 
     match /facialEmbeddings/{uid} {
-      allow read: if isOwner(uid) || isInstructorOrAdmin();
-      allow write: if isOwner(uid);
+      // Face embeddings belong only in private instructor-device storage.
+      allow read, write: if false;
     }
 
     match /enrollments/{enrollmentId} {
       allow read: if isSignedIn();
-      allow write: if isInstructorOrAdmin();
+      allow create, update: if isInstructorOrAdmin() && hasNoBiometricPayload();
+      allow delete: if isInstructorOrAdmin();
     }
 
     match /instructor_settings/{uid} {
-      allow read, write: if isOwner(uid) && isInstructorOrAdmin();
+      allow read: if isOwner(uid) && isInstructorOrAdmin();
+      allow create, update: if isOwner(uid)
+        && isInstructorOrAdmin()
+        && hasNoBiometricPayload();
+      allow delete: if isOwner(uid) && isInstructorOrAdmin();
     }
   }
 }

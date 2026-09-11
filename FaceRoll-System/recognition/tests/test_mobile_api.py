@@ -15,11 +15,27 @@ from faceroll_recognition.mobile_api import (
     AuthenticationError,
     FirebaseStudentTokenVerifier,
     StudentAuthorizationError,
+    _firebase_app_options,
     create_mobile_app,
 )
 
 
 AUTHORIZATION = {"Authorization": "Bearer valid-token"}
+
+
+class FirebaseEmulatorConfigurationTests(unittest.TestCase):
+    def test_emulator_mode_uses_project_id_without_a_service_account_path(self):
+        environment = {
+            "FIREBASE_AUTH_EMULATOR_HOST": "127.0.0.1:9099",
+            "FIRESTORE_EMULATOR_HOST": "127.0.0.1:8080",
+            "GCLOUD_PROJECT": "rollcall-2669b",
+        }
+        with patch.dict("os.environ", environment, clear=True):
+            self.assertEqual(_firebase_app_options(), {"projectId": "rollcall-2669b"})
+
+    def test_production_mode_keeps_application_default_credentials(self):
+        with patch.dict("os.environ", {}, clear=True):
+            self.assertIsNone(_firebase_app_options())
 
 
 def unit_vector(index):

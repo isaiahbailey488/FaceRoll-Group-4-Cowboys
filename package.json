@@ -4,6 +4,9 @@
   "version": "1.0.0",
   "scripts": {
     "start": "expo start",
+    "demo": "node scripts/demo.js",
+    "demo:check": "node scripts/demo.js --check",
+    "test:demo": "node --test scripts/demo.test.js",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web"

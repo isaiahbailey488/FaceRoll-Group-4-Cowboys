@@ -5,8 +5,7 @@ import {
   query,
   where,
   limit as limitDocs,
-  setDoc,
-  getDoc,
+  runTransaction,
 } from 'firebase/firestore';
 import { db } from './firebase';
 
@@ -35,7 +34,20 @@ export interface SubmitAttendanceInput {
   sessionId: string;
   courseId?: string;
   method?: string;
+  source?: 'phone_face_verification' | 'classroom_camera';
   status?: 'present' | 'late' | 'absent';
+}
+
+export function buildAttendanceDocumentId(sessionId: string, uid: string): string {
+  const normalizedSessionId = String(sessionId || '').trim();
+  const normalizedUid = String(uid || '').trim();
+  if (!normalizedSessionId || !normalizedUid) {
+    throw new Error('Attendance requires a session ID and Firebase UID.');
+  }
+  if (normalizedSessionId.includes('/') || normalizedUid.includes('/')) {
+    throw new Error('Attendance identity contains an invalid document path.');
+  }
+  return `${normalizedSessionId}_${normalizedUid}`;
 }
 
 function toIsoString(value: any): string {
@@ -181,6 +193,7 @@ export async function submitAttendance(
           courseId: courseId || '',
           status,
           method,
+          source: 'phone_face_verification' as const,
         }
       : {
           uid: uidOrInput.uid,
@@ -188,27 +201,31 @@ export async function submitAttendance(
           courseId: uidOrInput.courseId || '',
           status: uidOrInput.status || 'present',
           method: uidOrInput.method || 'face recognition',
+          source: uidOrInput.source || ('phone_face_verification' as const),
         };
 
-  const attendanceDocId = `${payload.uid}_${payload.sessionId}_${payload.courseId || 'no-course'}`;
+  const attendanceDocId = buildAttendanceDocumentId(payload.sessionId, payload.uid);
   const attendanceRef = doc(db, 'attendance', attendanceDocId);
-  const existing = await getDoc(attendanceRef);
+  const created = await runTransaction(db, async (transaction) => {
+    const existing = await transaction.get(attendanceRef);
+    if (existing.exists()) return false;
 
-  if (existing.exists()) {
-    return { success: true, id: attendanceDocId, duplicate: true };
-  }
-
-  await setDoc(attendanceRef, {
-    id: attendanceDocId,
-    uid: payload.uid,
-    sessionId: payload.sessionId,
-    courseId: payload.courseId,
-    status: payload.status,
-    method: payload.method,
-    time: nowIso,
+    transaction.set(attendanceRef, {
+      id: attendanceDocId,
+      uid: payload.uid,
+      userId: payload.uid,
+      sessionId: payload.sessionId,
+      courseId: payload.courseId,
+      status: payload.status,
+      method: payload.method,
+      source: payload.source,
+      time: nowIso,
+      createdAt: nowIso,
+    });
+    return true;
   });
 
-  return { success: true, id: attendanceDocId, duplicate: false };
+  return { success: true, id: attendanceDocId, duplicate: !created };
 }
 
 export function formatAttendanceDate(isoDate: string): string {

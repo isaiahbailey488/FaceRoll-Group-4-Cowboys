@@ -6,6 +6,11 @@
 - Designed Database Structure 
 - Updated Documentation
 - Revised SRS & Project plan
+- Combined the entire recogntion system on FaceNet512
+- Made sure raw enrollment photographs are not permanently stored
+- Add sequrity measures to mobile app requests
+- removed duplicated recogntion model from instructor side
+
 
 ## Austin Woodruff
 

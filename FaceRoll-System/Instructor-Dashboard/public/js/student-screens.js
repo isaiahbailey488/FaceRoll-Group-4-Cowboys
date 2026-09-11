@@ -657,6 +657,26 @@
       }
     }
 
+    async function loadCourseRosterUids(courseId) {
+      // The enrollments collection is optional during migration. A null result
+      // means no roster data exists yet; an empty array means a roster exists
+      // but the selected course currently has no authorized students.
+      const enrollments = await firebaseApi.readCollectionDocs('enrollments');
+      if (!enrollments.length) return null;
+
+      const uids = new Set();
+      enrollments.forEach(function (entry) {
+        const entryCourseId = String(getFirstDefined(entry, ['courseId', 'course_id']) || '');
+        const status = String(getFirstDefined(entry, ['status']) || 'active').toLowerCase();
+        if (entryCourseId !== String(courseId) || ['dropped', 'inactive', 'removed'].includes(status)) {
+          return;
+        }
+        const uid = String(getFirstDefined(entry, ['uid', 'userId', 'studentUid']) || '').trim();
+        if (uid) uids.add(uid);
+      });
+      return Array.from(uids);
+    }
+
     async function fetchRows() {
       if (!firebaseApi || !activeSessionDocId) return;
       try {
@@ -734,27 +754,28 @@
       // Convert one bridge recognition event into one Firestore attendance record.
       if (!firebaseApi || !activeSessionDocId || !activeCourseId || !event) return false;
       if (event.eventType && event.eventType !== 'match') return false;
+      const eventSessionId = String(getFirstDefined(event, ['sessionId']) || '');
+      const eventCourseId = String(getFirstDefined(event, ['courseId']) || '');
+      if (eventSessionId && eventSessionId !== String(activeSessionDocId)) return false;
+      if (eventCourseId && eventCourseId !== String(activeCourseId)) return false;
 
       const eventKey = String(getFirstDefined(event, ['cursor', 'timestamp', 'identity']) || '');
       if (eventKey && writtenBridgeEvents.has(eventKey)) return false;
 
       const users = await firebaseApi.readCollectionDocs('users');
       const userLookup = buildUserLookup(users);
-      const candidates = getIdentityCandidates(event);
-      let user = null;
-      for (const candidate of candidates) {
-        if (userLookup.has(candidate)) {
-          user = userLookup.get(candidate);
-          break;
-        }
+      const authoritativeUid = String(getFirstDefined(event, ['uid']) || '').trim();
+      if (!authoritativeUid) return false;
+      const user = userLookup.get(normalizeLookupKey(authoritativeUid)) || null;
+      if (!user) {
+        console.warn('Ignoring recognition event for an unknown Firebase UID.');
+        return false;
       }
 
       const recognitionLabel = getRecognitionLabel(event);
-      const uid = user
-        ? String(getFirstDefined(user, ['uid', 'userId', 'studentId']) || user.id || '')
-        : getRecognitionUid(event);
+      const uid = authoritativeUid;
       if (!uid) return false;
-      const studentName = user ? getUserDisplayName(user) : formatRecognitionName(recognitionLabel);
+      const studentName = getUserDisplayName(user);
 
       const eventTime = toDate(getFirstDefined(event, ['timestamp', 'time', 'createdAt'])) || new Date();
       const sessionStart = sessionStartedAt || Date.now();
@@ -775,7 +796,8 @@
         status: isLate ? 'late' : 'present',
         time: eventTime.toISOString(),
         createdAt: eventTime.toISOString(),
-        source: 'face_recognition',
+        source: 'classroom_camera',
+        method: 'Classroom camera recognition',
         matchedUser: Boolean(user),
         recognitionIdentity: String(getFirstDefined(event, ['identity']) || ''),
         recognitionLabel: recognitionLabel,
@@ -785,10 +807,14 @@
       if (confidence !== undefined) attendanceDoc.recognitionConfidence = confidence;
       if (distance !== undefined) attendanceDoc.recognitionDistance = distance;
 
-      await firebaseApi.writeDocument('attendance', attendanceId, attendanceDoc);
+      const created = await firebaseApi.createDocumentIfAbsent(
+        'attendance',
+        attendanceId,
+        attendanceDoc
+      );
 
       if (eventKey) writtenBridgeEvents.add(eventKey);
-      return true;
+      return created;
     }
 
     async function pollBridgeEvents() {
@@ -840,12 +866,19 @@
         const now = new Date();
         const sid = 'session_' + now.getTime();
         const grace = await readGrace();
+        const allowedUids = await loadCourseRosterUids(selectedId);
         pendingSessionDocId = sid;
         await firebaseApi.writeDocument('sessions', sid, {
           id: sid, sessionId: sid, courseId: selectedId,
           startTime: now.toISOString(), gracePeriodMinutes: grace, status: 'active',
         });
-        await requestBridge('/start-session', { method: 'POST' });
+        const bridgeSession = { sessionId: sid, courseId: selectedId };
+        if (allowedUids !== null) bridgeSession.allowedUids = allowedUids;
+        await requestBridge('/start-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(bridgeSession),
+        });
         sessionStartedAt = now.getTime();
         activeSessionDocId = sid;
         activeCourseId = selectedId;

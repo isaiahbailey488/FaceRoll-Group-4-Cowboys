@@ -43,6 +43,14 @@ def configured_allowed_uids() -> frozenset[str] | None:
     return frozenset(uid.strip() for uid in raw.split(",") if uid.strip())
 
 
+def configured_session_context() -> tuple[str | None, str | None]:
+    """Return optional bridge-supplied session and course identifiers."""
+
+    session_id = os.getenv("FACEROLL_SESSION_ID", "").strip() or None
+    course_id = os.getenv("FACEROLL_COURSE_ID", "").strip() or None
+    return session_id, course_id
+
+
 def append_recognition_event(payload: dict[str, Any]) -> None:
     """Append one non-biometric match event for the dashboard bridge."""
 
@@ -56,6 +64,8 @@ def build_recognition_event(
     face: ClassroomFaceResult,
     *,
     timestamp: str | None = None,
+    session_id: str | None = None,
+    course_id: str | None = None,
 ) -> dict[str, Any]:
     """Build a dashboard event whose authoritative identity is Firebase UID."""
 
@@ -79,6 +89,10 @@ def build_recognition_event(
     }
     if face.student_id:
         payload["studentId"] = face.student_id
+    if session_id:
+        payload["sessionId"] = session_id
+    if course_id:
+        payload["courseId"] = course_id
     return payload
 
 
@@ -87,6 +101,8 @@ def process_classroom_image(
     cooldown: RecognitionCooldown,
     *,
     image_path: Path = PROCESSING_IMAGE_PATH,
+    session_id: str | None = None,
+    course_id: str | None = None,
 ) -> int:
     """Process all usable faces in one frame and return emitted event count."""
 
@@ -127,7 +143,13 @@ def process_classroom_image(
             )
             continue
 
-        append_recognition_event(build_recognition_event(face))
+        append_recognition_event(
+            build_recognition_event(
+                face,
+                session_id=session_id,
+                course_id=course_id,
+            )
+        )
         emitted += 1
         print(
             f"MATCH: uid={result.uid} face={face.face_index} "
@@ -154,6 +176,7 @@ def claim_pending_image() -> bool:
 def main() -> None:
     enrollment_directory = configured_enrollment_directory()
     allowed_uids = configured_allowed_uids()
+    session_id, course_id = configured_session_context()
     recognizer = ClassroomRecognizer(
         EnrollmentReader(enrollment_directory),
         allowed_uids=allowed_uids,
@@ -168,6 +191,12 @@ def main() -> None:
     )
     if allowed_uids is not None:
         print(f"Course roster filter enabled: {len(allowed_uids)} UIDs", flush=True)
+    if session_id or course_id:
+        print(
+            f"Session context: session={session_id or 'none'} "
+            f"course={course_id or 'none'}",
+            flush=True,
+        )
     print("Waiting for classroom image...", flush=True)
 
     try:
@@ -175,7 +204,12 @@ def main() -> None:
             if claim_pending_image():
                 print("Image detected and claimed.", flush=True)
                 try:
-                    process_classroom_image(recognizer, cooldown)
+                    process_classroom_image(
+                        recognizer,
+                        cooldown,
+                        session_id=session_id,
+                        course_id=course_id,
+                    )
                 except RecognitionCoreError as error:
                     print(f"IGNORED FRAME: {error}", flush=True)
                 except (OSError, ValueError) as error:
