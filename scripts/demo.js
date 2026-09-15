@@ -92,8 +92,31 @@ function executable(name) {
   return process.platform === 'win32' ? `${name}.cmd` : name;
 }
 
+function resolveCommand(command, args, environment = process.env) {
+  // Windows npm shims cannot be spawned directly. Run their JavaScript entry
+  // points with Node so paths and arguments never pass through a shell.
+  const entryPoints = {
+    'firebase.cmd': ['firebase-tools', 'lib', 'bin', 'firebase.js'],
+    'npx.cmd': ['npm', 'bin', 'npx-cli.js'],
+  };
+  const entryPoint = entryPoints[command];
+  if (process.platform !== 'win32' || !entryPoint) return { command, args };
+  const pathKey = Object.keys(environment).find((key) => key.toLowerCase() === 'path');
+  const directories = [
+    REPOSITORY_ROOT,
+    path.dirname(process.execPath),
+    ...(environment[pathKey] || '').split(path.delimiter),
+  ];
+  for (const directory of directories.filter(Boolean)) {
+    const entry = path.join(directory.replace(/^"|"$/g, ''), 'node_modules', ...entryPoint);
+    if (fs.existsSync(entry)) return { command: process.execPath, args: [entry, ...args] };
+  }
+  throw new Error(`Cannot find ${command}. Install ${entryPoint[0]} and reopen PowerShell.`);
+}
+
 function commandResult(command, args, options = {}) {
-  return spawnSync(command, args, {
+  const invocation = resolveCommand(command, args, options.env);
+  return spawnSync(invocation.command, invocation.args, {
     cwd: REPOSITORY_ROOT,
     encoding: 'utf8',
     timeout: 15000,
@@ -185,6 +208,22 @@ function readJson(url) {
   });
 }
 
+async function waitForEmulators(url, timeoutMs = 90000, pollMs = 500) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const status = await readJson(url);
+      if (['hosting', 'auth', 'firestore', 'ui'].every((name) =>
+        Number.isInteger(status[name]?.port) && status[name].port > 0 && status[name].port <= 65535
+      )) return status;
+    } catch {
+      // The hub can be reachable before it has registered every emulator.
+    }
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+  }
+  throw new Error('Timed out waiting for Firebase Hosting, Auth, Firestore, and UI to register.');
+}
+
 async function validateConfiguration(config, checkPorts) {
   if (!config.lanAddress) {
     throw new Error(
@@ -200,14 +239,15 @@ async function validateConfiguration(config, checkPorts) {
     );
   }
 
-  assertCommand(executable('firebase'), ['--version'], 'Firebase CLI');
+  assertCommand(executable('firebase'), ['--version'], 'Firebase CLI', { timeout: 60000 });
   assertCommand(executable('npx'), ['expo', '--version'], 'Expo CLI');
   assertCommand('docker', ['info'], 'Docker');
   assertCommand(
     config.python,
-    ['-c', 'import cv2, deepface, firebase_admin, flask, faceroll_recognition'],
+    ['-c', 'import cv2, firebase_admin, flask, faceroll_recognition; from deepface import DeepFace'],
     'FaceRoll Python environment',
-    { cwd: path.join(REPOSITORY_ROOT, 'FaceRoll-System', 'recognition') }
+    // TensorFlow's first import on a fresh Windows installation can take minutes.
+    { cwd: path.join(REPOSITORY_ROOT, 'FaceRoll-System', 'recognition'), timeout: 300000 }
   );
 
   if (checkPorts) {
@@ -250,7 +290,8 @@ function createDemoEnvironment(config) {
 
 function startChild(children, name, command, args, options) {
   console.log(`\nStarting ${name}...`);
-  const child = spawn(command, args, {
+  const invocation = resolveCommand(command, args, options?.env);
+  const child = spawn(invocation.command, invocation.args, {
     stdio: 'inherit',
     detached: process.platform !== 'win32',
     ...options,
@@ -364,9 +405,9 @@ async function runDemo() {
       cwd: dashboardDirectory,
       env: environment,
     });
-    await waitForUrl('http://127.0.0.1:4400/emulators', 90000);
-    const emulatorStatus = await readJson('http://127.0.0.1:4400/emulators');
-    const hostingPort = Number(emulatorStatus?.hosting?.port || 5001);
+    const emulatorStatus = await waitForEmulators('http://127.0.0.1:4400/emulators');
+    const hostingPort = emulatorStatus.hosting.port;
+    await waitForUrl(`http://127.0.0.1:${hostingPort}`);
 
     startChild(
       children,
@@ -388,7 +429,7 @@ async function runDemo() {
 
     console.log('\nFaceRoll Demo Ready');
     console.log(`Dashboard:        http://127.0.0.1:${hostingPort}`);
-    console.log('Firebase UI:      http://127.0.0.1:4000');
+    console.log(`Firebase UI:      http://127.0.0.1:${emulatorStatus.ui.port}`);
     console.log(`Recognition API:  https://${config.lanAddress}:5055`);
     console.log('Bridge:           http://127.0.0.1:8765');
     console.log('Firebase mode:    local emulators only');
@@ -423,4 +464,6 @@ module.exports = {
   isPrivateLanAddress,
   loadDemoConfiguration,
   parseEnvironmentFile,
+  resolveCommand,
+  waitForEmulators,
 };

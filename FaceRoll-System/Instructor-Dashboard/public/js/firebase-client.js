@@ -27,6 +27,22 @@
       const startedAt = Date.now();
 
       function checkReady() {
+        // Fresh machines may have no Hosting CLI credentials or cached web
+        // configuration. This placeholder key is only used with local emulators.
+        if (isLocalDashboard() && global.firebase &&
+            Array.isArray(global.firebase.apps) && global.firebase.apps.length === 0 &&
+            typeof global.firebase.initializeApp === 'function') {
+          try {
+            global.firebase.initializeApp({
+              projectId: 'rollcall-2669b',
+              apiKey: 'demo-faceroll-local-only',
+              authDomain: 'localhost',
+            });
+          } catch (error) {
+            reject(error);
+            return;
+          }
+        }
         const firebaseReady =
           global.firebase &&
           typeof global.firebase.app === 'function' &&
@@ -34,8 +50,12 @@
           global.firebase.apps.length > 0;
 
         if (firebaseReady) {
-          configureLocalEmulators(global.firebase);
-          resolve(global.firebase);
+          try {
+            configureLocalEmulators(global.firebase);
+            resolve(global.firebase);
+          } catch (error) {
+            reject(error);
+          }
           return;
         }
 
