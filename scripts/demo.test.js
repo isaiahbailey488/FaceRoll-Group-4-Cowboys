@@ -8,6 +8,9 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const http = require('node:http');
 const {
+  selectNetworkMode,
+  tailscaleConnection,
+  configureTailscale,
   createDemoEnvironment,
   detectLanAddress,
   isPrivateLanAddress,
@@ -15,6 +18,32 @@ const {
   resolveCommand,
   waitForEmulators,
 } = require('./demo.js');
+
+test('network prompt defaults local, accepts Tailscale, and flags bypass prompting', async () => {
+  assert.equal(await selectNetworkMode([], true, async () => ''), 'local');
+  assert.equal(await selectNetworkMode([], true, async () => '2'), 'tailscale');
+  const noPrompt = () => { throw new Error('Unexpected prompt'); };
+  assert.equal(await selectNetworkMode(['--tailscale'], false, noPrompt), 'tailscale');
+  assert.equal(await selectNetworkMode(['--check'], true, noPrompt), 'local');
+  assert.equal(await selectNetworkMode([], false, noPrompt), 'local');
+  await assert.rejects(selectNetworkMode(['--local', '--tailscale'], true, noPrompt), /either/);
+});
+
+const tailStatus = { BackendState: 'Running', TailscaleIPs: ['100.100.1.2'], Self: { DNSName: 'demo.tail123.ts.net.' } };
+test('Tailscale uses detected addresses and rejects disconnected clients or existing Serve config', () => {
+  assert.throws(() => tailscaleConnection({ BackendState: 'Stopped' }), /Connect/);
+  assert.throws(() => tailscaleConnection({ ...tailStatus, Self: {} }), /MagicDNS/);
+  const runner = (command, args) => ({ status: 0, stdout: JSON.stringify(args[0] === 'status' ? tailStatus : {}) });
+  const config = configureTailscale({ lanAddress: '192.168.1.5' }, runner);
+  const env = createDemoEnvironment(config);
+  assert.equal(env.EXPO_PUBLIC_RECOGNITION_API_URL, 'https://demo.tail123.ts.net');
+  assert.equal(env.EXPO_PUBLIC_FIREBASE_EMULATOR_HOST, '100.100.1.2');
+  assert.equal(env.REACT_NATIVE_PACKAGER_HOSTNAME, '100.100.1.2');
+  assert.equal(env.FACEROLL_API_HOST, '127.0.0.1');
+  assert.equal(env.FIRESTORE_EMULATOR_HOST, '127.0.0.1:8080');
+  assert.throws(() => configureTailscale({}, (command, args) => ({ status: 0,
+    stdout: JSON.stringify(args[0] === 'status' ? tailStatus : { TCP: { 443: {} } }) })), /not be overwritten/);
+});
 
 test('waits for Hosting to register and reports its reassigned port', async function () {
   let requests = 0;

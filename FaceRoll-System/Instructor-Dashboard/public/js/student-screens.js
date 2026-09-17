@@ -957,8 +957,16 @@
     const totSessEl = document.getElementById('i8cefo');
     const totStuEl = document.getElementById('injzav');
     const exportBtn = document.getElementById('iaq1jh-2');
+    const exportStatus = document.getElementById('reportsExportStatus');
+
+    function resetExport(message) {
+      if (exportBtn) { exportBtn.disabled = true; exportBtn.onclick = null; }
+      if (exportStatus) exportStatus.textContent = message;
+    }
+    resetExport('Loading attendance data...');
 
     function renderEmpty(msg) {
+      resetExport(msg || 'No attendance records match the selected filters.');
       tbody.innerHTML =
         '<tr><td colspan="6" style="color:#0f172a;font-weight:400;">' +
         (msg || 'No attendance records match the selected filters.') + '</td></tr>';
@@ -1014,10 +1022,15 @@
     populateCourseDropdown(courseFilter, courseOptions, 'All Courses');
 
     function renderRows() {
+      resetExport('Updating report...');
       const courseSel = String((courseFilter && courseFilter.value) || '').trim();
-      const fromVal = fromDateInput && fromDateInput.value ? new Date(fromDateInput.value) : null;
-      const toVal = toDateInput && toDateInput.value ? new Date(toDateInput.value) : null;
+      const fromVal = fromDateInput && fromDateInput.value ? new Date(fromDateInput.value + 'T00:00:00') : null;
+      const toVal = toDateInput && toDateInput.value ? new Date(toDateInput.value + 'T23:59:59.999') : null;
       const statusSel = String((statusFilter && statusFilter.value) || '').trim().toLowerCase();
+      if (fromVal && toVal && fromVal > toVal) {
+        renderEmpty('From Date must be on or before To Date.');
+        return;
+      }
 
       // Filter attendance
       const filtered = attendance.filter(function (a) {
@@ -1029,6 +1042,7 @@
 
         if (courseSel && courseName !== courseSel) return false;
         if (statusSel && normStatus.toLowerCase() !== statusSel) return false;
+        if ((fromVal || toVal) && !recordDate) return false;
         if (fromVal && recordDate && recordDate < fromVal) return false;
         if (toVal) {
           const toEnd = new Date(toVal);
@@ -1041,7 +1055,7 @@
       // Group by student+course
       const groupMap = new Map();
       filtered.forEach(function (a) {
-        const uid = String(getFirstDefined(a, ['uid', 'userId']) || '');
+        const uid = String(getFirstDefined(a, ['uid', 'userId', 'studentId']) || '');
         const sid = String(getFirstDefined(a, ['sessionId']) || '');
         const sessionInfo = sessionMap.get(sid) || { courseId: String(getFirstDefined(a, ['courseId']) || '') };
         const courseName = courseMap.get(sessionInfo.courseId) || 'Unknown Course';
@@ -1049,10 +1063,12 @@
         const fallbackName = getFirstDefined(a, ['studentName', 'displayName', 'recognitionLabel']);
         const recognitionName = formatRecognitionName(stripEnrollmentPhotoNumber(fallbackName));
         const studentName = recognitionName || (user ? getUserDisplayName(user) : 'Recognized Student');
-        const key = getCanonicalStudentKey(studentName, uid) + '||' + courseName;
+        const studentId = String(getFirstDefined(user, ['studentId']) || getFirstDefined(a, ['studentId']) || uid);
+        const key = (uid || studentId || getCanonicalStudentKey(studentName, uid)) + '||' + sessionInfo.courseId;
         if (!groupMap.has(key)) {
           groupMap.set(key, {
             studentName: studentName,
+            studentId: studentId,
             course: courseName,
             attended: 0,
             missed: 0,
@@ -1068,7 +1084,9 @@
         else if (ns === 'Absent') g.missed += 1;
       });
 
-      const rows = Array.from(groupMap.values());
+      const rows = Array.from(groupMap.values()).sort(function (a, b) {
+        return a.course.localeCompare(b.course) || a.studentName.localeCompare(b.studentName);
+      });
 
       // Summary cards
       const totalSessionsInFilter = new Set(filtered.map(function (a) {
@@ -1086,6 +1104,22 @@
 
       if (!rows.length) { renderEmpty(); return; }
 
+      // Use local calendar dates, matching the report's date filters.
+      const reportDates = filtered.map(function (record) {
+        const session = sessionMap.get(String(record.sessionId || ''));
+        const date = (session && session.date) || toDate(getFirstDefined(record, ['time', 'createdAt']));
+        if (!date || Number.isNaN(date.getTime())) return '';
+        return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
+      }).filter(Boolean).sort();
+      const reportCourses = Array.from(new Set(rows.map(function (row) { return row.course; })));
+      const filenameCourse = (courseSel || (reportCourses.length === 1 ? reportCourses[0] : 'All Courses'))
+        .replace(/[<>:"/\\|?*\x00-\x1f]/g, '-')
+        .replace(/\s+/g, '-').replace(/^[.\s-]+|[.\s-]+$/g, '').slice(0, 100) || 'All-Courses';
+      const filenameFrom = (fromDateInput && fromDateInput.value) || reportDates[0] || 'unknown-start';
+      const filenameTo = (toDateInput && toDateInput.value) || reportDates[reportDates.length - 1] || 'unknown-end';
+      const exportFilename = filenameCourse + '-attendance-' + filenameFrom + '-to-' + filenameTo + '.csv';
+
+
       tbody.innerHTML = '';
       rows.forEach(function (r) {
         const rate = r.total ? Math.round((r.attended / r.total) * 100) : 0;
@@ -1102,26 +1136,44 @@
 
       // Export
       if (exportBtn) {
+        exportBtn.disabled = false;
+        if (exportStatus) exportStatus.textContent = rows.length + ' student/course summaries ready to export. Current filters apply. Late arrivals count as attended.';
         exportBtn.onclick = function () {
-          const header = ['Student Name', 'Course', 'Sessions Attended', 'Sessions Missed', 'Late Arrivals', 'Attendance Rate'];
-          const lines = [header.join(',')];
+          function csvCell(value) {
+            let text = String(value == null ? '' : value);
+            // Keep spreadsheet applications from interpreting names as formulas.
+            if (/^[\s]*[=+@-]/.test(text) || /^[\t\r\n]/.test(text)) text = "'" + text;
+            return '"' + text.replace(/"/g, '""') + '"';
+          }
+          const header = ['Student Name', 'Student ID', 'Course', 'Total Sessions', 'Attended', 'Absent', 'Late', 'Attendance Rate'];
+          const lines = [header.map(csvCell).join(',')];
           rows.forEach(function (r) {
             const rate = r.total ? Math.round((r.attended / r.total) * 100) : 0;
             lines.push([
-              '"' + String(r.studentName).replace(/"/g, '""') + '"',
-              '"' + String(r.course).replace(/"/g, '""') + '"',
-              r.attended, r.missed, r.late, rate + '%',
-            ].join(','));
+              r.studentName,
+              r.studentId,
+              r.course,
+              r.total, r.attended, r.missed, r.late, rate + '%',
+            ].map(csvCell).join(','));
           });
-          const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = 'faceroll-attendance-report-' + new Date().toISOString().slice(0, 10) + '.csv';
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
+          try {
+            const blob = new Blob(['\uFEFF' + lines.join('\r\n') + '\r\n'], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = exportFilename;
+            try {
+              document.body.appendChild(a);
+              a.click();
+            } finally {
+              if (a.parentNode) a.parentNode.removeChild(a);
+              window.setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+            }
+            if (exportStatus) exportStatus.textContent = 'CSV download started: ' + rows.length + ' student/course summaries.';
+          } catch (error) {
+            console.error('Report export failed:', error);
+            if (exportStatus) exportStatus.textContent = 'Unable to download the CSV. Please try again.';
+          }
         };
       }
     }
@@ -1141,6 +1193,8 @@
     const historyBody = document.getElementById('profileAttendanceBody');
     const saveButton = document.getElementById('profileSaveButton') || document.querySelector('#i3wlx77 .gjs-t-button');
     if (!historyBody) return;
+
+    if (saveButton) saveButton.disabled = true;
 
     historyBody.innerHTML = '<tr><td colspan="5">Loading student profile...</td></tr>';
     setProfileSaveStatus('Loading attendance history...');
@@ -1192,6 +1246,7 @@
     if (!saveButton) return;
 
     window.FaceRollProfileSave = async function () {
+      if (saveButton.disabled) return;
       const rows = Array.from(historyBody.querySelectorAll('tr'));
       const writes = [];
       let localChanges = 0;
@@ -1254,6 +1309,7 @@
     };
 
     saveButton.onclick = window.FaceRollProfileSave;
+    saveButton.disabled = false;
   }
 
   // ---------- Page dispatcher ----------

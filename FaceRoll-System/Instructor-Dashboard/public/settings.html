@@ -7,7 +7,7 @@
   <meta name="robots" content="index,follow"/>
   <meta name="generator" content="GrapesJS Studio"/>
   <link rel="stylesheet" href="./style.css">
-  <link rel="stylesheet" href="./css/shared-consistency.css">
+  <link rel="stylesheet" href="./css/shared-consistency.css?v=20260917-tables">
   <style>
     .sidebar-navigation {
       width: 15rem;
@@ -380,6 +380,7 @@
             <li><a href="./live-session.html" class="sidebar-link"><span class="sidebar-link-label">Live Session</span></a></li>
             <li><a href="./student-roster.html" class="sidebar-link"><span class="sidebar-link-label">Students</span></a></li>
             <li><a href="./reports.html" class="sidebar-link"><span class="sidebar-link-label">Reports</span></a></li>
+            <li><a href="./courses.html" class="sidebar-link"><img src="https://api.iconify.design/lucide-book-open.svg?color=%2364748b" alt="" class="sidebar-icon"/><span class="sidebar-link-label">Courses</span></a></li>
             <li><a href="./settings.html" class="sidebar-link-active"><span class="sidebar-link-label">Settings</span></a></li>
           </ul>
         </div>
@@ -445,13 +446,6 @@
                 </div>
                 <div class="help">When enabled, students can be marked late after the grace period.</div>
               </div>
-              <div class="settings-section-label">Integrations</div>
-              <div class="actions">
-                <button type="button" id="canvas-integration-btn" class="btn-primary">
-                  <img src="https://api.iconify.design/mdi:school-outline.svg?color=currentColor&amp;width=20&amp;height=20" class="btn-icon"/>
-                  <span>Canvas Integration</span>
-                </button>
-              </div>
               <div id="settings-status" class="info">Loading your settings...</div>
             </div>
           </section>
@@ -473,11 +467,10 @@
     <script defer src="/__/firebase/11.6.0/firebase-auth-compat.js"></script>
     <script defer src="/__/firebase/init.js"></script>
     <script defer src="./js/firebase-client.js?v=20260913-local-init"></script>
-    <script defer src="./js/sidebar-user.js?v=20260430-1"></script>
+    <script defer src="./js/sidebar-user.js?v=20260915-courses"></script>
     <script>
 (function() {
   const toggleBtn = document.getElementById('allow-late-toggle');
-  const canvasBtn = document.getElementById('canvas-integration-btn');
   const saveBtn = document.getElementById('save-settings-btn');
   const statusEl = document.getElementById('settings-status');
   const defaultAttendanceEl = document.getElementById('default-attendance');
@@ -503,10 +496,6 @@
 
   toggleBtn.addEventListener('click', function() {
     setAllowLate(!getAllowLate());
-  });
-
-  canvasBtn.addEventListener('click', function() {
-    alert('Canvas Integration: Proceed to connect your account.');
   });
 
   function waitForAuth() {

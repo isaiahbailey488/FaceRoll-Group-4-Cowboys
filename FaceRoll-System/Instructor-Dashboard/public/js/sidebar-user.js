@@ -18,7 +18,7 @@
     { href: './live-session.html', label: 'Live Session', icon: 'lucide-calendar-check' },
     { href: './student-roster.html', label: 'Students', icon: 'lucide-users' },
     { href: './reports.html', label: 'Reports', icon: 'lucide-bar-chart-3' },
-    { href: './course-settings.html', label: 'Course Settings', icon: 'lucide-map-pin' },
+    { href: './courses.html', label: 'Courses', icon: 'lucide-book-open' },
     { href: './settings.html', label: 'Settings', icon: 'lucide-settings' },
   ];
 

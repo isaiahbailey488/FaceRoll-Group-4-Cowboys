@@ -80,6 +80,64 @@ textarea:focus {
   font-size: 0.92rem;
 }
 
+/* Keep generated cells and page-specific cell classes on the same grid. */
+.main-column {
+  min-width: 0;
+}
+
+.table-wrapper,
+.table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.attendance-table {
+  width: 100%;
+  min-width: 44rem;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.attendance-table > thead > tr > th,
+.attendance-table > tbody > tr > td {
+  padding: 0.8rem 1rem !important;
+  text-align: left;
+  vertical-align: middle;
+  line-height: 1.45;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.attendance-table > thead > tr > th {
+  background-color: #eff6ff;
+  color: #1e3a8a !important;
+  font-weight: 600;
+  border-bottom: 1px solid var(--fr-border-soft);
+}
+
+.attendance-table > tbody > tr > td {
+  border-bottom: 1px solid var(--fr-border-soft);
+}
+
+/* Match numeric headings to their values; empty-state messages stay left aligned. */
+body#imwtil .attendance-table tr > :nth-child(4):not([colspan]),
+body#imwtil .attendance-table tr > :nth-child(5):not([colspan]),
+body#iw11pz .attendance-table tr > :nth-child(n+3):not([colspan]) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+body#imwtil .attendance-table tr > :nth-child(3) {
+  width: 24%;
+}
+
+.attendance-table select {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
 .status-badge {
   font-family: var(--fr-font-sans) !important;
   letter-spacing: 0.01em;

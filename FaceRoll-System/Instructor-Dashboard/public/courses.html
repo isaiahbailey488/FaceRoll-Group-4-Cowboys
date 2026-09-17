@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Courses — FaceRoll</title>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <meta name="robots" content="noindex,nofollow"/>
+    <link rel="stylesheet" href="https://js.api.here.com/v3/3.1/mapsjs-ui.css"/>
+    <link rel="stylesheet" href="./style.css"/>
+    <link rel="stylesheet" href="./css/shared-consistency.css?v=20260917-tables"/>
+    <link rel="stylesheet" href="./css/course-settings.css"/>
+    <link rel="stylesheet" href="./css/courses.css"/>
+  </head>
+  <body class="body-root course-settings-page">
+    <div class="app-wrapper">
+      <aside class="sidebar-navigation">
+        <div class="sidebar-header sidebar-brand">
+          <div class="sidebar-brand-logo">
+            <img src="./Transparent FaceRoll.png" alt="FaceRoll logo"/>
+          </div>
+          <div class="sidebar-brand-text"><span class="sidebar-brand-title">FaceRoll</span></div>
+        </div>
+        <nav class="sidebar-menu" aria-label="Instructor dashboard">
+          <ul class="sidebar-menu-list">
+            <li><a href="./instructor-dashboard.html" class="sidebar-link"><span class="sidebar-link-label">Dashboard</span></a></li>
+            <li><a href="./live-session.html" class="sidebar-link"><span class="sidebar-link-label">Live Session</span></a></li>
+            <li><a href="./student-roster.html" class="sidebar-link"><span class="sidebar-link-label">Students</span></a></li>
+            <li><a href="./reports.html" class="sidebar-link"><span class="sidebar-link-label">Reports</span></a></li>
+            <li><a href="./courses.html" class="sidebar-link-active" aria-current="page"><span class="sidebar-link-label">Courses</span></a></li>
+            <li><a href="./settings.html" class="sidebar-link"><span class="sidebar-link-label">Settings</span></a></li>
+          </ul>
+        </nav>
+        <div class="sidebar-footer">
+          <div class="profile-mini">
+            <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36' viewBox='0 0 36 36'%3E%3Ccircle cx='18' cy='18' r='18' fill='%23e2e8f0'/%3E%3Ccircle cx='18' cy='13' r='6' fill='%2394a3b8'/%3E%3Cpath d='M8 29c1.8-5 5.8-7.5 10-7.5S26.2 24 28 29' fill='%2394a3b8'/%3E%3C/svg%3E" alt="Default profile" class="profile-avatar"/>
+            <div class="profile-text-group">
+              <p class="profile-name">Loading...</p>
+              <p class="profile-role">Loading...</p>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <div class="main-column">
+        <main class="main-content">
+          <section class="course-page-header" aria-labelledby="courses-title">
+            <div>
+              <h1 id="courses-title">Courses</h1>
+              <p>Create courses and manage their attendance location settings.</p>
+            </div>
+            <button type="button" id="toggleCreateCourse" class="primary-button" aria-haspopup="dialog" aria-controls="manageCoursesPanel">
+              <span aria-hidden="true">+</span> Create Course
+            </button>
+          </section>
+
+            <!-- Manage courses panel -->
+            <dialog class="settings-card manage-courses" id="manageCoursesPanel" aria-labelledby="create-course-title">
+              <div class="settings-card-header manage-courses-header">
+                <div>
+                  <h2 id="create-course-title">Create a Course</h2>
+                  <p>Add a course to start attendance sessions and let students check in.</p>
+                </div>
+                <button type="button" id="closeCreateCourse" class="secondary-button" aria-label="Close create course window">Close</button>
+                <button type="button" id="seedCoursesBtn" class="btn-seed-courses" style="display:none;">Seed 3 Sample Courses</button>
+              </div>
+              <div class="settings-card-body">
+              <div class="manage-courses-form">
+                <div>
+                  <label for="newCourseId">Course ID</label>
+                  <input type="text" id="newCourseId" placeholder="e.g., CSCE4905" autocomplete="off"/>
+                </div>
+                <div>
+                  <label for="newCourseName">Course Name</label>
+                  <input type="text" id="newCourseName" placeholder="e.g., Capstone I" autocomplete="off"/>
+                </div>
+                <div>
+                  <label for="newCourseInstructor">Instructor ID (optional)</label>
+                  <input type="text" id="newCourseInstructor" placeholder="instructor-uid" autocomplete="off"/>
+                </div>
+                <button type="button" id="addCourseBtn" class="primary-button btn-add-course">Add Course</button>
+              </div>
+              <div id="manageCoursesStatus" class="manage-courses-status" role="status" aria-live="polite"></div>
+              <div id="manageCoursesList" class="manage-courses-list"></div>
+              </div>
+            </dialog>
+
+          <section class="settings-card course-picker-card" aria-labelledby="course-picker-heading">
+            <div class="settings-card-header">
+              <div>
+                <h2 id="course-picker-heading">Course Settings</h2>
+                <p>Select a course to manage its classroom location and attendance radius.</p>
+              </div>
+            </div>
+            <div class="settings-card-body">
+              <div class="course-select-field">
+                <label for="course-select">Course</label>
+              <select id="course-select" disabled>
+                <option value="">Loading courses...</option>
+              </select>
+              </div>
+              <div id="course-status" class="inline-status info" role="status" aria-live="polite">
+                Verifying instructor access and loading courses...
+              </div>
+            </div>
+          <div id="location-settings-card" class="course-location-section is-disabled" aria-labelledby="attendance-location-heading">
+            <div class="settings-card-header location-card-heading">
+              <div>
+                <h2 id="attendance-location-heading">Attendance Location</h2>
+                <p>Search for a building or place the marker directly on the map.</p>
+              </div>
+              <div class="verification-toggle-row">
+                <span>
+                  <strong>Location verification</strong>
+                  <small id="verification-state-label">Disabled</small>
+                </span>
+                <button
+                  type="button"
+                  id="location-enabled-toggle"
+                  class="toggle-button"
+                  role="switch"
+                  aria-checked="false"
+                  aria-label="Enable location verification"
+                  disabled
+                ><span class="knob"></span></button>
+              </div>
+            </div>
+
+            <div class="settings-card-body location-layout">
+              <div class="map-column">
+                <form id="location-search-form" class="location-search" role="search">
+                  <label for="location-search-input">Campus building or address</label>
+                  <div class="search-control-row">
+                    <input
+                      type="search"
+                      id="location-search-input"
+                      placeholder="Search with HERE, e.g., Discovery Park, Frisco"
+                      autocomplete="off"
+                      disabled
+                    />
+                    <button type="submit" id="location-search-button" class="secondary-button" disabled>Search</button>
+                  </div>
+                </form>
+                <div id="search-status" class="compact-status" role="status" aria-live="polite"></div>
+                <div id="search-results" class="search-results" aria-label="Location search results"></div>
+
+                <div class="map-shell">
+                  <div id="here-map" aria-label="Interactive classroom location map"></div>
+                  <div id="map-placeholder" class="map-placeholder">
+                    <div class="map-placeholder-icon" aria-hidden="true">⌖</div>
+                    <strong>Select a course to configure its location</strong>
+                    <span>The classroom marker and attendance radius will appear here.</span>
+                  </div>
+                </div>
+                <div id="map-status" class="inline-status info" role="status" aria-live="polite">
+                  Select a course, then search or click the map to place the classroom marker.
+                </div>
+              </div>
+
+              <div class="location-controls">
+                <div class="control-section">
+                  <h3>Selected classroom</h3>
+                  <p id="selected-address" class="selected-address empty">No classroom location selected.</p>
+                  <dl class="coordinate-list">
+                    <div><dt>Latitude</dt><dd id="selected-latitude">—</dd></div>
+                    <div><dt>Longitude</dt><dd id="selected-longitude">—</dd></div>
+                  </dl>
+                  <p class="control-help">Click anywhere on the map or drag the marker for a precise adjustment.</p>
+                </div>
+
+                <fieldset class="control-section radius-fieldset">
+                  <legend>Allowed attendance radius</legend>
+                  <p class="control-help">Students must be within this distance when initiating check-in.</p>
+                  <div class="radius-options">
+                    <label><input type="radio" name="radiusMeters" value="20" disabled/><span>20 m</span></label>
+                    <label><input type="radio" name="radiusMeters" value="25" checked disabled/><span>25 m</span></label>
+                    <label><input type="radio" name="radiusMeters" value="30" disabled/><span>30 m</span></label>
+                    <label><input type="radio" name="radiusMeters" value="50" disabled/><span>50 m</span></label>
+                  </div>
+                </fieldset>
+
+                <div class="privacy-notice">
+                  <img src="https://api.iconify.design/lucide-shield-check.svg?color=%231e40af" alt=""/>
+                  <p>FaceRoll checks a student’s foreground location only when the student initiates check-in. Precise student coordinates are used temporarily for verification and are not retained.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-card-footer">
+              <div id="save-status" class="inline-status info" role="status" aria-live="polite">
+                Choose a course and classroom location to save.
+              </div>
+              <button type="button" id="save-location-button" class="primary-button" disabled>
+                <img src="https://api.iconify.design/lucide-save.svg?color=%23ffffff" alt=""/>
+                <span>Save Classroom Location</span>
+              </button>
+            </div>
+          </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script defer src="./js/runtime-config.js"></script>
+    <script defer src="https://js.api.here.com/v3/3.1/mapsjs-core.js"></script>
+    <script defer src="https://js.api.here.com/v3/3.1/mapsjs-service.js"></script>
+    <script defer src="https://js.api.here.com/v3/3.1/mapsjs-ui.js"></script>
+    <script defer src="https://js.api.here.com/v3/3.1/mapsjs-mapevents.js"></script>
+    <script defer src="/__/firebase/11.6.0/firebase-app-compat.js"></script>
+    <script defer src="/__/firebase/11.6.0/firebase-firestore-compat.js"></script>
+    <script defer src="/__/firebase/11.6.0/firebase-auth-compat.js"></script>
+    <script defer src="/__/firebase/init.js"></script>
+    <script defer src="./js/course-location-utils.js?v=20260902-1"></script>
+    <script defer src="./js/firebase-client.js?v=20260913-local-init"></script>
+    <script defer src="./js/sidebar-user.js?v=20260915-courses"></script>
+    <script defer src="./js/course-location.js?v=20260915-unsaved"></script>
+    <script defer src="./js/manage-courses.js?v=20260409-1"></script>
+    <script defer src="./js/courses-page.js?v=20260915-2"></script>
+  </body>
+</html>

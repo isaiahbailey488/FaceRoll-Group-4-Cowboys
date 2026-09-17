@@ -7,11 +7,52 @@ const https = require('node:https');
 const net = require('node:net');
 const os = require('node:os');
 const path = require('node:path');
+const readline = require('node:readline/promises');
 const { spawn, spawnSync } = require('node:child_process');
 
 const REPOSITORY_ROOT = path.resolve(__dirname, '..');
 const FIREBASE_PROJECT_ID = 'rollcall-2669b';
 const REQUIRED_PORTS = [4400, 9099, 8080, 5001, 8765, 5055];
+
+async function selectNetworkMode(args, interactive, ask) {
+  const modes = args.filter((arg) => arg === '--local' || arg === '--tailscale');
+  if (modes.length > 1) throw new Error('Choose either --local or --tailscale.');
+  if (modes.length) return modes[0].slice(2);
+  if (!interactive || args.includes('--check')) return 'local';
+  while (true) {
+    const answer = String(await ask('Demo connection: [1] Local Wi-Fi [2] Tailscale (default 1): ')).trim().toLowerCase();
+    if (['', '1', 'local'].includes(answer)) return 'local';
+    if (['2', 'tailscale'].includes(answer)) return 'tailscale';
+    console.log('Enter 1 for Local or 2 for Tailscale.');
+  }
+}
+
+function tailscaleConnection(status) {
+  if (status.BackendState !== 'Running') throw new Error('Connect and sign in to Tailscale on this laptop, then retry.');
+  const address = (status.TailscaleIPs || []).find((ip) => net.isIPv4(ip));
+  const hostname = String(status.Self?.DNSName || '').replace(/\.$/, '');
+  if (!address || !/^[a-z0-9.-]+\.ts\.net$/i.test(hostname)) {
+    throw new Error('Tailscale needs an IPv4 address and a MagicDNS .ts.net hostname.');
+  }
+  return { lanAddress: address, recognitionUrl: `https://${hostname}` };
+}
+
+function configureTailscale(config, run = commandResult) {
+  const windowsPath = path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Tailscale', 'tailscale.exe');
+  const command = process.platform === 'win32' && fs.existsSync(windowsPath) ? windowsPath : 'tailscale';
+  function json(args) {
+    const result = run(command, args);
+    if (result.error || result.status !== 0) throw new Error('Tailscale is unavailable. Install it, connect, and retry.');
+    try { return JSON.parse(result.stdout); }
+    catch { throw new Error('Could not read Tailscale status. Update Tailscale and retry.'); }
+  }
+  const connection = tailscaleConnection(json(['status', '--json']));
+  const serve = json(['serve', 'status', '--json']);
+  if (serve && Object.keys(serve).length) {
+    throw new Error('Tailscale Serve already has a configuration. Stop that service before this demo; it will not be overwritten.');
+  }
+  return { ...config, ...connection, networkMode: 'tailscale', tailscaleCommand: command };
+}
 
 function parseEnvironmentFile(contents) {
   return String(contents || '')
@@ -158,17 +199,17 @@ function isPortOpen(port) {
   });
 }
 
-async function waitForUrl(url, timeoutMs = 60000) {
+async function waitForUrl(url, timeoutMs = 60000, verifyCertificate = false) {
   const deadline = Date.now() + timeoutMs;
   const transport = url.startsWith('https:') ? https : http;
   while (Date.now() < deadline) {
     const available = await new Promise(function (resolve) {
       const request = transport.get(
         url,
-        { rejectUnauthorized: false, timeout: 1500 },
+        { rejectUnauthorized: verifyCertificate, timeout: 1500 },
         function (response) {
           response.resume();
-          resolve(response.statusCode >= 200 && response.statusCode < 500);
+          resolve(response.statusCode >= 200 && response.statusCode < 400);
         }
       );
       request.once('timeout', function () {
@@ -233,7 +274,7 @@ async function validateConfiguration(config, checkPorts) {
   [config.python, config.tlsCert, config.tlsKey].forEach(function (requiredPath) {
     if (!fs.existsSync(requiredPath)) throw new Error(`Required file not found: ${requiredPath}`);
   });
-  if (!certificateSupportsHost(config.tlsCert, config.lanAddress)) {
+  if (config.networkMode !== 'tailscale' && !certificateSupportsHost(config.tlsCert, config.lanAddress)) {
     throw new Error(
       `The TLS certificate does not include ${config.lanAddress}. Regenerate the demo certificate for this Wi-Fi address or set FACEROLL_DEMO_HOST correctly.`
     );
@@ -273,7 +314,7 @@ function createDemoEnvironment(config) {
     FIRESTORE_EMULATOR_HOST: '127.0.0.1:8080',
     GCLOUD_PROJECT: FIREBASE_PROJECT_ID,
     FIREBASE_PROJECT_ID,
-    FACEROLL_API_HOST: '0.0.0.0',
+    FACEROLL_API_HOST: config.networkMode === 'tailscale' ? '127.0.0.1' : '0.0.0.0',
     FACEROLL_API_PORT: '5055',
     FACEROLL_TLS_CERT: config.tlsCert,
     FACEROLL_TLS_KEY: config.tlsKey,
@@ -281,7 +322,8 @@ function createDemoEnvironment(config) {
     FACEROLL_ENROLLMENT_DIR: config.enrollmentDirectory,
     FACEROLL_DEEPFACE_HOME: config.deepfaceHome,
     DEEPFACE_HOME: config.deepfaceHome,
-    EXPO_PUBLIC_RECOGNITION_API_URL: `https://${config.lanAddress}:5055`,
+    EXPO_PUBLIC_RECOGNITION_API_URL: config.recognitionUrl || `https://${config.lanAddress}:5055`,
+    REACT_NATIVE_PACKAGER_HOSTNAME: config.lanAddress,
     EXPO_PUBLIC_FIREBASE_EMULATOR_HOST: config.lanAddress,
     EXPO_PUBLIC_FIREBASE_AUTH_EMULATOR_PORT: '9099',
     EXPO_PUBLIC_FIRESTORE_EMULATOR_PORT: '8080',
@@ -336,7 +378,16 @@ async function stopChild(child) {
 
 async function runDemo() {
   const checkOnly = process.argv.includes('--check');
-  const config = loadDemoConfiguration();
+  let prompt;
+  let mode;
+  try {
+    mode = await selectNetworkMode(process.argv.slice(2), Boolean(process.stdin.isTTY), (question) => {
+      prompt ||= readline.createInterface({ input: process.stdin, output: process.stdout });
+      return prompt.question(question);
+    });
+  } finally { prompt?.close(); }
+  let config = { ...loadDemoConfiguration(), networkMode: mode };
+  if (mode === 'tailscale') config = configureTailscale(config);
   await validateConfiguration(config, !checkOnly);
 
   console.log(`FaceRoll demo configuration is valid for ${config.lanAddress}.`);
@@ -418,6 +469,15 @@ async function runDemo() {
     );
     await waitForUrl('https://127.0.0.1:5055/health', 180000);
 
+    if (mode === 'tailscale') {
+      console.log('Starting private Tailscale HTTPS. If prompted, open the setup link to enable HTTPS.');
+      const serve = startChild(children, 'Tailscale Serve', config.tailscaleCommand,
+        ['serve', '--https=443', 'https+insecure://127.0.0.1:5055'], { env: environment });
+      serve.once('error', (error) => { console.error(error.message); shutdown(1); });
+      serve.once('exit', () => { if (!stopping) shutdown(1); });
+      await waitForUrl(config.recognitionUrl + '/health', 180000, true);
+    }
+
     startChild(
       children,
       'dashboard bridge',
@@ -430,7 +490,9 @@ async function runDemo() {
     console.log('\nFaceRoll Demo Ready');
     console.log(`Dashboard:        http://127.0.0.1:${hostingPort}`);
     console.log(`Firebase UI:      http://127.0.0.1:${emulatorStatus.ui.port}`);
-    console.log(`Recognition API:  https://${config.lanAddress}:5055`);
+    console.log(`Connection:       ${mode} (${config.lanAddress})`);
+    console.log(`Recognition API:  ${environment.EXPO_PUBLIC_RECOGNITION_API_URL}`);
+    if (mode === 'tailscale') console.log('Keep Tailscale connected on the phone. Allow phone access to TCP 9099, 8080 and the Expo port through Windows Firewall.');
     console.log('Bridge:           http://127.0.0.1:8765');
     console.log('Firebase mode:    local emulators only');
     console.log('\nScan the Expo QR code below. Press Ctrl+C once to stop everything.\n');
@@ -459,6 +521,9 @@ if (require.main === module) {
 }
 
 module.exports = {
+  selectNetworkMode,
+  tailscaleConnection,
+  configureTailscale,
   createDemoEnvironment,
   detectLanAddress,
   isPrivateLanAddress,

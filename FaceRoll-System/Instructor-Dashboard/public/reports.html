@@ -7,7 +7,7 @@
   <meta name="robots" content="index,follow"/>
   <meta name="generator" content="GrapesJS Studio"/>
   <link rel="stylesheet" href="./style.css">
-  <link rel="stylesheet" href="./css/shared-consistency.css">
+  <link rel="stylesheet" href="./css/shared-consistency.css?v=20260917-tables">
   <style>
     .sidebar-navigation {
       width: 15rem;
@@ -147,6 +147,9 @@
       border-color: #1e40af !important;
     }
 
+    .export-button:disabled { opacity: 0.55; cursor: not-allowed; }
+    .export-status { margin: 0; padding: 0 1.5rem 1rem; color: #475569; font-size: 0.9rem; }
+
     .filter-bar {
       padding: 1rem 1.5rem !important;
       gap: 1.25rem !important;
@@ -224,6 +227,7 @@
             <li><a href="./live-session.html" class="sidebar-link"><span class="sidebar-link-label">Live Session</span></a></li>
             <li><a href="./student-roster.html" class="sidebar-link"><span class="sidebar-link-label">Students</span></a></li>
             <li><a href="./reports.html" class="sidebar-link-active"><span class="sidebar-link-label">Reports</span></a></li>
+            <li><a href="./courses.html" class="sidebar-link"><img src="https://api.iconify.design/lucide-book-open.svg?color=%2364748b" alt="" class="sidebar-icon"/><span class="sidebar-link-label">Courses</span></a></li>
             <li><a href="./settings.html" class="sidebar-link"><span class="sidebar-link-label">Settings</span></a></li>
           </ul>
         </div>
@@ -246,7 +250,7 @@
               <div id="ii7cvn-2" class="attendance-panel-title-group">
                 <h2 id="in3e7q" class="attendance-panel-title">Attendance Reports</h2>
               </div>
-              <button type="button" id="iaq1jh-2" class="gjs-t-button export-button">Export Report</button>
+              <button type="button" id="iaq1jh-2" class="gjs-t-button export-button" disabled aria-describedby="reportsExportStatus">Export CSV</button>
             </div>
             <!-- Report summary cards -->
             <div id="imnjgo-2" class="overview-section">
@@ -287,6 +291,7 @@
               </div>
             </div>
             <!-- Report table -->
+            <p id="reportsExportStatus" class="export-status" role="status" aria-live="polite">Loading attendance data...</p>
             <div id="iyppfn-2" class="table-wrapper">
               <table id="idagey-2" class="attendance-table">
                 <thead id="i3l289-2" class="table-head">
@@ -315,7 +320,7 @@
     <script defer src="/__/firebase/init.js"></script>
     <script defer src="./js/sample-data.js"></script>
     <script defer src="./js/firebase-client.js?v=20260913-local-init"></script>
-    <script defer src="./js/sidebar-user.js?v=20260430-1"></script>
-    <script defer src="./js/student-screens.js?v=20260429-4"></script>
+    <script defer src="./js/sidebar-user.js?v=20260915-courses"></script>
+    <script defer src="./js/student-screens.js?v=20260917-csv-3"></script>
   </body>
 </html>

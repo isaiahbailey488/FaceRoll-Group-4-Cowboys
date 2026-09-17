@@ -47,6 +47,7 @@
     markerOffset: null,
     reverseRequestId: 0,
     saving: false,
+    savedSnapshot: null,
   };
 
   function setStatus(element, message, variant) {
@@ -111,6 +112,15 @@
       addressLabel: state.location ? state.location.addressLabel : '',
       enabled: state.enabled,
     };
+  }
+
+  function locationSnapshot() {
+    return JSON.stringify(getLocationCandidate());
+  }
+
+  function hasUnsavedChanges() {
+    return Boolean(state.selectedCourse && state.savedSnapshot !== null &&
+      locationSnapshot() !== state.savedSnapshot);
   }
 
   function updateSaveButton() {
@@ -316,7 +326,7 @@
       window.addEventListener('resize', function () {
         if (state.map) state.map.getViewPort().resize();
       });
-      window.addEventListener('beforeunload', function () {
+      window.addEventListener('pagehide', function () {
         if (state.map) state.map.dispose();
       });
 
@@ -481,6 +491,16 @@
 
   function handleCourseChange() {
     const selectedId = String(elements.courseSelect.value || '');
+    const previousId = state.selectedCourse ? getCourseId(state.selectedCourse) : '';
+    if (selectedId === previousId) return;
+    if (state.saving || (hasUnsavedChanges() && !window.confirm(
+      'You have unsaved location changes. Discard them and switch courses?'
+    ))) {
+      elements.courseSelect.value = previousId;
+      return;
+    }
+    ++state.reverseRequestId;
+    state.savedSnapshot = null;
     state.selectedCourse =
       state.courses.find(function (course) {
         return getCourseId(course) === selectedId;
@@ -495,13 +515,15 @@
 
     setInteractiveControlsEnabled(true);
     loadSelectedCourseLocation(state.selectedCourse);
+    state.savedSnapshot = locationSnapshot();
     setInteractiveControlsEnabled(true);
     const nextUrl = new URL(window.location.href);
     nextUrl.searchParams.set('courseId', getCourseId(state.selectedCourse));
     window.history.replaceState({}, '', nextUrl);
   }
 
-  function populateCourses(courses) {
+  function populateCourses(courses, preserveSelection) {
+    const previousId = elements.courseSelect.value;
     elements.courseSelect.innerHTML = '<option value="">Select a course...</option>';
     courses.forEach(function (course) {
       const option = document.createElement('option');
@@ -512,6 +534,11 @@
     });
     elements.courseSelect.disabled = false;
 
+    if (preserveSelection) {
+      elements.courseSelect.value = previousId;
+      return;
+    }
+
     const requestedCourseId = new URLSearchParams(window.location.search).get('courseId');
     if (requestedCourseId && courses.some(function (course) { return getCourseId(course) === requestedCourseId; })) {
       elements.courseSelect.value = requestedCourseId;
@@ -519,7 +546,7 @@
     }
   }
 
-  async function verifyAccessAndLoadCourses() {
+  async function verifyAccessAndLoadCourses(preserveSelection) {
     if (!firebaseApi || !utils) {
       throw new Error('The dashboard data client did not initialize.');
     }
@@ -550,13 +577,13 @@
       elements.courseSelect.innerHTML = '<option value="">No courses available</option>';
       setStatus(
         elements.courseStatus,
-        'No courses were found. Add a course from Live Session, then return here.',
+        'No courses were found. Create a course above to configure its settings.',
         'warning'
       );
       return;
     }
 
-    populateCourses(state.courses);
+    populateCourses(state.courses, preserveSelection);
     setStatus(
       elements.courseStatus,
       state.courses.length + (state.courses.length === 1 ? ' course available.' : ' courses available.'),
@@ -575,7 +602,10 @@
       return;
     }
 
+    const savedCourse = state.selectedCourse;
+    const submittedSnapshot = locationSnapshot();
     state.saving = true;
+    elements.courseSelect.disabled = true;
     updateSaveButton();
     const originalButtonLabel = elements.saveButton.querySelector('span').textContent;
     elements.saveButton.querySelector('span').textContent = 'Saving...';
@@ -592,15 +622,17 @@
     };
 
     try {
-      const courseId = getCourseId(state.selectedCourse);
+      const courseId = getCourseId(savedCourse);
       await firebaseApi.writeDocument('courses', courseId, { location: locationPayload });
-      state.selectedCourse.location = Object.assign({}, locationPayload, { updatedAt: new Date() });
+      savedCourse.location = Object.assign({}, locationPayload, { updatedAt: new Date() });
+      state.savedSnapshot = submittedSnapshot;
       setStatus(
         elements.saveStatus,
         'Classroom location saved successfully for ' + getCourseName(state.selectedCourse) + '.',
         'success'
       );
       setStatus(elements.mapStatus, 'Saved location and attendance radius are shown on the map.', 'success');
+      if (hasUnsavedChanges()) markUnsaved('Your latest changes have not been saved yet.');
     } catch (error) {
       console.error('Failed to save course location:', error);
       const denied = error && String(error.code || '').includes('permission-denied');
@@ -613,12 +645,25 @@
       );
     } finally {
       state.saving = false;
+      elements.courseSelect.disabled = false;
       elements.saveButton.querySelector('span').textContent = originalButtonLabel;
       updateSaveButton();
     }
   }
 
   function wireControls() {
+    window.addEventListener('beforeunload', function (event) {
+      if (!hasUnsavedChanges() && !state.saving) return;
+      event.preventDefault();
+      event.returnValue = '';
+    });
+    window.addEventListener('faceroll:courses-updated', async function () {
+      try {
+        await verifyAccessAndLoadCourses(true);
+      } catch (error) {
+        setStatus(elements.courseStatus, 'Unable to refresh courses. Reload the page to try again.', 'error');
+      }
+    });
     elements.courseSelect.addEventListener('change', handleCourseChange);
     elements.searchForm.addEventListener('submit', handleSearch);
     elements.enabledToggle.addEventListener('click', function () {

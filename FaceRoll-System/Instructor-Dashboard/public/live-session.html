@@ -7,7 +7,7 @@
   <meta name="robots" content="index,follow"/>
   <meta name="generator" content="GrapesJS Studio"/>
   <link rel="stylesheet" href="./style.css">
-  <link rel="stylesheet" href="./css/shared-consistency.css">
+  <link rel="stylesheet" href="./css/shared-consistency.css?v=20260917-tables">
   <style>
     .sidebar-navigation { width: 15rem; position: sticky; top: 0; height: 100vh; align-self: flex-start; }
     .sidebar-brand { display: flex; align-items: center; gap: 4px; padding: 15px 14px; border-bottom: 1px solid #e5e7eb; }
@@ -43,30 +43,6 @@
     .status-badge.status-absent { color: #991b1b !important; background-color: #fee2e2 !important; border: 1px solid #fca5a5 !important; }
     .status-badge.status-late { color: #92400e !important; background-color: #fef3c7 !important; border: 1px solid #fcd34d !important; }
 
-    /* Manage Courses panel */
-    .manage-courses { margin: 0 1.5rem 1rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1rem 1.25rem; }
-    .manage-courses-header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
-    .manage-courses-header h3 { margin: 0; font-size: 1.05rem; color: #0f172a; }
-    .manage-courses-header .hint { font-size: 0.85rem; color: #64748b; }
-    .manage-courses-form { display: grid; grid-template-columns: 1fr 1.5fr auto auto; gap: 0.75rem; margin-top: 0.85rem; align-items: end; }
-    .manage-courses-form label { display: block; font-size: 0.8rem; color: #475569; margin-bottom: 0.25rem; }
-    .manage-courses-form input { width: 100%; border: 1px solid #cbd5e1; border-radius: 10px; padding: 0.65rem 0.8rem; background: #ffffff; color: #0f172a; font-size: 0.95rem; }
-    .manage-courses-form input:focus { outline: 2px solid rgba(37, 99, 235, 0.18); border-color: #60a5fa; }
-    .btn-add-course, .btn-seed-courses { background-color: #1d4ed8; color: #ffffff; border: 1px solid #1d4ed8; border-radius: 10px; padding: 0.7rem 0.95rem; font-weight: 600; cursor: pointer; white-space: nowrap; font-size: 0.9rem; }
-    .btn-add-course:hover, .btn-seed-courses:hover { background-color: #1e40af; border-color: #1e40af; }
-    .btn-seed-courses { background-color: #0f766e; border-color: #0f766e; }
-    .btn-seed-courses:hover { background-color: #115e59; border-color: #115e59; }
-    .manage-courses-status { font-size: 0.85rem; margin-top: 0.6rem; min-height: 1.2rem; }
-    .manage-courses-status.success { color: #16a34a; }
-    .manage-courses-status.error { color: #dc2626; }
-    .manage-courses-list { margin-top: 0.85rem; display: flex; gap: 0.5rem; flex-wrap: wrap; }
-    .manage-courses-list .chip { display: inline-flex; align-items: center; gap: 0.4rem; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 999px; padding: 0.35rem 0.7rem; font-size: 0.85rem; color: #0f172a; }
-    .manage-courses-list .chip .chip-id { color: #64748b; font-size: 0.75rem; }
-    @media (max-width: 780px) {
-      .manage-courses-form { grid-template-columns: 1fr 1fr; }
-      .btn-add-course, .btn-seed-courses { grid-column: span 2; }
-    }
-
     @media (max-width: 992px) {
       #i-session-summary .summary-card { grid-column: span 12 / span 12; }
       .sidebar-brand { padding: 18px 12px; justify-content: center; }
@@ -92,6 +68,7 @@
             <li><a href="./live-session.html" aria-current="page" class="sidebar-link-active"><img src="https://api.iconify.design/lucide-calendar-check.svg?color=%230f172a" alt="" class="sidebar-icon"/><span class="sidebar-link-label">Live Session</span></a></li>
             <li><a href="./student-roster.html" class="sidebar-link"><img src="https://api.iconify.design/lucide-users.svg?color=%2364748b" alt="" class="sidebar-icon"/><span class="sidebar-link-label">Students</span></a></li>
             <li><a href="./reports.html" id="ii1go" class="sidebar-link"><img src="https://api.iconify.design/lucide-bar-chart-3.svg?color=%2364748b" alt="" class="sidebar-icon"/><span class="sidebar-link-label">Reports</span></a></li>
+            <li><a href="./courses.html" class="sidebar-link"><img src="https://api.iconify.design/lucide-book-open.svg?color=%2364748b" alt="" class="sidebar-icon"/><span class="sidebar-link-label">Courses</span></a></li>
             <li><a href="./settings.html" class="sidebar-link"><img src="https://api.iconify.design/lucide-settings.svg?color=%2364748b" alt="" class="sidebar-icon"/><span class="sidebar-link-label">Settings</span></a></li>
           </ul>
         </nav>
@@ -114,34 +91,6 @@
                 <h2 id="i3zf3e" class="attendance-panel-title">Live Attendance Session</h2>
                 <p>Start and monitor attendance for the current class session.</p>
               </div>
-            </div>
-
-            <!-- Manage courses panel -->
-            <div class="manage-courses" id="manageCoursesPanel">
-              <div class="manage-courses-header">
-                <div>
-                  <h3>Manage Courses</h3>
-                  <div class="hint">Add a course to Firestore so instructors can start sessions and students can check in.</div>
-                </div>
-                <button type="button" id="seedCoursesBtn" class="btn-seed-courses" style="display:none;">Seed 3 Sample Courses</button>
-              </div>
-              <div class="manage-courses-form">
-                <div>
-                  <label for="newCourseId">Course ID</label>
-                  <input type="text" id="newCourseId" placeholder="e.g., CSCE4905" autocomplete="off"/>
-                </div>
-                <div>
-                  <label for="newCourseName">Course Name</label>
-                  <input type="text" id="newCourseName" placeholder="e.g., Capstone I" autocomplete="off"/>
-                </div>
-                <div>
-                  <label for="newCourseInstructor">Instructor ID (optional)</label>
-                  <input type="text" id="newCourseInstructor" placeholder="instructor-uid" autocomplete="off"/>
-                </div>
-                <button type="button" id="addCourseBtn" class="btn-add-course">Add Course</button>
-              </div>
-              <div id="manageCoursesStatus" class="manage-courses-status"></div>
-              <div id="manageCoursesList" class="manage-courses-list"></div>
             </div>
 
             <!-- Session setup filters -->
@@ -197,8 +146,7 @@
     <script defer src="/__/firebase/init.js"></script>
     <script defer src="./js/sample-data.js"></script>
     <script defer src="./js/firebase-client.js?v=20260913-local-init"></script>
-    <script defer src="./js/sidebar-user.js?v=20260430-1"></script>
-    <script defer src="./js/manage-courses.js?v=20260409-1"></script>
+    <script defer src="./js/sidebar-user.js?v=20260915-courses"></script>
     <script defer src="./js/student-screens.js?v=20260910-1"></script>
   </body>
 </html>
