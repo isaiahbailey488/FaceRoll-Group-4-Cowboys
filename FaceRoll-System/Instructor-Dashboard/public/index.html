@@ -17,8 +17,8 @@
         padding: 0 !important;
         min-height: 100vh;
         background:
-          radial-gradient(circle at top left, rgba(191, 219, 254, 0.65), transparent 30%),
-          linear-gradient(180deg, #f8fbff 0%, #eef4ff 100%);
+          radial-gradient(ellipse at 50% 15%, rgba(191, 219, 254, 0.45), transparent 55%),
+          linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
         font-family: Inter, sans-serif;
         color: #0f172a;
       }
@@ -29,31 +29,43 @@
       }
 
       body#iel609 .login-page-brand {
-        position: absolute;
-        top: 16px;
-        left: 16px;
         display: flex;
+        flex-direction: column;
         align-items: center;
         gap: 8px;
-        z-index: 10;
+        margin-bottom: 18px;
+        text-align: center;
+      }
+
+      body#iel609 .login-page-brand-mark {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 152px;
+        height: 120px;
+        overflow: hidden;
+        border-radius: 40px;
+        background: radial-gradient(ellipse, #e0edff 0%, rgba(248, 251, 255, 0) 72%);
       }
 
       body#iel609 .login-page-brand-logo {
-        width: 86px;
-        height: 86px;
+        /* The source image includes generous transparent space around the mark. */
+        width: 392px;
+        max-width: none;
+        height: auto;
+        flex-shrink: 0;
         object-fit: contain;
         display: block !important;
-        transform: scale(1.95);
-        transform-origin: center center;
+        transform: translateY(9px);
       }
 
       body#iel609 .login-page-brand-text {
-        font-size: 1.05rem;
+        margin: 0;
+        font-size: 1.75rem;
         line-height: 1;
         font-weight: 700;
-        letter-spacing: -0.02em;
+        letter-spacing: -0.04em;
         color: #0f172a;
-        margin-left: -4px;
       }
 
       body#iel609 .login-main {
@@ -64,22 +76,23 @@
         width: 100% !important;
         max-width: none !important;
         margin: 0 !important;
-        padding: 32px 20px !important;
+        padding: 20px !important;
       }
 
       body#iel609 .login-layout {
-        width: min(720px, 100%);
+        width: 100%;
+        max-width: 480px;
         display: flex;
         flex-direction: column;
-        gap: 22px;
+        gap: 14px;
       }
 
       body#iel609 .login-card,
       body#iel609 .login-help {
         background: rgba(255, 255, 255, 0.9);
-        border: 1px solid #dbe4f0;
-        border-radius: 24px;
-        box-shadow: 0 24px 60px rgba(15, 23, 42, 0.08);
+        border: 1px solid #e2e8f0;
+        border-radius: 28px;
+        box-shadow: 0 20px 60px rgba(15, 23, 42, 0.05), 0 2px 8px rgba(15, 23, 42, 0.02);
         backdrop-filter: blur(10px);
       }
 
@@ -87,7 +100,7 @@
         width: 100%;
         max-width: 620px;
         margin: 0 auto !important;
-        padding: 36px 32px 32px;
+        padding: 24px 32px;
       }
 
       body#iel609 .login-help {
@@ -98,22 +111,21 @@
         display: flex;
         flex-direction: column;
         justify-content: center;
-      }
-
-      body#iel609 .login-card h2 {
-        margin: 0 0 10px 0;
-        font-size: 2rem;
-        line-height: 1.08;
-        font-weight: 700;
-        color: #0f172a;
-        letter-spacing: -0.03em;
+        background: transparent;
+        border: none;
+        box-shadow: none;
+        backdrop-filter: none;
+        padding: 12px 24px;
+        text-align: center;
       }
 
       body#iel609 .login-description {
-        margin: 0 0 24px 0;
+        margin: 0 auto 18px;
+        text-align: center;
         color: #64748b;
         font-size: 0.95rem;
         max-width: 42ch;
+        line-height: 1.6;
       }
 
       body#iel609 .login-form {
@@ -122,7 +134,7 @@
         margin: 0 auto !important;
         display: flex;
         flex-direction: column;
-        gap: 18px;
+        gap: 12px;
       }
 
       body#iel609 .form-group {
@@ -144,6 +156,7 @@
         border: 1px solid #cbd5e1 !important;
         background: #ffffff !important;
         padding: 14px 16px !important;
+        font-size: 1rem;
         color: #0f172a !important;
         box-shadow: none !important;
         transition: border-color 150ms ease, box-shadow 150ms ease;
@@ -162,19 +175,24 @@
 
       body#iel609 .forgot-password a,
       body#iel609 .register-link a,
-      body#iel609 .help-links a {
+      body#iel609 .login-help a {
         color: #1d4ed8;
         text-decoration: none;
         font-weight: 600;
       }
 
+      body#iel609 .login-help a {
+        border-bottom: none;
+      }
+
       body#iel609 .forgot-password a:hover,
       body#iel609 .register-link a:hover,
-      body#iel609 .help-links a:hover {
+      body#iel609 .login-help a:hover {
         color: #1e40af;
       }
 
       body#iel609 .login-button {
+        margin-top: 0;
         display: inline-flex !important;
         align-items: center !important;
         justify-content: center !important;
@@ -186,7 +204,7 @@
         padding: 14px 18px !important;
         font-weight: 700;
         font-size: 1rem;
-        box-shadow: 0 16px 30px rgba(29, 78, 216, 0.22);
+        box-shadow: 0 6px 16px rgba(29, 78, 216, 0.16);
         transition: transform 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
       }
 
@@ -194,7 +212,7 @@
         background: #1e40af !important;
         border-color: #1e40af !important;
         transform: translateY(-1px);
-        box-shadow: 0 20px 34px rgba(30, 64, 175, 0.24);
+        box-shadow: 0 8px 20px rgba(30, 64, 175, 0.2);
       }
 
       body#iel609 .register-link {
@@ -210,32 +228,13 @@
         font-size: 0.92rem;
       }
 
-      body#iel609 .help-title {
-        margin: 0 0 14px 0;
-        font-size: 1.15rem;
-        font-weight: 700;
-        color: #0f172a;
-      }
-
-      body#iel609 .help-links {
-        margin: 0;
-        padding: 0;
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-      }
-
-      body#iel609 .help-links li {
-        list-style: none;
-        padding: 6px 0;
-        border-radius: 0;
-        background: transparent;
-        border: none;
+      body#iel609 .auth-message:empty {
+        display: none;
       }
 
       @media (max-width: 600px) {
         body#iel609 .login-main {
-          padding: 20px 14px;
+          padding: 20px 14px !important;
         }
 
         body#iel609 .login-card,
@@ -244,32 +243,44 @@
           border-radius: 18px;
         }
 
-        body#iel609 .login-card h2 {
-          font-size: 1.75rem;
+        body#iel609 .login-page-brand {
+          margin-bottom: 16px;
         }
 
-        body#iel609 .login-page-brand {
-          top: 12px;
-          left: 12px;
+        body#iel609 .login-page-brand-mark {
+          width: 140px;
+          height: 108px;
         }
 
         body#iel609 .login-page-brand-logo {
-          width: 64px;
-          height: 64px;
-          transform: scale(1.6);
+          width: 360px;
+          transform: translateY(8px);
+        }
+      }
+
+      @media (max-height: 750px) {
+        body#iel609 .login-main {
+          align-items: flex-start;
+          padding-top: 12px !important;
+        }
+
+        body#iel609 .login-page-brand-mark {
+          width: 120px;
+          height: 88px;
+        }
+
+        body#iel609 .login-page-brand-logo {
+          width: 304px;
+          transform: translateY(7px);
+        }
+
+        body#iel609 .login-page-brand {
+          margin-bottom: 12px;
         }
       }
     </style>
   </head>
   <body id="iel609" class="body">
-    <div class="login-page-brand">
-      <img
-        src="./Transparent FaceRoll.png"
-        alt="FaceRoll logo"
-        class="login-page-brand-logo"
-      />
-      <div class="login-page-brand-text">FaceRoll</div>
-    </div>
     <header class="gjs-t-border header">
       <div class="header-container"></div>
     </header>
@@ -277,9 +288,20 @@
     <main class="login-main">
       <div class="login-layout">
         <section class="login-card">
-          <h2>Login to FaceRoll</h2>
+          <div class="login-page-brand">
+            <div class="login-page-brand-mark">
+              <img
+                src="./Transparent FaceRoll.png"
+                alt=""
+                class="login-page-brand-logo"
+                width="1536"
+                height="1024"
+              />
+            </div>
+            <h1 class="login-page-brand-text">FaceRoll</h1>
+          </div>
           <p class="login-description">
-            Access the FaceRoll attendance management dashboard.
+            Sign in to your attendance dashboard.
           </p>
 
           <form
@@ -318,14 +340,9 @@
           </form>
         </section>
 
-        <section class="login-help">
-          <h3 class="help-title">Help &amp; support</h3>
-          <ul class="help-links">
-            <li><a href="./register.html">Need an account? Request access</a></li>
-            <li><a href="./register.html">Having trouble logging in?</a></li>
-            <li><a href="./instructor-dashboard.html">View the quick start guide</a></li>
-          </ul>
-        </section>
+        <div class="login-help">
+          <a href="./forgot-password.html">Need help?</a>
+        </div>
       </div>
     </main>
 
