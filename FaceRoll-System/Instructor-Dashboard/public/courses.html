@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="https://js.api.here.com/v3/3.1/mapsjs-ui.css"/>
     <link rel="stylesheet" href="./style.css"/>
     <link rel="stylesheet" href="./css/shared-consistency.css?v=20260917-tables"/>
-    <link rel="stylesheet" href="./css/course-settings.css"/>
+    <link rel="stylesheet" href="./css/course-settings.css?v=20260924-map"/>
     <link rel="stylesheet" href="./css/courses.css"/>
   </head>
   <body class="body-root course-settings-page">
@@ -169,13 +169,13 @@
 
                 <fieldset class="control-section radius-fieldset">
                   <legend>Allowed attendance radius</legend>
-                  <p class="control-help">Students must be within this distance when initiating check-in.</p>
-                  <div class="radius-options">
-                    <label><input type="radio" name="radiusMeters" value="20" disabled/><span>20 m</span></label>
-                    <label><input type="radio" name="radiusMeters" value="25" checked disabled/><span>25 m</span></label>
-                    <label><input type="radio" name="radiusMeters" value="30" disabled/><span>30 m</span></label>
-                    <label><input type="radio" name="radiusMeters" value="50" disabled/><span>50 m</span></label>
+                  <p class="control-help" id="radius-help">Students must be within this distance when initiating check-in.</p>
+                  <div class="radius-slider-heading">
+                    <label for="radius-meters">Radius</label>
+                    <output id="radius-value" for="radius-meters">15 m</output>
                   </div>
+                  <input class="radius-slider" id="radius-meters" type="range" name="radiusMeters" min="1" max="15" step="1" value="15" aria-describedby="radius-help" aria-valuetext="15 meters" disabled/>
+                  <div class="radius-slider-limits" aria-hidden="true"><span>1 m</span><span>15 m</span></div>
                 </fieldset>
 
                 <div class="privacy-notice">
@@ -200,7 +200,7 @@
       </div>
     </div>
 
-    <script defer src="./js/runtime-config.js"></script>
+    <script defer src="./js/runtime-config.js?v=20260924-map"></script>
     <script defer src="https://js.api.here.com/v3/3.1/mapsjs-core.js"></script>
     <script defer src="https://js.api.here.com/v3/3.1/mapsjs-service.js"></script>
     <script defer src="https://js.api.here.com/v3/3.1/mapsjs-ui.js"></script>
@@ -209,10 +209,10 @@
     <script defer src="/__/firebase/11.6.0/firebase-firestore-compat.js"></script>
     <script defer src="/__/firebase/11.6.0/firebase-auth-compat.js"></script>
     <script defer src="/__/firebase/init.js"></script>
-    <script defer src="./js/course-location-utils.js?v=20260902-1"></script>
+    <script defer src="./js/course-location-utils.js?v=20260924-radius"></script>
     <script defer src="./js/firebase-client.js?v=20260913-local-init"></script>
     <script defer src="./js/sidebar-user.js?v=20260915-courses"></script>
-    <script defer src="./js/course-location.js?v=20260915-unsaved"></script>
+    <script defer src="./js/course-location.js?v=20260924-search"></script>
     <script defer src="./js/manage-courses.js?v=20260409-1"></script>
     <script defer src="./js/courses-page.js?v=20260915-2"></script>
   </body>

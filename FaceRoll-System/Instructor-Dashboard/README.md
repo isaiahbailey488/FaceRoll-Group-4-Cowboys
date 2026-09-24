@@ -19,6 +19,7 @@ For the complete project overview, mobile setup, system architecture, and shared
 - Export filtered attendance reports as CSV files
 - Configure grace-period and late-attendance behavior
 - Configure a per-course classroom location and attendance radius with HERE Maps
+- Adjust the radius with a keyboard-accessible slider from 1–15 meters in 1-meter steps (default: 15 meters)
 
 ## Directory Structure
 
@@ -86,11 +87,11 @@ firebase use rollcall-2669b
 npm start
 ```
 
-Open the dashboard at `http://localhost:5001`.
+Open the dashboard at `http://127.0.0.1:5001`.
 
 | Local service | Address |
 |---|---|
-| Firebase Hosting | `http://localhost:5001` |
+| Firebase Hosting | `http://127.0.0.1:5001` |
 | Authentication | `http://localhost:9099` |
 | Cloud Firestore | `http://localhost:8080` |
 
@@ -124,7 +125,7 @@ The Course Settings page merge-writes the following object to the selected `cour
 location: {
   latitude: 33.2108,
   longitude: -97.1473,
-  radiusMeters: 25,
+  radiusMeters: 15,
   addressLabel: "Classroom Building, Denton, TX",
   enabled: true,
   updatedAt: serverTimestamp(),
@@ -139,3 +140,5 @@ Dashboard Firestore rules allow course writes only for authenticated profiles wi
 - **Project:** FaceRoll — Facial Recognition Attendance System
 - **Course:** CSCE 4905.501 — Information Technology Capstone I
 - **Team:** Cowboys (Group 4)
+
+Course Settings uses HERE Maps with English labels, controls, and address results. Use `http://127.0.0.1:5001/course-settings.html`; this origin is authorized by the current HERE key. Other browser origins, including different ports, must be added to the key's trusted domains. Rejected access displays an actionable message without switching map providers. Internet access is required.

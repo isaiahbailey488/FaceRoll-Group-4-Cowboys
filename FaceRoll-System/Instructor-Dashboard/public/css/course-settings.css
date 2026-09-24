@@ -426,8 +426,16 @@
 }
 
 #here-map {
+  z-index: 0;
   width: 100%;
   height: 100%;
+}
+
+/* The shared dashboard stylesheet hides all images and SVGs. Map tiles,
+   markers, controls, and radius overlays must remain visible. */
+#here-map img,
+#here-map svg {
+  display: block !important;
 }
 
 .map-placeholder {
@@ -542,49 +550,48 @@
   margin: 0;
 }
 
-.radius-options {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+.radius-slider-heading,
+.radius-slider-limits {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   gap: 0.5rem;
-  margin-top: 0.75rem;
 }
 
-.radius-options label {
+.radius-slider-heading {
+  margin-top: 0.75rem;
+  font-size: 0.85rem;
+}
+
+.radius-slider-heading output {
+  color: #1d4ed8;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.radius-slider {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  accent-color: #1d4ed8;
   cursor: pointer;
 }
 
-.radius-options input {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
+.radius-slider:focus-visible {
+  outline: 3px solid #2563eb;
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
-.radius-options span {
-  display: block;
-  padding: 0.55rem;
-  color: #334155;
-  font-size: 0.85rem;
-  text-align: center;
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-}
-
-.radius-options input:checked + span {
-  color: #1d4ed8;
-  font-weight: 700;
-  background: #eff6ff;
-  border-color: #60a5fa;
-  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
-}
-
-.radius-options input:focus-visible + span {
-  outline: 3px solid rgba(37, 99, 235, 0.2);
-}
-
-.radius-options input:disabled + span {
+.radius-slider:disabled {
   cursor: not-allowed;
   opacity: 0.58;
+}
+
+.radius-slider-limits {
+  color: #64748b;
+  font-size: 0.78rem;
 }
 
 .privacy-notice {

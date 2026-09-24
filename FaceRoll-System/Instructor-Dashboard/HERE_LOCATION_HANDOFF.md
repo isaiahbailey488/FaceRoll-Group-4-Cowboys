@@ -27,7 +27,7 @@ There was no existing course-specific settings page. The existing `settings.html
 - Added click-to-place and draggable classroom marker behavior.
 - Added reverse geocoding after map selection.
 - Added a visible circle for the allowed attendance radius.
-- Added radius choices of 20, 25, 30, and 50 meters, defaulting to 25 meters.
+- Added a radius slider from 1 to 15 meters in 1-meter steps, defaulting to 15 meters.
 - Added an enable/disable location-verification control.
 - Added latitude, longitude, and radius validation before saving.
 - Added saved-success and save-error feedback.
@@ -41,21 +41,9 @@ There was no existing course-specific settings page. The existing `settings.html
 
 ## Sponsor feedback: replace radius buttons with a slider
 
-The sponsor requested that the four preset radius buttons be replaced with a sliding radius control on the Course Settings page. This is the next instructor-dashboard task and has not yet been implemented.
+The preset buttons have been replaced with a keyboard-accessible range slider from 1 to 15 meters in 1-meter steps, with a 15-meter default. A visible meter value and the HERE map circle update on every input event. Saved radii within the supported range are restored when selecting a course. Older out-of-range radii fall back to 15 meters in the editor; saving applies the new value.
 
-The slider work should include:
-
-- Replace the 20, 25, 30, and 50 meter buttons with an accessible range slider.
-- Display the currently selected radius in meters next to the slider.
-- Resize the HERE map circle immediately while the slider moves.
-- Keep 25 meters as the default for a course without saved location settings.
-- Load the saved radius back into the slider when an instructor reopens a course.
-- Preserve the existing save, loading, validation, error, and success states.
-- Match the current Course Settings styling and remain keyboard-accessible.
-- Confirm the desired minimum, maximum, and step with the team before implementation. These values were not specified in the sponsor feedback.
-- Update browser-side validation, Firestore rules, tests, and documentation together so they accept the same slider values.
-
-Do not leave the old buttons active alongside the slider unless the design is intentionally revised to support both controls.
+Browser validation and the dashboard Firestore rules accept whole-number radii within these limits. Deploy the updated rules together with the dashboard to support intermediate values. Browser/emulator verification of mouse, touch, keyboard, save, and reload remains to be performed.
 
 ## Files involved
 
@@ -95,7 +83,7 @@ location: {
 }
 ```
 
-The current code accepts only 20, 25, 30, or 50 meters. When the slider is implemented, its agreed minimum, maximum, and step must replace that preset-only restriction everywhere. Saving must remain blocked if coordinates or radius are invalid, a course is not selected, or the signed-in profile does not have an authorized role.
+The slider, browser validation, and dashboard Firestore rules accept whole-number radii from 1 to 15 meters. Saving remains blocked if coordinates or radius are invalid, a course is not selected, or the signed-in profile does not have an authorized role.
 
 ## HERE API-key setup
 
@@ -161,14 +149,9 @@ The emulator initially could not start because the machine was using Java 17. Ja
 
 ## Next instructor-dashboard work
 
-1. Confirm the slider's minimum, maximum, and step with the team.
-2. Replace the preset radius buttons with the slider and a visible meter value.
-3. Update the map circle live as the slider moves.
-4. Update `course-location-utils.js`, `firestore.rules`, and tests to use identical radius constraints.
-5. Verify saved radii load correctly when switching courses and after a page refresh.
-6. Test mouse, touch, and keyboard operation at common laptop sizes.
-7. Run the complete validation suite and the Firebase emulator browser flow.
-8. Rotate the HERE key if it was ever exposed outside the ignored `.env` file.
+1. Verify saved radii load correctly when switching courses and after a page refresh.
+2. Test mouse, touch, and keyboard operation at common laptop sizes.
+3. Run the Firebase emulator browser flow and deploy the updated rules with the dashboard.
 
 ## Remaining production work
 
@@ -185,12 +168,10 @@ The emulator initially could not start because the machine was using Java 17. Ja
 
 ## Known limitations and risks
 
-- The current radius control still uses four preset buttons; the sponsor-requested slider is pending.
 - HERE map keys are visible to browser users by design, so the key must be restricted by allowed origins/domains.
 - Local emulator data is temporary unless import/export is enabled.
 - Authorization currently relies on the existing user-profile role model. Production role elevation must be controlled by trusted backend code.
 - The final owner-scoping policy for courses has not yet been decided.
-- The slider's allowed range and increment still require a team decision.
 
 ## Handoff definition of done
 
@@ -210,3 +191,11 @@ The next developer can consider the requested instructor-dashboard update comple
 - The page remains usable at a common laptop screen size.
 
 All current repository changes are uncommitted. Review the diff and avoid committing `.env` or `public/js/runtime-config.js` when preparing a team handoff.
+
+## Map availability update
+
+Course Settings uses HERE Maps exclusively. Map labels use `lg: 'en'`, UI controls use `en-US`, and geocoding/reverse geocoding request English results. It checks vector-map access before initialization and explains missing credentials or rejected origins without changing providers.
+
+The current key authorizes `http://127.0.0.1:5001` but rejects `http://127.0.0.1:5002` as an unauthorized source. Hosting on port 5002 requires adding that origin to the HERE key's trusted domains.
+
+The shared dashboard stylesheet hides all images and SVGs. Course Settings overrides that rule inside the map so map controls and overlays remain visible.

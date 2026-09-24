@@ -2,7 +2,7 @@
   'use strict';
 
   const DEFAULT_CENTER = { lat: 33.2108, lng: -97.1473 };
-  const DEFAULT_RADIUS_METERS = 25;
+  const DEFAULT_RADIUS_METERS = 15;
   const MAP_ZOOM = 19;
 
   const firebaseApi = window.FaceRollFirebase;
@@ -26,7 +26,8 @@
     longitude: document.getElementById('selected-longitude'),
     saveStatus: document.getElementById('save-status'),
     saveButton: document.getElementById('save-location-button'),
-    radiusInputs: Array.from(document.querySelectorAll('input[name="radiusMeters"]')),
+    radiusInput: document.getElementById('radius-meters'),
+    radiusValue: document.getElementById('radius-value'),
   };
 
   const state = {
@@ -83,23 +84,21 @@
 
   function setRadiusValue(radiusMeters) {
     const radius = Number(radiusMeters);
-    state.radiusMeters = utils.ALLOWED_RADIUS_METERS.includes(radius)
+    state.radiusMeters = utils.isValidRadius(radius)
       ? radius
       : DEFAULT_RADIUS_METERS;
 
-    elements.radiusInputs.forEach(function (input) {
-      input.checked = Number(input.value) === state.radiusMeters;
-    });
+    elements.radiusInput.value = String(state.radiusMeters);
+    elements.radiusInput.setAttribute('aria-valuetext', state.radiusMeters + ' meters');
+    elements.radiusValue.value = state.radiusMeters + ' m';
   }
 
   function setInteractiveControlsEnabled(enabled) {
     const courseReady = Boolean(enabled && state.selectedCourse && state.authorized);
     elements.enabledToggle.disabled = !courseReady;
-    elements.radiusInputs.forEach(function (input) {
-      input.disabled = !courseReady;
-    });
-    elements.searchInput.disabled = !courseReady || !state.mapReady;
-    elements.searchButton.disabled = !courseReady || !state.mapReady;
+    elements.radiusInput.disabled = !courseReady;
+    elements.searchInput.disabled = !courseReady || !state.searchService;
+    elements.searchButton.disabled = !courseReady || !state.searchService;
     elements.locationCard.classList.toggle('is-disabled', !courseReady);
     updateSaveButton();
   }
@@ -173,8 +172,7 @@
     state.map.addObjects([state.radiusCircle, state.marker]);
 
     if (recenter) {
-      state.map.setCenter(position, true);
-      state.map.setZoom(MAP_ZOOM, true);
+      state.map.getViewModel().setLookAtData({ position: position, zoom: MAP_ZOOM }, true);
     }
   }
 
@@ -201,7 +199,7 @@
 
     return new Promise(function (resolve) {
       state.searchService.reverseGeocode(
-        { at: latitude + ',' + longitude, limit: 1 },
+        { at: latitude + ',' + longitude, limit: 1, lang: 'en-US' },
         function (result) {
           if (requestId !== state.reverseRequestId) {
             resolve(null);
@@ -286,32 +284,46 @@
     });
   }
 
-  function initializeMap() {
+  function showMapError(message) {
+    state.mapReady = false;
+    state.searchService = null;
+    elements.mapPlaceholder.classList.remove('is-hidden');
+    elements.mapPlaceholder.querySelector('strong').textContent = 'HERE Maps is unavailable';
+    elements.mapPlaceholder.querySelector('span').textContent = message;
+    setStatus(elements.mapStatus, message, 'error');
+    setInteractiveControlsEnabled(true);
+  }
+
+  async function initializeMap() {
     const apiKey = String(
       (window.FaceRollConfig && window.FaceRollConfig.HERE_API_KEY) || ''
     ).trim();
 
     if (!apiKey) {
-      elements.mapPlaceholder.querySelector('strong').textContent = 'HERE Maps is not configured';
-      elements.mapPlaceholder.querySelector('span').textContent =
-        'Add HERE_API_KEY to .env and run npm run build, then reload this page.';
-      setStatus(elements.mapStatus, 'A HERE API key is required to load the map and search.', 'error');
-      setInteractiveControlsEnabled(true);
+      showMapError('The HERE map key is missing. Configure the key and rebuild the dashboard.');
       return;
     }
-
     if (!window.H || !window.H.service || !window.H.Map) {
-      elements.mapPlaceholder.querySelector('strong').textContent = 'HERE Maps could not load';
-      elements.mapPlaceholder.querySelector('span').textContent =
-        'Check the network connection and the allowed domains on the HERE API key.';
-      setStatus(elements.mapStatus, 'Unable to load the HERE Maps JavaScript API.', 'error');
-      setInteractiveControlsEnabled(true);
+      showMapError('The HERE map library could not load. Check your connection and reload.');
       return;
     }
 
     try {
+      // HERE reports rejected credentials asynchronously while requesting tiles.
+      // Check access first so a rejected key/origin cannot leave a blank canvas.
+      const response = await fetch(
+        'https://vector.hereapi.com/v2/vectortiles/copyrights?apikey=' + encodeURIComponent(apiKey),
+        { signal: AbortSignal.timeout(8000) }
+      );
+      if (!response.ok) {
+        const message = response.status === 401 || response.status === 403
+          ? 'HERE rejected map access for ' + window.location.origin + '. Add this exact address to the HERE key’s trusted domains, then reload this page.'
+          : 'HERE map access failed (HTTP ' + response.status + '). Try reloading the page.';
+        showMapError(message);
+        return;
+      }
       const platform = new window.H.service.Platform({ apikey: apiKey });
-      const defaultLayers = platform.createDefaultLayers();
+      const defaultLayers = platform.createDefaultLayers({ lg: 'en' });
       state.searchService = platform.getSearchService();
       state.map = new window.H.Map(elements.mapContainer, defaultLayers.vector.normal.map, {
         center: DEFAULT_CENTER,
@@ -320,7 +332,7 @@
       });
       const events = new window.H.mapevents.MapEvents(state.map);
       state.behavior = new window.H.mapevents.Behavior(events);
-      window.H.ui.UI.createDefault(state.map, defaultLayers);
+      window.H.ui.UI.createDefault(state.map, defaultLayers, 'en-US');
       state.mapReady = true;
       wireMapEvents();
       window.addEventListener('resize', function () {
@@ -345,8 +357,7 @@
       elements.mapPlaceholder.querySelector('strong').textContent = 'HERE Maps could not start';
       elements.mapPlaceholder.querySelector('span').textContent =
         'Verify the HERE API key and its allowed website domains.';
-      setStatus(elements.mapStatus, 'HERE Maps initialization failed.', 'error');
-      setInteractiveControlsEnabled(true);
+      showMapError('HERE Maps could not load. Check your connection and the key’s allowed website addresses, then reload.');
     }
   }
 
@@ -389,7 +400,7 @@
   function searchLocations(query) {
     return new Promise(function (resolve, reject) {
       state.searchService.geocode(
-        { q: query, limit: 6 },
+        { q: query, limit: 6, lang: 'en-US' },
         function (result) {
           resolve((result && result.items) || []);
         },
@@ -418,13 +429,28 @@
     setStatus(elements.searchStatus, 'Searching HERE for “' + query + '”...', 'info');
 
     try {
-      const items = await searchLocations(query);
+      const items = (await searchLocations(query)).filter(function (item) {
+        return item.position && Number.isFinite(item.position.lat) && Number.isFinite(item.position.lng);
+      });
       if (!items.length) {
         setStatus(elements.searchStatus, 'No matching locations found. Try a fuller address.', 'warning');
         return;
       }
       renderSearchResults(items);
-      setStatus(elements.searchStatus, 'Choose one of ' + items.length + ' matching locations.', 'success');
+      const first = items[0];
+      selectMapPosition(
+        first.position.lat,
+        first.position.lng,
+        (first.address && first.address.label) || first.title,
+        true
+      );
+      setStatus(
+        elements.searchStatus,
+        items.length > 1
+          ? 'Showing the first match. Choose another result below if needed.'
+          : 'Location found and shown on the map.',
+        'success'
+      );
     } catch (error) {
       console.error('HERE geocoding search failed:', error);
       setStatus(
@@ -670,13 +696,10 @@
       setToggleValue(!state.enabled);
       markUnsaved('Location verification is now ' + (state.enabled ? 'enabled' : 'disabled') + '. Save to apply.');
     });
-    elements.radiusInputs.forEach(function (input) {
-      input.addEventListener('change', function () {
-        if (!input.checked) return;
-        setRadiusValue(input.value);
-        updateMapObjects(false);
-        markUnsaved('Attendance radius changed to ' + state.radiusMeters + ' meters. Save to apply.');
-      });
+    elements.radiusInput.addEventListener('input', function () {
+      setRadiusValue(elements.radiusInput.value);
+      updateMapObjects(false);
+      markUnsaved('Attendance radius changed to ' + state.radiusMeters + ' meters. Save to apply.');
     });
     elements.saveButton.addEventListener('click', saveLocation);
     document.addEventListener('click', function (event) {
@@ -689,6 +712,7 @@
   async function init() {
     wireControls();
     setInteractiveControlsEnabled(false);
+    initializeMap();
 
     try {
       await verifyAccessAndLoadCourses();
@@ -700,7 +724,6 @@
       setStatus(elements.saveStatus, 'Course location changes are unavailable.', 'error');
     }
 
-    initializeMap();
     setInteractiveControlsEnabled(true);
   }
 

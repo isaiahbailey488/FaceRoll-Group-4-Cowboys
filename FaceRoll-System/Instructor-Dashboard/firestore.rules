@@ -35,7 +35,10 @@ service cloud.firestore {
           && request.resource.data.location.longitude is number
           && request.resource.data.location.longitude >= -180
           && request.resource.data.location.longitude <= 180
-          && request.resource.data.location.radiusMeters in [20, 25, 30, 50]
+          && request.resource.data.location.radiusMeters is number
+          && request.resource.data.location.radiusMeters >= 1
+          && request.resource.data.location.radiusMeters <= 15
+          && request.resource.data.location.radiusMeters % 1 == 0
           && request.resource.data.location.addressLabel is string
           && request.resource.data.location.addressLabel.size() > 0
           && request.resource.data.location.addressLabel.size() <= 200

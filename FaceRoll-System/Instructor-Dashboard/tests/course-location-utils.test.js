@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const utils = require('../public/js/course-location-utils.js');
 
 test('accepts a complete classroom location at each supported radius', function () {
-  utils.ALLOWED_RADIUS_METERS.forEach(function (radiusMeters) {
+  Array.from({ length: 15 }, (_, index) => 1 + index).forEach(function (radiusMeters) {
     const result = utils.validateLocation({
       latitude: 33.2108,
       longitude: -97.1473,
@@ -36,7 +36,7 @@ test('normalizes numeric coordinate strings before saving', function () {
   const result = utils.validateLocation({
     latitude: '33.2108',
     longitude: '-97.1473',
-    radiusMeters: '25',
+    radiusMeters: '15',
     addressLabel: '  Classroom Building  ',
     enabled: false,
   });
@@ -44,7 +44,7 @@ test('normalizes numeric coordinate strings before saving', function () {
   assert.equal(result.valid, true);
   assert.equal(result.value.latitude, 33.2108);
   assert.equal(result.value.longitude, -97.1473);
-  assert.equal(result.value.radiusMeters, 25);
+  assert.equal(result.value.radiusMeters, 15);
   assert.equal(result.value.addressLabel, 'Classroom Building');
 });
 
@@ -54,4 +54,17 @@ test('authorizes instructor and administrator roles only', function () {
   assert.equal(utils.isAuthorizedRole('administrator'), true);
   assert.equal(utils.isAuthorizedRole('student'), false);
   assert.equal(utils.isAuthorizedRole(''), false);
+});
+
+test('rejects radii outside the slider bounds or between steps', function () {
+  [0, 16, 20, 25, 30, 50, 7.5, NaN, Infinity, null, ''].forEach(function (radiusMeters) {
+    const result = utils.validateLocation({
+      latitude: 33.2108,
+      longitude: -97.1473,
+      radiusMeters,
+      addressLabel: 'Classroom',
+      enabled: true,
+    });
+    assert.equal(result.valid, false, 'Should reject radius ' + radiusMeters);
+  });
 });

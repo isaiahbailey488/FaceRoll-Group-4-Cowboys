@@ -11,7 +11,9 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  const ALLOWED_RADIUS_METERS = Object.freeze([20, 25, 30, 50]);
+  function isValidRadius(radius) {
+    return Number.isInteger(radius) && radius >= 1 && radius <= 15;
+  }
   const AUTHORIZED_ROLES = Object.freeze(['instructor', 'admin', 'administrator']);
 
   function toFiniteNumber(value) {
@@ -40,8 +42,8 @@
     if (longitude === null || longitude < -180 || longitude > 180) {
       errors.push('Longitude must be a number between -180 and 180.');
     }
-    if (!ALLOWED_RADIUS_METERS.includes(radiusMeters)) {
-      errors.push('Radius must be 20, 25, 30, or 50 meters.');
+    if (!isValidRadius(radiusMeters)) {
+      errors.push('Radius must be a whole number between 1 and 15 meters.');
     }
     if (!addressLabel) {
       errors.push('Select a classroom location before saving.');
@@ -66,7 +68,7 @@
   }
 
   return {
-    ALLOWED_RADIUS_METERS: ALLOWED_RADIUS_METERS,
+    isValidRadius: isValidRadius,
     isAuthorizedRole: isAuthorizedRole,
     normalizeRole: normalizeRole,
     validateLocation: validateLocation,

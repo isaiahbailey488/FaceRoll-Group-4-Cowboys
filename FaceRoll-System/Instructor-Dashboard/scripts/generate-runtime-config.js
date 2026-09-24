@@ -50,6 +50,6 @@ if (hereApiKey) {
   console.log('Generated public/js/runtime-config.js with HERE_API_KEY.');
 } else {
   console.warn(
-    'Generated runtime config without a HERE_API_KEY. The Course Settings page will show a configuration message.'
+    'Generated runtime config without a HERE_API_KEY. Course Settings requires a HERE key to display the map and address search.'
   );
 }
