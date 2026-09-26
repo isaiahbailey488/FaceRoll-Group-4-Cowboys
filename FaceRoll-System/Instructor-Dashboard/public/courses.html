@@ -73,14 +73,39 @@
                   <label for="newCourseName">Course Name</label>
                   <input type="text" id="newCourseName" placeholder="e.g., Capstone I" autocomplete="off"/>
                 </div>
-                <div>
-                  <label for="newCourseInstructor">Instructor ID (optional)</label>
-                  <input type="text" id="newCourseInstructor" placeholder="instructor-uid" autocomplete="off"/>
-                </div>
                 <button type="button" id="addCourseBtn" class="primary-button btn-add-course">Add Course</button>
               </div>
               <div id="manageCoursesStatus" class="manage-courses-status" role="status" aria-live="polite"></div>
               <div id="manageCoursesList" class="manage-courses-list"></div>
+              </div>
+            </dialog>
+
+            <dialog class="settings-card invitation-dialog" id="inviteStudentsDialog" aria-labelledby="invitation-heading">
+              <div class="settings-card-header invitation-dialog-header">
+                <div>
+                  <h2 id="invitation-heading">Invite Students</h2>
+                  <p id="invitation-course-name">Choose a course from Course Management.</p>
+                </div>
+                <button type="button" id="closeInvitationDialog" class="secondary-button" aria-label="Close student invitation window">Close</button>
+              </div>
+              <div class="settings-card-body invitation-dialog-body">
+                <p>Create a QR invitation that expires after 24 hours. Replacing it disables the previous code.</p>
+                <div class="invitation-actions">
+                  <button type="button" id="invitation-create" class="primary-button" disabled>Create QR Code</button>
+                  <button type="button" id="invitation-replace" class="secondary-button" disabled>Replace QR Code</button>
+                  <button type="button" id="invitation-revoke" class="secondary-button" disabled>Revoke Invitation</button>
+                </div>
+                <p id="invitation-status" class="manage-courses-status" role="status" aria-live="polite"></p>
+                <div class="invitation-qr-shell">
+                  <canvas id="invitation-qr" hidden role="img" aria-label="Course invitation QR code"></canvas>
+                </div>
+                <div class="invitation-danger-zone">
+                  <div>
+                    <strong>Delete course</strong>
+                    <p>Permanently remove its roster, sessions, attendance history, and invitations.</p>
+                  </div>
+                  <button type="button" id="course-delete" class="secondary-button danger-button" disabled>Delete Course</button>
+                </div>
               </div>
             </dialog>
 
@@ -213,7 +238,8 @@
     <script defer src="./js/firebase-client.js?v=20260913-local-init"></script>
     <script defer src="./js/sidebar-user.js?v=20260915-courses"></script>
     <script defer src="./js/course-location.js?v=20260924-search"></script>
-    <script defer src="./js/manage-courses.js?v=20260409-1"></script>
+    <script defer src="./js/manage-courses.js?v=20260924-owner"></script>
     <script defer src="./js/courses-page.js?v=20260915-2"></script>
+    <script type="module" src="./js/course-invitations.mjs"></script>
   </body>
 </html>

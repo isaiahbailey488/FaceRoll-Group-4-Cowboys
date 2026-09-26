@@ -256,6 +256,8 @@ def create_mobile_app(
     verifier = token_verifier or FirebaseStudentTokenVerifier()
 
     app = Flask(__name__)
+    from .invitations import invitation_blueprint
+    app.register_blueprint(invitation_blueprint())
     app.config["MAX_CONTENT_LENGTH"] = max_request_bytes
     request_logging = os.getenv("FACEROLL_REQUEST_LOGGING", "").lower() in {
         "1",

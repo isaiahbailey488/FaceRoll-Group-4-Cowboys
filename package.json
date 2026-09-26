@@ -7,6 +7,8 @@
     "demo": "node scripts/demo.js",
     "demo:check": "node scripts/demo.js --check",
     "test:demo": "node --test scripts/demo.test.js",
+    "test:contracts": "node --test shared/course-contracts.test.js",
+    "test:course-join": "node --test shared/course-join.test.js",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web"

@@ -2,6 +2,13 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Invitations are managed only by the authenticated Admin SDK service.
+    match /courseInvitations/{tokenHash} {
+      allow read, write: if false;
+    }
+    match /courseInvitationHeads/{courseId} {
+      allow read, write: if false;
+    }
     function isSignedIn() {
       return request.auth != null;
     }
@@ -65,7 +72,20 @@ service cloud.firestore {
     function isValidAttendanceRecord(recordId) {
       return request.resource.data.uid is string
         && request.resource.data.sessionId is string
+        && request.resource.data.courseId is string
+        && request.resource.data.membershipId is string
         && recordId == request.resource.data.sessionId + '_' + request.resource.data.uid
+        && exists(/databases/$(database)/documents/sessions/$(request.resource.data.sessionId))
+        && get(/databases/$(database)/documents/sessions/$(request.resource.data.sessionId)).data.courseId
+          == request.resource.data.courseId
+        && get(/databases/$(database)/documents/sessions/$(request.resource.data.sessionId)).data.status == 'active'
+        && !get(/databases/$(database)/documents/sessions/$(request.resource.data.sessionId)).data.keys().hasAny(['endTime'])
+        && exists(/databases/$(database)/documents/enrollments/$(request.resource.data.membershipId))
+        && get(/databases/$(database)/documents/enrollments/$(request.resource.data.membershipId)).data.uid
+          == request.resource.data.uid
+        && get(/databases/$(database)/documents/enrollments/$(request.resource.data.membershipId)).data.courseId
+          == request.resource.data.courseId
+        && get(/databases/$(database)/documents/enrollments/$(request.resource.data.membershipId)).data.status == 'active'
         && hasNoBiometricPayload();
     }
 
@@ -82,16 +102,34 @@ service cloud.firestore {
 
     match /courses/{courseId} {
       allow read: if isSignedIn();
-      allow create, update: if isInstructorOrAdmin()
+      allow create: if isInstructorOrAdmin()
+        && request.resource.data.instructorId == request.auth.uid
         && hasValidCourseLocation()
         && hasNoBiometricPayload();
-      allow delete: if isInstructorOrAdmin();
+      allow update: if isInstructorOrAdmin()
+        && resource.data.instructorId == request.auth.uid
+        && request.resource.data.instructorId == resource.data.instructorId
+        && hasValidCourseLocation()
+        && hasNoBiometricPayload();
+      // Deletion is performed by the authenticated backend so related records
+      // can be removed atomically.
+      allow delete: if false;
     }
 
     match /sessions/{sessionId} {
       allow read: if isSignedIn();
-      allow create, update: if isInstructorOrAdmin() && hasNoBiometricPayload();
-      allow delete: if isInstructorOrAdmin();
+      allow create: if isInstructorOrAdmin()
+        && exists(/databases/$(database)/documents/courses/$(request.resource.data.courseId))
+        && get(/databases/$(database)/documents/courses/$(request.resource.data.courseId)).data.instructorId == request.auth.uid
+        && hasNoBiometricPayload();
+      allow update: if isInstructorOrAdmin()
+        && request.resource.data.courseId == resource.data.courseId
+        && exists(/databases/$(database)/documents/courses/$(resource.data.courseId))
+        && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.instructorId == request.auth.uid
+        && hasNoBiometricPayload();
+      allow delete: if isInstructorOrAdmin()
+        && exists(/databases/$(database)/documents/courses/$(resource.data.courseId))
+        && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.instructorId == request.auth.uid;
     }
 
     match /attendance/{recordId} {
@@ -116,7 +154,10 @@ service cloud.firestore {
     }
 
     match /enrollments/{enrollmentId} {
-      allow read: if isSignedIn();
+      allow get: if isSignedIn()
+        && (resource.data.uid == request.auth.uid || isInstructorOrAdmin());
+      allow list: if isSignedIn()
+        && (resource.data.uid == request.auth.uid || isInstructorOrAdmin());
       allow create, update: if isInstructorOrAdmin() && hasNoBiometricPayload();
       allow delete: if isInstructorOrAdmin();
     }

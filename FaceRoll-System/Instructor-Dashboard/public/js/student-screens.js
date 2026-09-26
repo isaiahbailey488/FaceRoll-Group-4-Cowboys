@@ -637,7 +637,14 @@
         return;
       }
       try {
-        const courses = await firebaseApi.readCollectionDocs('courses');
+        const results = await Promise.all([
+          firebaseApi.readCollectionDocs('courses'),
+          firebaseApi.waitForAuthUser(),
+        ]);
+        const user = results[1];
+        const courses = results[0].filter(function (course) {
+          return user && String(getFirstDefined(course, ['instructorId']) || '') === user.uid;
+        });
         courseSelect.innerHTML = '';
         if (!courses.length) {
           courseSelect.innerHTML = '<option value="">No courses found</option>';
@@ -658,11 +665,9 @@
     }
 
     async function loadCourseRosterUids(courseId) {
-      // The enrollments collection is optional during migration. A null result
-      // means no roster data exists yet; an empty array means a roster exists
-      // but the selected course currently has no authorized students.
+      // No roster means no authorized recognition candidates.
       const enrollments = await firebaseApi.readCollectionDocs('enrollments');
-      if (!enrollments.length) return null;
+      if (!enrollments.length) return [];
 
       const uids = new Set();
       enrollments.forEach(function (entry) {
@@ -873,7 +878,7 @@
           startTime: now.toISOString(), gracePeriodMinutes: grace, status: 'active',
         });
         const bridgeSession = { sessionId: sid, courseId: selectedId };
-        if (allowedUids !== null) bridgeSession.allowedUids = allowedUids;
+        bridgeSession.allowedUids = allowedUids;
         await requestBridge('/start-session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

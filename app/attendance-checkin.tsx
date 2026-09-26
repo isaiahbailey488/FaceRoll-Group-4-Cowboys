@@ -52,7 +52,7 @@ export default function AttendanceCheckInScreen() {
 
       const [userProfile, sessions] = await Promise.all([
         getUserProfile(user.uid),
-        getActiveSessions(),
+        getActiveSessions(user.uid),
       ]);
 
       setProfile(userProfile);

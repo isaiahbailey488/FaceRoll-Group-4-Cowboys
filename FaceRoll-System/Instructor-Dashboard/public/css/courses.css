@@ -16,7 +16,8 @@
   flex-shrink: 0;
 }
 
-#manageCoursesPanel:not([open]) {
+#manageCoursesPanel:not([open]),
+#inviteStudentsDialog:not([open]) {
   display: none;
 }
 
@@ -58,23 +59,28 @@
 .manage-courses-status.error { color: #b91c1c; }
 
 .manage-courses-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+  display: grid;
+  gap: 0.65rem;
   margin-top: 1rem;
 }
 
-.manage-courses-list .chip {
-  display: inline-flex;
+.manage-courses-list .course-list-item {
+  display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  padding: 0.35rem 0.7rem;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem;
   border: 1px solid var(--fr-border-soft);
-  border-radius: 999px;
+  border-radius: 12px;
   background: var(--fr-bg);
   font-size: 0.85rem;
   overflow-wrap: anywhere;
+}
+
+.course-list-details {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
 }
 
 .manage-courses-list .chip-id {
@@ -139,7 +145,18 @@
   box-shadow: 0 24px 64px rgba(15, 23, 42, 0.24);
 }
 
-#manageCoursesPanel::backdrop {
+#inviteStudentsDialog {
+  width: min(560px, calc(100% - 2rem));
+  max-height: calc(100dvh - 2rem);
+  margin: auto;
+  padding: 0;
+  overflow-y: auto;
+  color: var(--fr-text);
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.24);
+}
+
+#manageCoursesPanel::backdrop,
+#inviteStudentsDialog::backdrop {
   background: rgba(15, 23, 42, 0.5);
 }
 
@@ -156,6 +173,66 @@
   margin-top: 0.25rem;
 }
 
-body:has(#manageCoursesPanel[open]) {
+body:has(#manageCoursesPanel[open]),
+body:has(#inviteStudentsDialog[open]) {
   overflow: hidden;
+}
+
+.invitation-dialog-header {
+  align-items: flex-start;
+}
+
+.invitation-dialog-body,
+.invitation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.invitation-dialog-body {
+  flex-direction: column;
+}
+
+.invitation-qr-shell {
+  display: flex;
+  min-height: 1px;
+  justify-content: center;
+}
+
+#invitation-qr {
+  max-width: 100%;
+  height: auto;
+  padding: 0.75rem;
+  border: 1px solid var(--fr-border-soft);
+  border-radius: 16px;
+  background: #ffffff;
+}
+
+.invitation-danger-zone {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--fr-border-soft);
+}
+
+.invitation-danger-zone p {
+  margin: 0.25rem 0 0;
+  color: var(--fr-muted);
+  font-size: 0.85rem;
+}
+
+.danger-button {
+  color: #b91c1c;
+  border-color: #fecaca;
+}
+
+@media (max-width: 520px) {
+  .manage-courses-list .course-list-item,
+  .invitation-danger-zone {
+    align-items: stretch;
+    flex-direction: column;
+  }
 }

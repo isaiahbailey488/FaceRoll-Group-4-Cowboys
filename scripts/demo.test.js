@@ -11,6 +11,7 @@ const {
   selectNetworkMode,
   tailscaleConnection,
   configureTailscale,
+  ensureDemoCertificate,
   createDemoEnvironment,
   detectLanAddress,
   isPrivateLanAddress,
@@ -30,6 +31,36 @@ test('network prompt defaults local, accepts Tailscale, and flags bypass prompti
 });
 
 const tailStatus = { BackendState: 'Running', TailscaleIPs: ['100.100.1.2'], Self: { DNSName: 'demo.tail123.ts.net.' } };
+
+test('Wi-Fi wins over Hyper-V, WSL, VPN and Ethernet; virtual-only networks fail detection', () => {
+  const entry = address => [{family:'IPv4',internal:false,address}];
+  const virtual = {'vEthernet (Default Switch)':entry('172.22.160.1'), 'vEthernet (WSL)':entry('172.25.192.1'), 'VPN':entry('10.0.0.2')};
+  assert.equal(detectLanAddress({...virtual, Ethernet:entry('10.1.1.2'), 'Wi-Fi':entry('192.168.1.71')}), '192.168.1.71');
+  assert.equal(detectLanAddress(virtual), null);
+  assert.equal(detectLanAddress({Ethernet:entry('10.1.1.2')}), '10.1.1.2');
+});
+
+test('certificate refresh caches each IP, preserves original files, and handles generation failures', () => {
+  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'faceroll-tls-test-'));
+  try {
+    for(const file of ['rootCA.pem','rootCA-key.pem','original.pem','original.key']) fs.writeFileSync(path.join(directory,file),'original');
+    const config=()=>({lanAddress:'192.168.1.71',tlsCert:path.join(directory,'original.pem'),tlsKey:path.join(directory,'original.key')});
+    const supports=(file,host)=>fs.readFileSync(file,'utf8')===host;
+    let generated=0;
+    const run=(_command,args)=>{
+      if(args[0]==='-CAROOT') return {status:0,stdout:directory};
+      generated++;fs.writeFileSync(args[1],args[4]);fs.writeFileSync(args[3],'key');return {status:0};
+    };
+    const first=config();ensureDemoCertificate(first,run,supports);
+    assert.equal(generated,1);assert.match(first.tlsCert,/faceroll-auto-192\.168\.1\.71/);
+    ensureDemoCertificate(config(),run,supports);assert.equal(generated,1);
+    assert.equal(fs.readFileSync(path.join(directory,'original.pem'),'utf8'),'original');
+    const changed={...config(),lanAddress:'192.168.1.72'};ensureDemoCertificate(changed,run,supports);assert.equal(generated,2);
+    assert.throws(()=>ensureDemoCertificate({...config(),lanAddress:'192.168.1.73'},(_c,args)=>args[0]==='-CAROOT'?{status:0,stdout:directory}:{status:1},supports),/preserved/);
+    assert.ok(!fs.readdirSync(directory).some(name=>name.startsWith('.faceroll-cert-')));
+    ensureDemoCertificate({...config(),networkMode:'tailscale'},()=>{throw Error('Unexpected mkcert');},supports);
+  } finally {fs.rmSync(directory,{recursive:true,force:true});}
+});
 test('Tailscale uses detected addresses and rejects disconnected clients or existing Serve config', () => {
   assert.throws(() => tailscaleConnection({ BackendState: 'Stopped' }), /Connect/);
   assert.throws(() => tailscaleConnection({ ...tailStatus, Self: {} }), /MagicDNS/);

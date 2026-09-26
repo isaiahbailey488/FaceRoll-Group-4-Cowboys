@@ -84,12 +84,16 @@ function isPrivateLanAddress(address) {
 
 function detectLanAddress(interfaces = os.networkInterfaces()) {
   const candidates = [];
-  Object.values(interfaces).forEach(function (addresses) {
+  Object.entries(interfaces).forEach(function ([name, addresses]) {
+    if (/vethernet|hyper-v|wsl|docker|virtual|vmware|vbox|tailscale|vpn|tunnel|loopback|^br-|^virbr|^veth|^tun|^tap/i.test(name)) return;
     (addresses || []).forEach(function (entry) {
-      if (entry && entry.family === 'IPv4' && !entry.internal) candidates.push(entry.address);
+      if (entry && entry.family === 'IPv4' && !entry.internal && isPrivateLanAddress(entry.address)) {
+        candidates.push({ address: entry.address, priority: /wi-?fi|wireless|^wlan|^wl/i.test(name) ? 0 : 1 });
+      }
     });
   });
-  return candidates.find(isPrivateLanAddress) || null;
+  candidates.sort((a, b) => a.priority - b.priority);
+  return candidates[0]?.address || null;
 }
 
 function loadDemoConfiguration(environment = process.env) {
@@ -110,7 +114,8 @@ function loadDemoConfiguration(environment = process.env) {
   const python = values.FACEROLL_PYTHON || (windows
     ? path.join(REPOSITORY_ROOT, 'FaceRoll-System', 'recognition', '.venv', 'Scripts', 'python.exe')
     : path.join(REPOSITORY_ROOT, 'FaceRoll-System', 'recognition', '.venv', 'bin', 'python'));
-  const lanAddress = values.FACEROLL_DEMO_HOST || detectLanAddress();
+  const hostOverride = String(values.FACEROLL_DEMO_HOST || '').trim();
+  const lanAddress = hostOverride && hostOverride !== 'auto' ? hostOverride : detectLanAddress();
 
   return {
     lanAddress,
@@ -175,6 +180,7 @@ function assertCommand(command, args, label, options) {
 
 function certificateSupportsHost(certificatePath, host) {
   const certificate = new crypto.X509Certificate(fs.readFileSync(certificatePath));
+  if (Date.parse(certificate.validTo) <= Date.now() + 86400000 || Date.parse(certificate.validFrom) > Date.now()) return false;
   return String(certificate.subjectAltName || '')
     .split(',')
     .map((entry) => entry.trim())
@@ -249,6 +255,45 @@ function readJson(url) {
   });
 }
 
+function ensureDemoCertificate(config, run = commandResult, supports = certificateSupportsHost) {
+  if (config.networkMode === 'tailscale') return;
+  if (!net.isIPv4(config.lanAddress)) throw new Error('FACEROLL_DEMO_HOST must be an IPv4 address or auto.');
+  const usable = (cert, key) => {
+    try { return fs.existsSync(key) && supports(cert, config.lanAddress); } catch { return false; }
+  };
+  if (usable(config.tlsCert, config.tlsKey)) return;
+  const directory = path.dirname(config.tlsCert);
+  const cert = path.join(directory, `faceroll-auto-${config.lanAddress}.pem`);
+  const key = path.join(directory, `faceroll-auto-${config.lanAddress}.key`);
+  if (!usable(cert, key)) {
+    const caResult = run('mkcert', ['-CAROOT']);
+    if (caResult.error || caResult.status !== 0) throw new Error('Install mkcert to refresh the demo certificate automatically.');
+    const caRoot = String(caResult.stdout).trim();
+    if (!fs.existsSync(path.join(caRoot, 'rootCA.pem')) || !fs.existsSync(path.join(caRoot, 'rootCA-key.pem'))) {
+      throw new Error('The existing mkcert authority is missing. Complete the one-time mkcert setup before starting the demo.');
+    }
+    fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
+    const staging = fs.mkdtempSync(path.join(directory, '.faceroll-cert-'));
+    const stagedCert = path.join(staging, 'server.pem'), stagedKey = path.join(staging, 'server.key');
+    try {
+      const result = run('mkcert', ['-cert-file', stagedCert, '-key-file', stagedKey,
+        config.lanAddress, 'localhost', '127.0.0.1', '::1']);
+      if (result.error || result.status !== 0 || !usable(stagedCert, stagedKey)) {
+        throw new Error('mkcert could not generate a valid demo certificate. The existing certificate was preserved.');
+      }
+      fs.chmodSync(stagedKey, 0o600);
+      fs.renameSync(stagedCert, cert);
+      fs.renameSync(stagedKey, key);
+    } finally {
+      for (const file of [stagedCert, stagedKey]) if (fs.existsSync(file)) fs.unlinkSync(file);
+      fs.rmdirSync(staging);
+    }
+    console.log(`Updated demo TLS certificate for ${config.lanAddress}.`);
+  }
+  config.tlsCert = cert;
+  config.tlsKey = key;
+}
+
 async function waitForEmulators(url, timeoutMs = 90000, pollMs = 500) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -271,6 +316,7 @@ async function validateConfiguration(config, checkPorts) {
       'No private Wi-Fi address was detected. Set FACEROLL_DEMO_HOST in .env.demo.'
     );
   }
+  ensureDemoCertificate(config);
   [config.python, config.tlsCert, config.tlsKey].forEach(function (requiredPath) {
     if (!fs.existsSync(requiredPath)) throw new Error(`Required file not found: ${requiredPath}`);
   });
@@ -403,14 +449,14 @@ async function runDemo() {
   fs.mkdirSync(config.enrollmentDirectory, { recursive: true, mode: 0o700 });
   fs.mkdirSync(config.deepfaceHome, { recursive: true, mode: 0o700 });
 
+  const environment = createDemoEnvironment(config);
   const build = commandResult(
     process.execPath,
     ['scripts/generate-runtime-config.js'],
-    { cwd: dashboardDirectory, stdio: 'inherit' }
+    { cwd: dashboardDirectory, stdio: 'inherit', env: environment }
   );
   if (build.status !== 0) throw new Error('Dashboard runtime configuration failed.');
 
-  const environment = createDemoEnvironment(config);
   const children = [];
   let stopping = false;
 
@@ -524,6 +570,7 @@ module.exports = {
   selectNetworkMode,
   tailscaleConnection,
   configureTailscale,
+  ensureDemoCertificate,
   createDemoEnvironment,
   detectLanAddress,
   isPrivateLanAddress,

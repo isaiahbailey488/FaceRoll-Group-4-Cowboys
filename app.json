@@ -10,7 +10,7 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.cowboys.faceroll",
       "infoPlist": {
-        "NSCameraUsageDescription": "FaceRoll uses your camera for face enrollment and attendance check-in via facial recognition."
+        "NSCameraUsageDescription": "FaceRoll uses your camera to scan course invitations, enroll your face, and check in for attendance."
       }
     },
     "android": {
@@ -31,7 +31,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "FaceRoll uses your camera for face enrollment and attendance check-in via facial recognition."
+          "cameraPermission": "FaceRoll uses your camera to scan course invitations, enroll your face, and check in for attendance."
         }
       ],
       "expo-font",

@@ -8,6 +8,7 @@ import {
   runTransaction,
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { activeCourseIds, membershipId } from '../shared/session-access';
 
 export interface AttendanceRecord {
   id: string;
@@ -118,8 +119,8 @@ export async function getRecentActivity(uid: string, max = 10): Promise<Attendan
   return rows.slice(0, max);
 }
 
-export async function getActiveSessionForUser(_uid: string): Promise<{ sessionId: string; courseId: string } | null> {
-  const sessions = await getActiveSessions();
+export async function getActiveSessionForUser(uid: string): Promise<{ sessionId: string; courseId: string } | null> {
+  const sessions = await getActiveSessions(uid);
   if (!sessions.length) return null;
   return {
     sessionId: sessions[0].sessionId,
@@ -127,10 +128,17 @@ export async function getActiveSessionForUser(_uid: string): Promise<{ sessionId
   };
 }
 
-export async function getActiveSessions(): Promise<Session[]> {
+export async function getActiveSessions(uid: string): Promise<Session[]> {
   const MAX_SESSION_HOURS = 3;
-  const q = query(collection(db, 'sessions'));
-  const snap = await getDocs(q);
+  if (!uid) return [];
+  const [snap, enrollmentSnap] = await Promise.all([
+    getDocs(query(collection(db, 'sessions'))),
+    getDocs(query(collection(db, 'enrollments'), where('uid', '==', uid))),
+  ]);
+  const allowedCourses = activeCourseIds(
+    enrollmentSnap.docs.map((entry) => entry.data()),
+    uid
+  );
 
   const now = Date.now();
   const maxAgeMs = MAX_SESSION_HOURS * 60 * 60 * 1000;
@@ -157,7 +165,7 @@ export async function getActiveSessions(): Promise<Session[]> {
         status: isActive ? 'active' : 'closed',
       } as Session;
     })
-    .filter((s) => s.status === 'active')
+    .filter((s) => s.status === 'active' && allowedCourses.has(s.courseId))
     .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
 
   const uniqueCourseIds = Array.from(new Set(rawActive.map((s) => s.courseId).filter(Boolean)));
@@ -206,9 +214,24 @@ export async function submitAttendance(
 
   const attendanceDocId = buildAttendanceDocumentId(payload.sessionId, payload.uid);
   const attendanceRef = doc(db, 'attendance', attendanceDocId);
+  const sessionRef = doc(db, 'sessions', payload.sessionId);
+  const membershipDocId = membershipId(payload.courseId, payload.uid);
+  const membershipRef = doc(db, 'enrollments', membershipDocId);
   const created = await runTransaction(db, async (transaction) => {
     const existing = await transaction.get(attendanceRef);
+    const sessionSnapshot = await transaction.get(sessionRef);
+    const membershipSnapshot = await transaction.get(membershipRef);
     if (existing.exists()) return false;
+    const session = sessionSnapshot.data() as any;
+    const membership = membershipSnapshot.data() as any;
+    if (!sessionSnapshot.exists() || session?.status === 'closed' || session?.endTime ||
+        session?.courseId !== payload.courseId) {
+      throw new Error('This attendance session is no longer available.');
+    }
+    if (!membershipSnapshot.exists() || membership?.uid !== payload.uid ||
+        membership?.courseId !== payload.courseId || membership?.status !== 'active') {
+      throw new Error('You are not enrolled in this course.');
+    }
 
     transaction.set(attendanceRef, {
       id: attendanceDocId,
@@ -216,6 +239,7 @@ export async function submitAttendance(
       userId: payload.uid,
       sessionId: payload.sessionId,
       courseId: payload.courseId,
+      membershipId: membershipDocId,
       status: payload.status,
       method: payload.method,
       source: payload.source,

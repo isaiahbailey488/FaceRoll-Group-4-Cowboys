@@ -59,7 +59,7 @@ export function discardTemporaryCameraFile(uri?: string): void {
   }
 }
 
-function configuredApiUrl(): string {
+export function configuredApiUrl(): string {
   const publicEnvironmentUrl = process.env.EXPO_PUBLIC_RECOGNITION_API_URL;
   const extra = Constants?.expoConfig?.extra as
     | { recognitionApiUrl?: string }

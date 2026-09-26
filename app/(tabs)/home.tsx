@@ -130,6 +130,11 @@ export default function HomeScreen() {
           <Text style={styles.checkInText}>Check-In</Text>
         </TouchableOpacity>
 
+        <TouchableOpacity style={styles.checkInButton} onPress={() => router.push('../join-course')} accessibilityRole="button">
+          <Ionicons name="qr-code-outline" size={22} color={Colors.white} style={styles.checkInIcon} />
+          <Text style={styles.checkInText}>Join a Course</Text>
+        </TouchableOpacity>
+
         <View style={styles.activitySection}>
           <Text style={styles.sectionTitle}>Recent Activity</Text>
 
