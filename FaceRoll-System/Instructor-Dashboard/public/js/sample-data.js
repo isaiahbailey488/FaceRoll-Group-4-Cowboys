@@ -2,7 +2,7 @@
   const students = [
     {
       id: 'student001',
-      studentId: 'student001',
+      studentId: '4827316',
       name: 'Daniel Perez',
       email: 'student1@test.com',
       optOutFlag: false,
@@ -15,7 +15,7 @@
     },
     {
       id: 'student002',
-      studentId: 'student002',
+      studentId: '6152049',
       name: 'Maria Lopez',
       email: 'student2@test.com',
       optOutFlag: true,
@@ -28,7 +28,7 @@
     },
     {
       id: 'student003',
-      studentId: 'student003',
+      studentId: '3078642',
       name: 'Aisha Khan',
       email: 'student3@test.com',
       optOutFlag: false,
@@ -41,7 +41,7 @@
     },
     {
       id: 'student004',
-      studentId: 'student004',
+      studentId: '7941528',
       name: 'Marco Ruiz',
       email: 'student4@test.com',
       optOutFlag: false,
@@ -54,7 +54,7 @@
     },
     {
       id: 'student005',
-      studentId: 'student005',
+      studentId: '2684937',
       name: 'Liu Wei',
       email: 'student5@test.com',
       optOutFlag: false,
@@ -67,7 +67,7 @@
     },
     {
       id: 'student006',
-      studentId: 'student006',
+      studentId: '9513764',
       name: 'Emma Wilson',
       email: 'student6@test.com',
       optOutFlag: false,
@@ -80,7 +80,7 @@
     },
     {
       id: 'student007',
-      studentId: 'student007',
+      studentId: '4368205',
       name: 'Noah Brown',
       email: 'student7@test.com',
       optOutFlag: false,
@@ -94,49 +94,49 @@
   ];
 
   const attendanceHistory = {
-    student001: [
+    4827316: [
       { date: '2026-03-07', course: 'Course 1030', status: 'Present', recordedTime: '09:01 AM' },
       { date: '2026-03-05', course: 'Course 1030', status: 'Present', recordedTime: '09:00 AM' },
       { date: '2026-03-03', course: 'Course 1030', status: 'Late', recordedTime: '09:07 AM' },
       { date: '2026-02-28', course: 'Course 1030', status: 'Present', recordedTime: '09:02 AM' },
       { date: '2026-02-26', course: 'Course 1030', status: 'Absent', recordedTime: 'N/A' },
     ],
-    student002: [
+    6152049: [
       { date: '2026-03-07', course: 'Course 1030', status: 'Late', recordedTime: '09:08 AM' },
       { date: '2026-03-05', course: 'Course 1030', status: 'Present', recordedTime: '09:03 AM' },
       { date: '2026-03-03', course: 'Course 1030', status: 'Absent', recordedTime: 'N/A' },
       { date: '2026-02-28', course: 'Course 1030', status: 'Present', recordedTime: '09:04 AM' },
       { date: '2026-02-26', course: 'Course 1030', status: 'Absent', recordedTime: 'N/A' },
     ],
-    student003: [
+    3078642: [
       { date: '2026-03-07', course: 'Course 1030', status: 'Present', recordedTime: '08:58 AM' },
       { date: '2026-03-05', course: 'Course 1030', status: 'Late', recordedTime: '09:06 AM' },
       { date: '2026-03-03', course: 'Course 1030', status: 'Late', recordedTime: '09:07 AM' },
       { date: '2026-02-28', course: 'Course 1030', status: 'Present', recordedTime: '09:00 AM' },
       { date: '2026-02-26', course: 'Course 1030', status: 'Present', recordedTime: '09:01 AM' },
     ],
-    student004: [
+    7941528: [
       { date: '2026-03-07', course: 'Course 1030', status: 'Present', recordedTime: '09:03 AM' },
       { date: '2026-03-05', course: 'Course 1030', status: 'Absent', recordedTime: 'N/A' },
       { date: '2026-03-03', course: 'Course 1030', status: 'Present', recordedTime: '09:03 AM' },
       { date: '2026-02-28', course: 'Course 1030', status: 'Late', recordedTime: '09:09 AM' },
       { date: '2026-02-26', course: 'Course 1030', status: 'Present', recordedTime: '09:01 AM' },
     ],
-    student005: [
+    2684937: [
       { date: '2026-03-07', course: 'Course 1030', status: 'Present', recordedTime: '09:00 AM' },
       { date: '2026-03-05', course: 'Course 1030', status: 'Present', recordedTime: '09:01 AM' },
       { date: '2026-03-03', course: 'Course 1030', status: 'Present', recordedTime: '09:02 AM' },
       { date: '2026-02-28', course: 'Course 1030', status: 'Present', recordedTime: '08:59 AM' },
       { date: '2026-02-26', course: 'Course 1030', status: 'Present', recordedTime: '09:00 AM' },
     ],
-    student006: [
+    9513764: [
       { date: '2026-03-07', course: 'Course 1030', status: 'Late', recordedTime: '09:10 AM' },
       { date: '2026-03-05', course: 'Course 1030', status: 'Present', recordedTime: '09:02 AM' },
       { date: '2026-03-03', course: 'Course 1030', status: 'Present', recordedTime: '09:03 AM' },
       { date: '2026-02-28', course: 'Course 1030', status: 'Absent', recordedTime: 'N/A' },
       { date: '2026-02-26', course: 'Course 1030', status: 'Present', recordedTime: '09:01 AM' },
     ],
-    student007: [
+    4368205: [
       { date: '2026-03-07', course: 'Course 1030', status: 'Absent', recordedTime: 'N/A' },
       { date: '2026-03-05', course: 'Course 1030', status: 'Present', recordedTime: '09:04 AM' },
       { date: '2026-03-03', course: 'Course 1030', status: 'Absent', recordedTime: 'N/A' },
@@ -241,7 +241,7 @@
   }
 
   function getAttendanceHistory(studentId) {
-    return clone(attendanceHistory[studentId] || attendanceHistory.student001);
+    return clone(attendanceHistory[studentId] || attendanceHistory[4827316]);
   }
 
   function getAttendanceTableRows() {

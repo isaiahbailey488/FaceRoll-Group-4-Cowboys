@@ -190,6 +190,27 @@
       text-decoration: underline;
     }
 
+    .roster-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      white-space: nowrap;
+    }
+
+    .roster-membership-status.status-present {
+      color: #166534 !important;
+      background: #dcfce7 !important;
+      border-color: #86efac !important;
+      box-shadow: none !important;
+    }
+
+    .roster-membership-status.status-absent {
+      color: #b91c1c !important;
+      background: #fef2f2 !important;
+      border-color: #fecaca !important;
+      box-shadow: none !important;
+    }
+
     @media (max-width: 992px) {
       .sidebar-brand {
         padding: 18px 12px;
@@ -273,13 +294,15 @@
                     <th class="table-head-cell">Student Name</th>
                     <th class="table-head-cell">Student ID</th>
                     <th class="table-head-cell">Email</th>
+                    <th class="table-head-cell">Course</th>
+                    <th class="table-head-cell">Enrollment</th>
                     <th class="table-head-cell">Attendance Rate</th>
                     <th class="table-head-cell">Total Absences</th>
                     <th class="table-head-cell">Actions</th>
                   </tr>
                 </thead>
                 <tbody id="rosterTbody" class="table-body">
-                  <tr><td colspan="6">Loading student roster...</td></tr>
+                  <tr><td colspan="8">Loading student roster...</td></tr>
                 </tbody>
               </table>
             </div>
@@ -295,6 +318,7 @@
     <script defer src="./js/sample-data.js"></script>
     <script defer src="./js/firebase-client.js?v=20260913-local-init"></script>
     <script defer src="./js/sidebar-user.js?v=20260915-courses"></script>
-    <script defer src="./js/student-screens.js?v=20260429-4"></script>
+    <script defer src="./js/course-roster-sync.js?v=20261001-roster-1"></script>
+    <script defer src="./js/student-screens.js?v=20261001-enrollment-1"></script>
   </body>
 </html>

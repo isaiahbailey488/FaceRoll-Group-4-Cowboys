@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -48,6 +49,8 @@ class DockerCommandTests(unittest.TestCase):
         self.shared = root / "shared"
         self.enrollments = root / "enrollments"
         self.model_home = root / "model-home"
+        self.embedding_key = root / "embedding-storage.key"
+        self.embedding_key.write_text("test-key", encoding="ascii")
 
     def tearDown(self):
         self.temporary_directory.cleanup()
@@ -63,6 +66,7 @@ class DockerCommandTests(unittest.TestCase):
             patch.object(BRIDGE, "SHARED_DIR", self.shared),
             patch.object(BRIDGE, "ENROLLMENTS_DIR", self.enrollments),
             patch.object(BRIDGE, "DEEPFACE_HOME", self.model_home),
+            patch.object(BRIDGE, "EMBEDDING_KEY_FILE", self.embedding_key),
         ):
             command = manager.build_recognizer_command(configuration)
 
@@ -75,6 +79,15 @@ class DockerCommandTests(unittest.TestCase):
         self.assertIn(f"{self.model_home.resolve()}:/model-cache", command)
         self.assertIn("DEEPFACE_HOME=/model-cache", command)
         self.assertIn("FACEROLL_ENROLLMENT_DIR=/data/enrollments", command)
+        self.assertIn("FACEROLL_ROSTER_FILE=/app/shared/course-roster.json", command)
+        self.assertIn(
+            "FACEROLL_EMBEDDING_KEY_FILE=/run/secrets/faceroll-embedding.key",
+            command,
+        )
+        self.assertIn(
+            f"{self.embedding_key.resolve()}:/run/secrets/faceroll-embedding.key:ro",
+            command,
+        )
         self.assertIn("FACEROLL_SESSION_ID=session-123", command)
         self.assertIn("FACEROLL_COURSE_ID=course-456", command)
         self.assertIn("FACEROLL_ALLOWED_UIDS=uid-a,uid-b", command)
@@ -133,11 +146,14 @@ class SessionLifecycleTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
+            embedding_key = root / "embedding-storage.key"
+            embedding_key.write_text("test-key", encoding="ascii")
             with (
                 patch.object(BRIDGE, "SHARED_DIR", root / "shared"),
                 patch.object(BRIDGE, "EVENT_LOG_PATH", root / "shared" / "events.jsonl"),
                 patch.object(BRIDGE, "ENROLLMENTS_DIR", root / "enrollments"),
                 patch.object(BRIDGE, "DEEPFACE_HOME", root / "model-home"),
+                patch.object(BRIDGE, "EMBEDDING_KEY_FILE", embedding_key),
                 patch.object(manager, "_remove_stale_container"),
                 patch.object(manager, "_ensure_docker_image"),
                 patch.object(
@@ -160,6 +176,55 @@ class SessionLifecycleTests(unittest.TestCase):
         self.assertIn("FACEROLL_SESSION_ID=session-123", recognizer_command)
         capture_command = spawn.call_args_list[1].args[1]
         self.assertEqual(capture_command[-1], "capture.py")
+
+    def test_active_roster_can_add_and_remove_students_without_restart(self):
+        manager = BRIDGE.SessionManager()
+        manager.capture_process = FakeProcess(101)
+        manager.recognizer_process = FakeProcess(202)
+        manager.session_configuration = BRIDGE.SessionConfiguration(
+            session_id="session-123",
+            course_id="course-456",
+            allowed_uids=frozenset({"uid-a"}),
+        )
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            shared = Path(temporary_directory) / "shared"
+            shared.mkdir()
+            with patch.object(BRIDGE, "SHARED_DIR", shared):
+                status = manager.update_roster(
+                    BRIDGE.SessionConfiguration(
+                        session_id="session-123",
+                        course_id="course-456",
+                        allowed_uids=frozenset({"uid-b", "uid-c"}),
+                    )
+                )
+                payload = json.loads(
+                    (shared / "course-roster.json").read_text(encoding="utf-8")
+                )
+
+        self.assertEqual(payload["allowedUids"], ["uid-b", "uid-c"])
+        self.assertEqual(status["rosterSize"], 2)
+        self.assertEqual(manager.capture_process.pid, 101)
+        self.assertEqual(manager.recognizer_process.pid, 202)
+
+    def test_roster_update_must_match_the_running_session(self):
+        manager = BRIDGE.SessionManager()
+        manager.capture_process = FakeProcess(101)
+        manager.recognizer_process = FakeProcess(202)
+        manager.session_configuration = BRIDGE.SessionConfiguration(
+            session_id="session-123",
+            course_id="course-456",
+            allowed_uids=frozenset({"uid-a"}),
+        )
+
+        with self.assertRaisesRegex(ValueError, "active session"):
+            manager.update_roster(
+                BRIDGE.SessionConfiguration(
+                    session_id="different-session",
+                    course_id="course-456",
+                    allowed_uids=frozenset({"uid-b"}),
+                )
+            )
 
     def test_duplicate_start_does_not_clear_existing_events(self):
         manager = BRIDGE.SessionManager()

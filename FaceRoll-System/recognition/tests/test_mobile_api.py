@@ -8,7 +8,15 @@ from unittest.mock import patch
 
 import numpy as np
 
-from faceroll_recognition import EnrollmentRecord, InvalidImageError, MobileEnrollmentStore
+from faceroll_recognition import (
+    ClassroomRecognizer,
+    DetectedFaceEmbedding,
+    EnrollmentReader,
+    EnrollmentRecord,
+    FaceRegion,
+    InvalidImageError,
+    MobileEnrollmentStore,
+)
 from faceroll_recognition.mobile_api import (
     API_VERSION,
     AuthenticatedStudent,
@@ -21,6 +29,7 @@ from faceroll_recognition.mobile_api import (
 
 
 AUTHORIZATION = {"Authorization": "Bearer valid-token"}
+TEST_KEY = b"\x22" * 32
 
 
 class FirebaseEmulatorConfigurationTests(unittest.TestCase):
@@ -49,7 +58,7 @@ class FakeTokenVerifier:
         if token == "valid-token":
             return AuthenticatedStudent(
                 uid="firebase-uid-123",
-                student_id="school-id-456",
+                student_id="4827316",
                 display_name="Example Student",
             )
         if token == "other-token":
@@ -117,7 +126,9 @@ class MobileRecognitionApiTests(unittest.TestCase):
     def setUp(self):
         self.temporary_directory = tempfile.TemporaryDirectory()
         self.storage_directory = Path(self.temporary_directory.name) / "enrollments"
-        self.store = MobileEnrollmentStore(self.storage_directory)
+        self.store = MobileEnrollmentStore(
+            self.storage_directory, encryption_key=TEST_KEY
+        )
         self.app = create_mobile_app(
             enrollment_store=self.store,
             token_verifier=FakeTokenVerifier(),
@@ -189,7 +200,7 @@ class MobileRecognitionApiTests(unittest.TestCase):
         self.assertEqual(response.get_json()["uid"], "firebase-uid-123")
         record = self.store.load("firebase-uid-123")
         self.assertEqual(record.student_uid, "firebase-uid-123")
-        self.assertEqual(record.student_id, "school-id-456")
+        self.assertEqual(record.student_id, "4827316")
         self.assertEqual(record.display_name, "Example Student")
         self.assertEqual(len(record.embeddings), 3)
 
@@ -212,7 +223,9 @@ class MobileRecognitionApiTests(unittest.TestCase):
         self.assertNotIn("front", serialized)
         self.assertNotIn("left", serialized)
         self.assertNotIn("right", serialized)
-        self.assertEqual(len(data["embeddings"]), 3)
+        self.assertEqual(data["format"], "faceroll-enrollment")
+        self.assertEqual(data["algorithm"], "AES-256-GCM")
+        self.assertNotIn("embeddings", data)
 
     def test_failed_reenrollment_preserves_the_previous_record(self):
         original = EnrollmentRecord.create(
@@ -248,6 +261,26 @@ class MobileRecognitionApiTests(unittest.TestCase):
         self.assertTrue(payload["recognized"])
         self.assertEqual(payload["uid"], "firebase-uid-123")
         self.assertEqual(payload["distance"], 0.0)
+
+    def test_running_classroom_recognizer_loads_a_new_mobile_enrollment(self):
+        reader = EnrollmentReader(self.storage_directory, encryption_key=TEST_KEY)
+        recognizer = ClassroomRecognizer(
+            reader,
+            allowed_uids={"firebase-uid-123"},
+            embedding_generator=lambda _image: [
+                DetectedFaceEmbedding(unit_vector(0), FaceRegion(10, 10, 30, 30))
+            ],
+        )
+
+        self.assertEqual(self.enroll().status_code, 200)
+        batch = recognizer.recognize(np.ones((100, 120, 3), dtype=np.uint8))
+
+        self.assertEqual(batch.candidate_count, 3)
+        self.assertEqual(len(batch.faces), 1)
+        self.assertTrue(batch.faces[0].identification.recognized)
+        self.assertEqual(batch.faces[0].uid, "firebase-uid-123")
+        self.assertEqual(batch.faces[0].student_id, "4827316")
+        self.assertEqual(batch.faces[0].display_name, "Example Student")
 
     def test_recognition_does_not_return_uid_for_a_nonmatch(self):
         self.assertEqual(self.enroll().status_code, 200)
@@ -313,14 +346,14 @@ class FirebaseStudentTokenVerifierTests(unittest.TestCase):
             decoded={"uid": "trusted-firebase-uid"},
             profile={
                 "role": "student",
-                "studentId": "school-123",
+                "studentId": "4827316",
                 "displayName": "Trusted Student",
             },
         )
         with patch.dict(sys.modules, modules):
             student = FirebaseStudentTokenVerifier().verify("firebase-token")
         self.assertEqual(student.uid, "trusted-firebase-uid")
-        self.assertEqual(student.student_id, "school-123")
+        self.assertEqual(student.student_id, "4827316")
         self.assertEqual(student.display_name, "Trusted Student")
 
     def test_instructor_profile_is_rejected(self):
@@ -345,6 +378,23 @@ class FirebaseStudentTokenVerifierTests(unittest.TestCase):
         modules = fake_firebase_modules(token_error=ValueError("invalid token"))
         with patch.dict(sys.modules, modules):
             with self.assertRaisesRegex(AuthenticationError, "could not be verified"):
+                FirebaseStudentTokenVerifier().verify("firebase-token")
+
+    def test_invalid_student_id_and_uid_are_rejected(self):
+        invalid_id_modules = fake_firebase_modules(
+            decoded={"uid": "trusted-firebase-uid"},
+            profile={"role": "student", "studentId": "school-123"},
+        )
+        with patch.dict(sys.modules, invalid_id_modules):
+            with self.assertRaisesRegex(StudentAuthorizationError, "seven-digit"):
+                FirebaseStudentTokenVerifier().verify("firebase-token")
+
+        invalid_uid_modules = fake_firebase_modules(
+            decoded={"uid": "../unsafe"},
+            profile={"role": "student", "studentId": "4827316"},
+        )
+        with patch.dict(sys.modules, invalid_uid_modules):
+            with self.assertRaises(AuthenticationError):
                 FirebaseStudentTokenVerifier().verify("firebase-token")
 
 

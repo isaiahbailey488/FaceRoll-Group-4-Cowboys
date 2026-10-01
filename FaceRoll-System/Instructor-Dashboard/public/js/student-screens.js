@@ -27,6 +27,23 @@
     return undefined;
   }
 
+  async function upgradeLegacyStudentIds(users) {
+    if (!firebaseApi || typeof firebaseApi.ensureSevenDigitStudentId !== 'function') return;
+
+    await Promise.all(users.map(async function (user) {
+      const role = String(getFirstDefined(user, ['role', 'userType']) || '').toLowerCase();
+      if (role !== 'student' && role !== 'learner') return;
+      if (/^\d{7}$/.test(String(user.studentId || ''))) return;
+
+      try {
+        const studentId = await firebaseApi.ensureSevenDigitStudentId(user.id);
+        if (studentId) user.studentId = studentId;
+      } catch (error) {
+        console.error('Student ID upgrade failed for ' + String(user.id || 'unknown user') + ':', error);
+      }
+    }));
+  }
+
   function toDate(value) {
     if (!value) return null;
     if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
@@ -303,8 +320,12 @@
       firebaseApi.readCollectionDocs('courses'),
       firebaseApi.readCollectionDocs('sessions'),
       firebaseApi.readCollectionDocs('attendance'),
+      firebaseApi.readCollectionDocs('enrollments'),
+      firebaseApi.waitForAuthUser(),
     ]);
     const users = results[0], courses = results[1], sessions = results[2], attendance = results[3];
+    const memberships = results[4], instructor = results[5];
+    if (!instructor) throw new Error('Sign in to view student enrollment details.');
 
     const params = new URLSearchParams(window.location.search);
     const requestedKeys = ['studentId', 'docId', 'uid', 'userId', 'email', 'id']
@@ -378,7 +399,13 @@
     });
 
     const fallbackStudent = sampleDataApi ? sampleDataApi.getStudentByAnyId(requestedStudentId) : null;
-    const derivedCourses = Array.from(new Set(history.map(function (entry) { return entry.course; }).filter(Boolean)));
+    const enrollmentRows = window.FaceRollCourseRoster
+      ? window.FaceRollCourseRoster.membershipRosterRows(memberships, courses, users, instructor.uid)
+        .filter(function (row) { return studentKeys.has(row.uid); })
+      : [];
+    const derivedCourses = Array.from(new Set(enrollmentRows
+      .filter(function (row) { return row.status === 'active'; })
+      .map(function (row) { return row.courseName; })));
     const studentId = String(getFirstDefined(studentUser, ['studentId', 'userId', 'uid']) || studentUser.id || requestedStudentId);
 
     return {
@@ -389,6 +416,7 @@
         courses: derivedCourses.length ? derivedCourses : (fallbackStudent ? fallbackStudent.courses : ['No courses found']),
       },
       history: applyOverridesToHistory(studentId, history),
+      enrollments: enrollmentRows,
     };
   }
 
@@ -404,7 +432,7 @@
 
   // ---------- Roster ----------
 
-  async function renderRosterPage() {
+  async function renderLegacyRosterPage() {
     // Student roster page: combines users, courses, sessions, and attendance.
     const tbody = document.getElementById('rosterTbody');
     const courseFilter = document.getElementById('rosterCourseFilter');
@@ -433,6 +461,7 @@
         firebaseApi.readCollectionDocs('attendance'),
       ]);
       users = results[0]; courses = results[1]; sessions = results[2]; attendance = results[3];
+      await upgradeLegacyStudentIds(users);
     } catch (e) {
       console.error('Roster load failed:', e);
       renderEmpty('Unable to load roster.');
@@ -532,6 +561,136 @@
     renderRows();
   }
 
+  async function renderRosterPage() {
+    const tbody = document.getElementById('rosterTbody');
+    const courseFilter = document.getElementById('rosterCourseFilter');
+    const searchInput = document.getElementById('rosterSearchInput');
+    if (!tbody || !courseFilter || !searchInput) return;
+    function renderEmpty(message) {
+      tbody.innerHTML = '<tr><td colspan="8"></td></tr>';
+      tbody.firstElementChild.firstElementChild.textContent = message || 'No course memberships found.';
+    }
+
+    if (!firebaseApi || !window.FaceRollCourseRoster) {
+      renderEmpty('Course enrollment service unavailable.');
+      return;
+    }
+    tbody.innerHTML = '<tr><td colspan="8">Loading course enrollments...</td></tr>';
+
+    let users, courses, sessions, attendance, memberships, instructor;
+    try {
+      [users, courses, sessions, attendance, memberships, instructor] = await Promise.all([
+        firebaseApi.readCollectionDocs('users'),
+        firebaseApi.readCollectionDocs('courses'),
+        firebaseApi.readCollectionDocs('sessions'),
+        firebaseApi.readCollectionDocs('attendance'),
+        firebaseApi.readCollectionDocs('enrollments'),
+        firebaseApi.waitForAuthUser(),
+      ]);
+      if (!instructor) throw new Error('Sign in to manage your course roster.');
+      await upgradeLegacyStudentIds(users);
+    } catch (error) {
+      console.error('Roster load failed:', error);
+      renderEmpty('Unable to load course enrollments.');
+      return;
+    }
+
+    const rows = window.FaceRollCourseRoster.membershipRosterRows(
+      memberships,
+      courses,
+      users,
+      instructor.uid
+    );
+    const sessionCourse = new Map();
+    sessions.forEach(function (session) {
+      sessionCourse.set(
+        String(getFirstDefined(session, ['sessionId']) || session.id || ''),
+        String(getFirstDefined(session, ['courseId']) || '')
+      );
+    });
+
+    const ownedCourses = courses
+      .filter(function (course) { return course.instructorId === instructor.uid; })
+      .map(function (course) {
+        const courseId = String(getFirstDefined(course, ['courseId']) || course.id || '');
+        return {
+          id: courseId,
+          name: String(getFirstDefined(course, ['courseName', 'name']) || courseId),
+        };
+      })
+      .filter(function (course) { return course.id; })
+      .sort(function (left, right) { return left.name.localeCompare(right.name); });
+    courseFilter.innerHTML = '<option value="">All Courses</option>';
+    ownedCourses.forEach(function (course) {
+      const option = document.createElement('option');
+      option.value = course.id;
+      option.textContent = course.name;
+      courseFilter.appendChild(option);
+    });
+
+    rows.forEach(function (row) {
+      const user = row.user || {};
+      row.name = row.user ? getUserDisplayName(user) : 'Unknown student';
+      row.studentId = String(getFirstDefined(user, ['studentId', 'userId']) || row.uid);
+      row.email = String(getFirstDefined(user, ['email']) || 'N/A');
+      const records = attendance.filter(function (entry) {
+        const uid = String(getFirstDefined(entry, ['uid', 'userId']) || '');
+        const sessionId = String(getFirstDefined(entry, ['sessionId']) || '');
+        const courseId = String(getFirstDefined(entry, ['courseId']) || sessionCourse.get(sessionId) || '');
+        return uid === row.uid && courseId === row.courseId;
+      });
+      const present = records.filter(function (entry) {
+        return ['Present', 'Late'].includes(normalizeStatus(getFirstDefined(entry, ['status'])));
+      }).length;
+      row.absences = records.filter(function (entry) {
+        return normalizeStatus(getFirstDefined(entry, ['status'])) === 'Absent';
+      }).length;
+      row.attendanceRate = records.length ? Math.round((present / records.length) * 100) : 0;
+    });
+
+    function renderRows() {
+      const search = String(searchInput.value || '').trim().toLowerCase();
+      const selectedCourse = String(courseFilter.value || '');
+      const filtered = rows.filter(function (row) {
+        const matchesSearch = !search || [row.name, row.studentId, row.email]
+          .some(function (value) { return String(value).toLowerCase().includes(search); });
+        return matchesSearch && (!selectedCourse || row.courseId === selectedCourse);
+      });
+      if (!filtered.length) {
+        renderEmpty(rows.length ? 'No enrollments match these filters.' : 'No students have joined your courses yet.');
+        return;
+      }
+      tbody.innerHTML = '';
+      filtered.forEach(function (rowData) {
+        const row = document.createElement('tr');
+        row.innerHTML = [
+          '<td></td><td></td><td></td><td></td>',
+          '<td><span class="status-badge roster-membership-status"></span></td>',
+          '<td></td><td></td>',
+          '<td><div class="roster-actions"><a class="student-action-link">View Profile</a></div></td>',
+        ].join('');
+        row.children[0].textContent = rowData.name;
+        row.children[1].textContent = rowData.studentId;
+        row.children[2].textContent = rowData.email;
+        row.children[3].textContent = rowData.courseName;
+        const badge = row.children[4].firstElementChild;
+        badge.textContent = rowData.status === 'active' ? 'Enrolled' : rowData.status === 'removed' ? 'Removed' : 'Dropped';
+        badge.classList.add(rowData.status === 'active' ? 'status-present' : 'status-absent');
+        row.children[5].textContent = String(rowData.attendanceRate) + '%';
+        row.children[6].textContent = String(rowData.absences);
+        const profile = row.children[7].querySelector('a');
+        const params = new URLSearchParams({ studentId: rowData.studentId, uid: rowData.uid });
+        if (rowData.email !== 'N/A') params.set('email', rowData.email);
+        profile.href = './student-profile.html?' + params.toString();
+        tbody.appendChild(row);
+      });
+    }
+
+    courseFilter.addEventListener('change', renderRows);
+    searchInput.addEventListener('input', renderRows);
+    renderRows();
+  }
+
   // ---------- Live Session ----------
 
   function renderLiveSessionPage() {
@@ -555,6 +714,9 @@
     let timerHandle = null;
     let livePollHandle = null;
     let bridgePollHandle = null;
+    let rosterSyncPromise = null;
+    let activeRosterSignature = '';
+    let activeRosterUids = new Set();
     let bridgeEventCursor = 0;
     const writtenBridgeEvents = new Set();
     let sessionStartedAt = null;
@@ -602,6 +764,9 @@
       activeCourseName = '';
       activeGracePeriodMinutes = 10;
       bridgeEventCursor = 0;
+      activeRosterSignature = '';
+      activeRosterUids = new Set();
+      rosterSyncPromise = null;
       writtenBridgeEvents.clear();
       setSessionStatus('Not Started');
       stopTimer(); stopPoller(); stopBridgePoller();
@@ -667,19 +832,42 @@
     async function loadCourseRosterUids(courseId) {
       // No roster means no authorized recognition candidates.
       const enrollments = await firebaseApi.readCollectionDocs('enrollments');
-      if (!enrollments.length) return [];
+      if (!window.FaceRollCourseRoster) throw new Error('Course roster validation is unavailable.');
+      return window.FaceRollCourseRoster.activeRosterUids(enrollments, courseId);
+    }
 
-      const uids = new Set();
-      enrollments.forEach(function (entry) {
-        const entryCourseId = String(getFirstDefined(entry, ['courseId', 'course_id']) || '');
-        const status = String(getFirstDefined(entry, ['status']) || 'active').toLowerCase();
-        if (entryCourseId !== String(courseId) || ['dropped', 'inactive', 'removed'].includes(status)) {
-          return;
+    async function syncCourseRoster() {
+      if (!activeSessionDocId || !activeCourseId) return;
+      if (rosterSyncPromise) return rosterSyncPromise;
+      const sessionId = activeSessionDocId;
+      const courseId = activeCourseId;
+      const operation = (async function () {
+        const allowedUids = await loadCourseRosterUids(courseId);
+        if (sessionId !== activeSessionDocId || courseId !== activeCourseId) return;
+        activeRosterUids = new Set(allowedUids);
+        const signature = window.FaceRollCourseRoster.rosterSignature(allowedUids);
+        if (signature === activeRosterSignature) return;
+        await requestBridge('/update-roster', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId: sessionId,
+            courseId: courseId,
+            allowedUids: allowedUids,
+          }),
+        });
+        if (sessionId === activeSessionDocId && courseId === activeCourseId) {
+          activeRosterSignature = signature;
         }
-        const uid = String(getFirstDefined(entry, ['uid', 'userId', 'studentUid']) || '').trim();
-        if (uid) uids.add(uid);
-      });
-      return Array.from(uids);
+      })();
+      rosterSyncPromise = operation;
+      try {
+        await operation;
+      } catch (error) {
+        console.error('Course roster sync failed:', error);
+      } finally {
+        if (rosterSyncPromise === operation) rosterSyncPromise = null;
+      }
     }
 
     async function fetchRows() {
@@ -771,6 +959,10 @@
       const userLookup = buildUserLookup(users);
       const authoritativeUid = String(getFirstDefined(event, ['uid']) || '').trim();
       if (!authoritativeUid) return false;
+      if (!activeRosterUids.has(authoritativeUid)) {
+        console.warn('Ignoring recognition event for a student outside the active course roster.');
+        return false;
+      }
       const user = userLookup.get(normalizeLookupKey(authoritativeUid)) || null;
       if (!user) {
         console.warn('Ignoring recognition event for an unknown Firebase UID.');
@@ -798,6 +990,7 @@
         displayName: studentName,
         sessionId: activeSessionDocId,
         courseId: activeCourseId,
+        membershipId: window.FaceRollCourseRoster.membershipId(activeCourseId, uid),
         status: isLate ? 'late' : 'present',
         time: eventTime.toISOString(),
         createdAt: eventTime.toISOString(),
@@ -826,14 +1019,18 @@
       // Cursor prevents the same bridge event from being processed twice.
       if (!activeSessionDocId) return;
       try {
+        await syncCourseRoster();
         const payload = await requestBridge('/events?cursor=' + encodeURIComponent(String(bridgeEventCursor)));
-        bridgeEventCursor = Number(payload.nextCursor || bridgeEventCursor || 0);
         const events = Array.isArray(payload.events) ? payload.events : [];
-        let wroteAttendance = false;
-        for (const event of events) {
-          wroteAttendance = await writeAttendanceFromBridgeEvent(event) || wroteAttendance;
-        }
-        if (wroteAttendance) fetchRows();
+        const processed = await window.FaceRollCourseRoster.processBridgeEvents(
+          events,
+          bridgeEventCursor,
+          writeAttendanceFromBridgeEvent
+        );
+        bridgeEventCursor = events.length
+          ? processed.cursor
+          : Number(payload.nextCursor || bridgeEventCursor || 0);
+        if (processed.wroteAttendance) fetchRows();
       } catch (e) {
         console.error('Bridge event poll failed:', e);
       }
@@ -889,6 +1086,8 @@
         activeCourseId = selectedId;
         activeCourseName = selectedLabel;
         activeGracePeriodMinutes = grace;
+        activeRosterSignature = window.FaceRollCourseRoster.rosterSignature(allowedUids);
+        activeRosterUids = new Set(allowedUids);
         setSessionStatus('Started');
         setStartButtonState(true, false);
         beginTimer(sessionStartedAt);
@@ -1197,6 +1396,8 @@
     const requestedStudentId = params.get('studentId') || 'student001';
     const historyBody = document.getElementById('profileAttendanceBody');
     const saveButton = document.getElementById('profileSaveButton') || document.querySelector('#i3wlx77 .gjs-t-button');
+    const enrollmentList = document.getElementById('profileEnrollmentList');
+    const enrollmentStatus = document.getElementById('profileEnrollmentStatus');
     if (!historyBody) return;
 
     if (saveButton) saveButton.disabled = true;
@@ -1227,6 +1428,7 @@
       updateProfileSummary(buildProfileSummary([]));
       historyBody.innerHTML = '<tr><td colspan="5">Unable to load this student profile.</td></tr>';
       setProfileSaveStatus('Unable to find this student in Firestore or sample data.', true);
+      if (enrollmentList) enrollmentList.textContent = 'No enrollment records found.';
       return;
     }
 
@@ -1238,6 +1440,89 @@
     if (nameEl) nameEl.textContent = student.name;
     if (coursesEl) coursesEl.textContent = (student.courses || []).join(', ') || 'No courses found';
     if (emailEl) emailEl.textContent = student.email;
+
+    let enrollmentRows = profileData.enrollments || [];
+    function setEnrollmentStatus(message, isError) {
+      if (!enrollmentStatus) return;
+      enrollmentStatus.textContent = message || '';
+      enrollmentStatus.classList.toggle('profile-enrollment-error', Boolean(isError));
+    }
+    function updateCourseSummary() {
+      if (!coursesEl) return;
+      if (dataSource !== 'firestore') {
+        coursesEl.textContent = (student.courses || []).join(', ') || 'No courses found';
+        return;
+      }
+      const activeCourses = enrollmentRows
+        .filter(function (row) { return row.status === 'active'; })
+        .map(function (row) { return row.courseName; });
+      coursesEl.textContent = activeCourses.join(', ') || 'No active enrollments';
+    }
+    function renderEnrollments() {
+      if (!enrollmentList) return;
+      enrollmentList.innerHTML = '';
+      if (!enrollmentRows.length) {
+        enrollmentList.textContent = dataSource === 'firestore'
+          ? 'This student has no enrollments in your courses.'
+          : 'Enrollment management is unavailable for sample data.';
+        return;
+      }
+      enrollmentRows.forEach(function (enrollment) {
+        const item = document.createElement('div');
+        item.className = 'profile-enrollment-item';
+        item.innerHTML = [
+          '<div class="profile-enrollment-details"><strong></strong><span></span></div>',
+          '<span class="status-badge profile-enrollment-badge"></span>',
+          '<button type="button" class="profile-enrollment-button"></button>',
+        ].join('');
+        item.children[0].children[0].textContent = enrollment.courseName;
+        item.children[0].children[1].textContent = enrollment.createdAt
+          ? 'Enrolled ' + formatDateDisplay(enrollment.createdAt)
+          : 'Enrollment date unavailable';
+        const badge = item.children[1];
+        badge.textContent = enrollment.status === 'active' ? 'Enrolled' :
+          enrollment.status === 'removed' ? 'Removed' : 'Dropped';
+        badge.classList.add(enrollment.status === 'active' ? 'status-present' : 'status-absent');
+        const button = item.children[2];
+        const action = enrollment.status === 'active' ? 'remove' : 'restore';
+        button.textContent = action === 'remove' ? 'Remove from Course' : 'Restore Enrollment';
+        button.classList.toggle('profile-enrollment-remove', action === 'remove');
+        button.addEventListener('click', async function () {
+          const prompt = action === 'remove'
+            ? `Remove ${student.name} from ${enrollment.courseName}? Their attendance history will remain saved, but mobile check-in and camera recognition will stop immediately.`
+            : `Restore ${student.name} to ${enrollment.courseName}?`;
+          if (!window.confirm(prompt)) return;
+          button.disabled = true;
+          setEnrollmentStatus(action === 'remove' ? 'Removing enrollment...' : 'Restoring enrollment...', false);
+          try {
+            const instructor = await firebaseApi.getCurrentAuthUser();
+            const result = await window.FaceRollCourseRoster.requestMembershipChange(
+              window.FaceRollConfig?.RECOGNITION_API_URL || '',
+              instructor,
+              enrollment.courseId,
+              enrollment.uid,
+              action
+            );
+            enrollment.status = result.status;
+            setEnrollmentStatus(
+              result.status === 'active'
+                ? `${student.name} is enrolled in ${enrollment.courseName}.`
+                : `${student.name} was removed from ${enrollment.courseName}.`,
+              false
+            );
+            updateCourseSummary();
+            renderEnrollments();
+          } catch (error) {
+            console.error('Enrollment update failed:', error);
+            setEnrollmentStatus(error && error.message ? error.message : 'Unable to update enrollment.', true);
+            button.disabled = false;
+          }
+        });
+        enrollmentList.appendChild(item);
+      });
+    }
+    updateCourseSummary();
+    renderEnrollments();
 
     updateProfileSummary(buildProfileSummary(history));
     renderProfileHistoryRows(historyBody, history);

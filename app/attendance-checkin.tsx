@@ -19,7 +19,7 @@ import {
   getActiveSessions,
   Session,
 } from '../services/attendance';
-import { getCurrentUser, getUserProfile, UserProfile } from '../services/auth';
+import { getCurrentUser, getStudentDisplayName, getUserProfile, UserProfile } from '../services/auth';
 import {
   discardTemporaryCameraFile,
   recognizeFace,
@@ -300,7 +300,7 @@ export default function AttendanceCheckInScreen() {
         <SafeAreaView style={styles.header}>
           <View style={styles.headerLeft}>
             <Text style={styles.userInfoLabel}>
-              {profile ? profile.displayName : ''}
+              {profile ? getStudentDisplayName(profile, profile.email) : ''}
             </Text>
           </View>
           <TouchableOpacity

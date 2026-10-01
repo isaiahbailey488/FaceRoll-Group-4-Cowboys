@@ -69,6 +69,14 @@ service cloud.firestore {
         ]);
     }
 
+    function hasValidStudentId() {
+      return request.resource.data.role != 'student'
+        || (
+          request.resource.data.studentId is string
+          && request.resource.data.studentId.matches('^[0-9]{7}$')
+        );
+    }
+
     function isValidAttendanceRecord(recordId) {
       return request.resource.data.uid is string
         && request.resource.data.sessionId is string
@@ -91,11 +99,17 @@ service cloud.firestore {
 
     match /users/{uid} {
       allow read: if isOwner(uid) || isInstructorOrAdmin();
-      allow create: if isOwner(uid) && hasNoBiometricPayload();
-      allow update: if hasNoBiometricPayload()
+      allow create: if isOwner(uid) && hasNoBiometricPayload() && hasValidStudentId();
+      allow update: if hasNoBiometricPayload() && hasValidStudentId()
         && (
           isInstructorOrAdmin()
-          || (isOwner(uid) && request.resource.data.role == resource.data.role)
+          || (
+            isOwner(uid)
+            && request.resource.data.role == resource.data.role
+            && request.resource.data.uid == resource.data.uid
+            && request.resource.data.userId == resource.data.userId
+            && request.resource.data.studentId == resource.data.studentId
+          )
         );
       allow delete: if isInstructorOrAdmin();
     }

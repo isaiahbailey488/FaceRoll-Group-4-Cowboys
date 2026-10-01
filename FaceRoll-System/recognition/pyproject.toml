@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "Shared Facenet512 recognition core for FaceRoll mobile and classroom workflows."
 requires-python = ">=3.10,<3.13"
 dependencies = [
+  "cryptography==50.0.1",
   "deepface==0.0.99",
   "numpy==1.26.4",
   "opencv-python==4.9.0.80",

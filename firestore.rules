@@ -1,22 +1,3 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// FaceRoll — Firestore Security Rules
-//
-// These rules allow:
-//   • Students to read/write their OWN user profile (users/{uid})
-//   • Students to read attendance records they own (where uid == auth.uid)
-//   • Students to create attendance records for themselves only
-//   • Any authenticated user to read courses + active sessions
-//   • Instructors (users with role == "instructor") full read/write access
-//
-// HOW TO DEPLOY:
-//   1. Go to https://console.firebase.google.com/project/rollcall-2669b/firestore/rules
-//   2. Paste the contents of this file into the rules editor
-//   3. Click "Publish"
-//
-// Or via Firebase CLI:
-//   firebase deploy --only firestore:rules
-// ─────────────────────────────────────────────────────────────────────────────
-
 rules_version = '2';
 
 service cloud.firestore {
@@ -28,8 +9,6 @@ service cloud.firestore {
     match /courseInvitationHeads/{courseId} {
       allow read, write: if false;
     }
-
-    // ── Helpers ────────────────────────────────────────────────────────────
     function isSignedIn() {
       return request.auth != null;
     }
@@ -38,87 +17,171 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == uid;
     }
 
-    function isInstructor() {
-      return isSignedIn() &&
-             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'instructor';
+    function isInstructorOrAdmin() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+          in ['instructor', 'admin', 'administrator'];
     }
 
-    function validStudentAttendance(recordId) {
-      return request.resource.data.uid == request.auth.uid
+    function hasValidCourseLocation() {
+      return !request.resource.data.keys().hasAny(['location'])
+        || (
+          request.resource.data.location.keys().hasOnly([
+            'latitude',
+            'longitude',
+            'radiusMeters',
+            'addressLabel',
+            'enabled',
+            'updatedAt',
+            'updatedBy'
+          ])
+          && request.resource.data.location.latitude is number
+          && request.resource.data.location.latitude >= -90
+          && request.resource.data.location.latitude <= 90
+          && request.resource.data.location.longitude is number
+          && request.resource.data.location.longitude >= -180
+          && request.resource.data.location.longitude <= 180
+          && request.resource.data.location.radiusMeters is number
+          && request.resource.data.location.radiusMeters >= 1
+          && request.resource.data.location.radiusMeters <= 15
+          && request.resource.data.location.radiusMeters % 1 == 0
+          && request.resource.data.location.addressLabel is string
+          && request.resource.data.location.addressLabel.size() > 0
+          && request.resource.data.location.addressLabel.size() <= 200
+          && request.resource.data.location.enabled is bool
+          && request.resource.data.location.updatedAt is timestamp
+          && request.resource.data.location.updatedBy == request.auth.uid
+        );
+    }
+
+    function hasNoBiometricPayload() {
+      return !request.resource.data.keys().hasAny([
+          'image',
+          'images',
+          'photo',
+          'photos',
+          'base64',
+          'embedding',
+          'embeddings',
+          'vector',
+          'vectors'
+        ]);
+    }
+
+    function hasValidStudentId() {
+      return request.resource.data.role != 'student'
+        || (
+          request.resource.data.studentId is string
+          && request.resource.data.studentId.matches('^[0-9]{7}$')
+        );
+    }
+
+    function isValidAttendanceRecord(recordId) {
+      return request.resource.data.uid is string
         && request.resource.data.sessionId is string
         && request.resource.data.courseId is string
         && request.resource.data.membershipId is string
         && recordId == request.resource.data.sessionId + '_' + request.resource.data.uid
         && exists(/databases/$(database)/documents/sessions/$(request.resource.data.sessionId))
-        && get(/databases/$(database)/documents/sessions/$(request.resource.data.sessionId)).data.courseId == request.resource.data.courseId
+        && get(/databases/$(database)/documents/sessions/$(request.resource.data.sessionId)).data.courseId
+          == request.resource.data.courseId
         && get(/databases/$(database)/documents/sessions/$(request.resource.data.sessionId)).data.status == 'active'
         && !get(/databases/$(database)/documents/sessions/$(request.resource.data.sessionId)).data.keys().hasAny(['endTime'])
         && exists(/databases/$(database)/documents/enrollments/$(request.resource.data.membershipId))
-        && get(/databases/$(database)/documents/enrollments/$(request.resource.data.membershipId)).data.uid == request.auth.uid
-        && get(/databases/$(database)/documents/enrollments/$(request.resource.data.membershipId)).data.courseId == request.resource.data.courseId
-        && get(/databases/$(database)/documents/enrollments/$(request.resource.data.membershipId)).data.status == 'active';
+        && get(/databases/$(database)/documents/enrollments/$(request.resource.data.membershipId)).data.uid
+          == request.resource.data.uid
+        && get(/databases/$(database)/documents/enrollments/$(request.resource.data.membershipId)).data.courseId
+          == request.resource.data.courseId
+        && get(/databases/$(database)/documents/enrollments/$(request.resource.data.membershipId)).data.status == 'active'
+        && hasNoBiometricPayload();
     }
 
-    // ── users/{uid} ────────────────────────────────────────────────────────
-    // Students can read/write only their own profile.
-    // Instructors can read all profiles (for roster display).
     match /users/{uid} {
-      allow read:   if isOwner(uid) || isInstructor();
-      allow create: if isOwner(uid);
-      allow update: if isOwner(uid) || isInstructor();
-      allow delete: if isInstructor();
+      allow read: if isOwner(uid) || isInstructorOrAdmin();
+      allow create: if isOwner(uid) && hasNoBiometricPayload() && hasValidStudentId();
+      allow update: if hasNoBiometricPayload() && hasValidStudentId()
+        && (
+          isInstructorOrAdmin()
+          || (
+            isOwner(uid)
+            && request.resource.data.role == resource.data.role
+            && request.resource.data.uid == resource.data.uid
+            && request.resource.data.userId == resource.data.userId
+            && request.resource.data.studentId == resource.data.studentId
+          )
+        );
+      allow delete: if isInstructorOrAdmin();
     }
 
-    // ── courses/{courseId} ─────────────────────────────────────────────────
-    // Any signed-in user can read courses (so students see their classes).
-    // Only instructors can write.
     match /courses/{courseId} {
-      allow read:  if isSignedIn();
-      allow create: if isInstructor() && request.resource.data.instructorId == request.auth.uid;
-      allow update: if isInstructor() && resource.data.instructorId == request.auth.uid
-        && request.resource.data.instructorId == resource.data.instructorId;
+      allow read: if isSignedIn();
+      allow create: if isInstructorOrAdmin()
+        && request.resource.data.instructorId == request.auth.uid
+        && hasValidCourseLocation()
+        && hasNoBiometricPayload();
+      allow update: if isInstructorOrAdmin()
+        && resource.data.instructorId == request.auth.uid
+        && request.resource.data.instructorId == resource.data.instructorId
+        && hasValidCourseLocation()
+        && hasNoBiometricPayload();
+      // Deletion is performed by the authenticated backend so related records
+      // can be removed atomically.
       allow delete: if false;
     }
 
-    // ── sessions/{sessionId} ───────────────────────────────────────────────
-    // Any signed-in user can read sessions (so students see active sessions).
-    // Only instructors can create/modify sessions.
     match /sessions/{sessionId} {
-      allow read:  if isSignedIn();
-      allow create: if isInstructor()
+      allow read: if isSignedIn();
+      allow create: if isInstructorOrAdmin()
         && exists(/databases/$(database)/documents/courses/$(request.resource.data.courseId))
-        && get(/databases/$(database)/documents/courses/$(request.resource.data.courseId)).data.instructorId == request.auth.uid;
-      allow update: if isInstructor() && request.resource.data.courseId == resource.data.courseId
+        && get(/databases/$(database)/documents/courses/$(request.resource.data.courseId)).data.instructorId == request.auth.uid
+        && hasNoBiometricPayload();
+      allow update: if isInstructorOrAdmin()
+        && request.resource.data.courseId == resource.data.courseId
         && exists(/databases/$(database)/documents/courses/$(resource.data.courseId))
-        && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.instructorId == request.auth.uid;
-      allow delete: if isInstructor()
+        && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.instructorId == request.auth.uid
+        && hasNoBiometricPayload();
+      allow delete: if isInstructorOrAdmin()
         && exists(/databases/$(database)/documents/courses/$(resource.data.courseId))
         && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.instructorId == request.auth.uid;
     }
 
-    // ── attendance/{recordId} ──────────────────────────────────────────────
-    // Students can read/create attendance records they own.
-    // Instructors can read/write all attendance records.
     match /attendance/{recordId} {
-      allow read:   if isSignedIn() &&
-                       (resource.data.uid == request.auth.uid || isInstructor());
-      allow create: if isSignedIn() && validStudentAttendance(recordId);
-      allow update: if isInstructor();
-      allow delete: if isInstructor();
+      // Reading a missing deterministic record is required by the create-only
+      // attendance transaction. Existing records remain owner/instructor only.
+      allow get: if isSignedIn()
+        && (resource == null || resource.data.uid == request.auth.uid || isInstructorOrAdmin());
+      allow list: if isSignedIn()
+        && (isInstructorOrAdmin() || resource.data.uid == request.auth.uid);
+      allow create: if isValidAttendanceRecord(recordId)
+        && (
+          isInstructorOrAdmin()
+          || (isSignedIn() && request.resource.data.uid == request.auth.uid)
+        );
+      allow update: if isInstructorOrAdmin() && hasNoBiometricPayload();
+      allow delete: if isInstructorOrAdmin();
     }
 
-    // ── facialEmbeddings/{uid} (optional, for FaceNet vectors) ─────────────
-    // Stored separately so embeddings can have stricter rules.
     match /facialEmbeddings/{uid} {
-      allow read:  if isOwner(uid) || isInstructor();
-      allow write: if isOwner(uid);
+      // Face embeddings belong only in private instructor-device storage.
+      allow read, write: if false;
     }
 
-    // ── enrollments/{enrollmentId} (optional, course rosters) ──────────────
     match /enrollments/{enrollmentId} {
-      allow read:  if isSignedIn() && (resource.data.uid == request.auth.uid || isInstructor());
-      allow write: if isInstructor();
+      allow get: if isSignedIn()
+        && (resource.data.uid == request.auth.uid || isInstructorOrAdmin());
+      allow list: if isSignedIn()
+        && (resource.data.uid == request.auth.uid || isInstructorOrAdmin());
+      allow create, update: if isInstructorOrAdmin() && hasNoBiometricPayload();
+      allow delete: if isInstructorOrAdmin();
+    }
+
+    match /instructor_settings/{uid} {
+      allow read: if isOwner(uid) && isInstructorOrAdmin();
+      allow create, update: if isOwner(uid)
+        && isInstructorOrAdmin()
+        && hasNoBiometricPayload();
+      allow delete: if isOwner(uid) && isInstructorOrAdmin();
     }
   }
 }

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,6 +28,9 @@ EVENT_LOG_PATH = APP_DIR / "shared" / "recognition-events.jsonl"
 DEFAULT_ENROLLMENTS_DIR = Path.home() / ".local" / "share" / "faceroll" / "enrollments"
 POLL_INTERVAL_SECONDS = 1
 MATCH_COOLDOWN_SECONDS = 10
+MAX_ROSTER_FILE_BYTES = 256_000
+MAX_ROSTER_UIDS = 5_000
+SAFE_FIREBASE_UID = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 
 
 def configured_enrollment_directory() -> Path:
@@ -35,7 +39,32 @@ def configured_enrollment_directory() -> Path:
 
 
 def configured_allowed_uids() -> frozenset[str] | None:
-    """Read an optional course roster supplied by the future bridge layer."""
+    """Read the bridge roster, failing closed when its file is invalid."""
+
+    configured_roster = os.getenv("FACEROLL_ROSTER_FILE")
+    if configured_roster:
+        roster_path = Path(configured_roster).expanduser()
+        try:
+            if roster_path.is_symlink() or not roster_path.is_file():
+                raise ValueError("Roster path is not a regular file.")
+            if roster_path.stat().st_size > MAX_ROSTER_FILE_BYTES:
+                raise ValueError("Roster file is too large.")
+            payload = json.loads(roster_path.read_text(encoding="utf-8"))
+            raw_uids = payload.get("allowedUids") if isinstance(payload, dict) else None
+            if not isinstance(raw_uids, list) or len(raw_uids) > MAX_ROSTER_UIDS:
+                raise ValueError("Roster does not contain a valid allowedUids array.")
+            uids = set()
+            for uid in raw_uids:
+                if not isinstance(uid, str) or not SAFE_FIREBASE_UID.fullmatch(uid.strip()):
+                    raise ValueError("Roster contains an invalid Firebase UID.")
+                uids.add(uid.strip())
+            session_id, course_id = configured_session_context()
+            if payload.get("sessionId") != session_id or payload.get("courseId") != course_id:
+                raise ValueError("Roster does not match the active session.")
+            return frozenset(uids)
+        except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
+            print(f"INVALID COURSE ROSTER: {error}", flush=True)
+            return frozenset()
 
     raw = os.getenv("FACEROLL_ALLOWED_UIDS")
     if raw is None:
@@ -175,10 +204,11 @@ def claim_pending_image() -> bool:
 
 def main() -> None:
     enrollment_directory = configured_enrollment_directory()
+    enrollment_reader = EnrollmentReader(enrollment_directory)
     allowed_uids = configured_allowed_uids()
     session_id, course_id = configured_session_context()
     recognizer = ClassroomRecognizer(
-        EnrollmentReader(enrollment_directory),
+        enrollment_reader,
         allowed_uids=allowed_uids,
     )
     cooldown = RecognitionCooldown(MATCH_COOLDOWN_SECONDS)
@@ -204,6 +234,16 @@ def main() -> None:
             if claim_pending_image():
                 print("Image detected and claimed.", flush=True)
                 try:
+                    refreshed_uids = configured_allowed_uids()
+                    if refreshed_uids != allowed_uids:
+                        allowed_uids = refreshed_uids
+                        recognizer = ClassroomRecognizer(
+                            enrollment_reader,
+                            allowed_uids=allowed_uids,
+                        )
+                        cooldown.clear()
+                        roster_size = "all" if allowed_uids is None else len(allowed_uids)
+                        print(f"Course roster refreshed: {roster_size} UIDs", flush=True)
                     process_classroom_image(
                         recognizer,
                         cooldown,

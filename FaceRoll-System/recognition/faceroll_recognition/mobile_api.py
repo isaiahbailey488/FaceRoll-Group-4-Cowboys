@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass
 from functools import wraps
@@ -30,6 +31,8 @@ API_VERSION = "1.0.0"
 DEFAULT_MAX_REQUEST_BYTES = 25_000_000
 DEFAULT_MAX_IMAGE_CHARACTERS = 8_000_000
 IDENTITY_BODY_FIELDS = frozenset({"uid", "student_uid", "studentUid", "userId"})
+SAFE_FIREBASE_UID = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+SEVEN_DIGIT_STUDENT_ID = re.compile(r"^\d{7}$")
 
 
 class AuthenticationError(Exception):
@@ -106,7 +109,7 @@ class FirebaseStudentTokenVerifier:
         try:
             decoded = auth.verify_id_token(id_token, check_revoked=True)
             uid = decoded.get("uid") or decoded.get("sub")
-            if not isinstance(uid, str) or not uid.strip():
+            if not isinstance(uid, str) or not SAFE_FIREBASE_UID.fullmatch(uid.strip()):
                 raise AuthenticationError("Firebase token is missing its user identity.")
         except AuthenticationError:
             raise
@@ -136,9 +139,18 @@ class FirebaseStudentTokenVerifier:
                 )
 
             student_id = _optional_profile_string(profile.get("studentId"))
+            if student_id is not None and not SEVEN_DIGIT_STUDENT_ID.fullmatch(student_id):
+                raise StudentAuthorizationError(
+                    "Student profile must contain a seven-digit student ID."
+                )
             display_name = _optional_profile_string(
                 profile.get("displayName") or profile.get("fullName") or profile.get("name")
             )
+            if display_name is not None and (
+                len(display_name) > 200
+                or any(ord(character) < 32 for character in display_name)
+            ):
+                raise StudentAuthorizationError("Student profile display name is invalid.")
             return AuthenticatedStudent(
                 uid=uid.strip(),
                 student_id=student_id,

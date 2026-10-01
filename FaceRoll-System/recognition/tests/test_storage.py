@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 
@@ -17,9 +18,11 @@ from faceroll_recognition import (
     StorageError,
 )
 from faceroll_recognition.storage import MAX_ENROLLMENT_FILE_BYTES
+from faceroll_recognition.encryption import encrypt_record
 
 
 TIMESTAMP = "2026-08-31T16:00:00Z"
+TEST_KEY = b"\x33" * 32
 
 
 def unit_vector(index):
@@ -42,8 +45,8 @@ class EnrollmentStorageTests(unittest.TestCase):
     def setUp(self):
         self.temporary_directory = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary_directory.name) / "embeddings"
-        self.reader = EnrollmentReader(self.root)
-        self.store = MobileEnrollmentStore(self.root)
+        self.reader = EnrollmentReader(self.root, encryption_key=TEST_KEY)
+        self.store = MobileEnrollmentStore(self.root, encryption_key=TEST_KEY)
 
     def tearDown(self):
         self.temporary_directory.cleanup()
@@ -61,16 +64,17 @@ class EnrollmentStorageTests(unittest.TestCase):
         self.assertEqual(path.name, "firebase-uid-123.json")
         self.assertEqual(self.reader.load(record.student_uid), record)
 
-    def test_stored_json_contains_no_raw_image_fields(self):
+    def test_stored_file_contains_only_an_encrypted_envelope(self):
         record = enrollment()
         path = self.store.save_mobile_enrollment(
             record,
             authenticated_uid=record.student_uid,
         )
         data = json.loads(path.read_text(encoding="utf-8"))
-        forbidden = {"image", "image_base64", "photo", "source_path", "filename"}
-        self.assertTrue(forbidden.isdisjoint(data))
-        self.assertEqual(len(data["embeddings"]), 3)
+        self.assertEqual(data["format"], "faceroll-enrollment")
+        self.assertEqual(data["algorithm"], "AES-256-GCM")
+        self.assertNotIn("embeddings", data)
+        self.assertNotIn("Example Student", path.read_text(encoding="utf-8"))
 
     def test_save_uses_restrictive_posix_permissions(self):
         record = enrollment()
@@ -177,7 +181,8 @@ class EnrollmentStorageTests(unittest.TestCase):
         legacy["student_uid"] = "legacy-student"
         legacy["model"] = "Facenet"
         (self.root / "legacy-student.json").write_text(
-            json.dumps(legacy), encoding="utf-8"
+            encrypt_record(json.dumps(legacy), uid="legacy-student", key=TEST_KEY),
+            encoding="utf-8",
         )
 
         report = self.reader.load_all()
@@ -198,7 +203,12 @@ class EnrollmentStorageTests(unittest.TestCase):
     def test_filename_uid_mismatch_is_reported(self):
         self.root.mkdir()
         (self.root / "wrong-filename.json").write_text(
-            enrollment(uid="actual-uid").to_json(), encoding="utf-8"
+            encrypt_record(
+                enrollment(uid="actual-uid").to_json(),
+                uid="wrong-filename",
+                key=TEST_KEY,
+            ),
+            encoding="utf-8",
         )
         report = self.reader.load_all()
         self.assertEqual(report.records, ())
@@ -218,12 +228,47 @@ class EnrollmentStorageTests(unittest.TestCase):
         self.assertEqual(report.records, ())
         self.assertEqual(report.rejected_files, ())
 
+    def test_plaintext_legacy_record_is_migrated_during_store_startup(self):
+        legacy_root = Path(self.temporary_directory.name) / "legacy"
+        legacy_root.mkdir()
+        record = enrollment(uid="legacy-uid")
+        path = legacy_root / "legacy-uid.json"
+        path.write_text(record.to_json(), encoding="utf-8")
+
+        store = MobileEnrollmentStore(legacy_root, encryption_key=TEST_KEY)
+
+        self.assertEqual(store.load("legacy-uid"), record)
+        self.assertNotIn('"embeddings"', path.read_text(encoding="utf-8"))
+
+    def test_wrong_key_and_tampering_are_rejected(self):
+        record = enrollment()
+        path = self.store.save_mobile_enrollment(
+            record, authenticated_uid=record.student_uid
+        )
+        wrong_key_reader = EnrollmentReader(self.root, encryption_key=b"\x44" * 32)
+        with self.assertRaisesRegex(StorageError, "authentication failed"):
+            wrong_key_reader.load(record.student_uid)
+
+        envelope = json.loads(path.read_text(encoding="utf-8"))
+        envelope["ciphertext"] = envelope["ciphertext"][:-2] + "AA"
+        path.write_text(json.dumps(envelope), encoding="utf-8")
+        with self.assertRaisesRegex(StorageError, "authentication failed"):
+            self.reader.load(record.student_uid)
+
+    def test_missing_encryption_key_fails_closed(self):
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaisesRegex(StorageError, "not configured"):
+                EnrollmentReader(self.root)
+
     @unittest.skipUnless(hasattr(os, "symlink"), "symbolic links unavailable")
     def test_symbolic_link_record_is_rejected(self):
         self.root.mkdir()
         outside = Path(self.temporary_directory.name) / "outside.json"
         outside.write_text(enrollment().to_json(), encoding="utf-8")
-        (self.root / "firebase-uid-123.json").symlink_to(outside)
+        try:
+            (self.root / "firebase-uid-123.json").symlink_to(outside)
+        except OSError as error:
+            self.skipTest(f"Symbolic-link creation is unavailable: {error}")
         report = self.reader.load_all()
         self.assertEqual(report.records, ())
         self.assertIn("Symbolic-link", report.rejected_files[0].message)

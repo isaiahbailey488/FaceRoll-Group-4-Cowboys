@@ -26,9 +26,15 @@ DEEPFACE_HOME = Path(
     or os.getenv("DEEPFACE_HOME")
     or str(DEFAULT_DEEPFACE_HOME)
 ).expanduser()
+_EMBEDDING_KEY_FILE_VALUE = os.getenv("FACEROLL_EMBEDDING_KEY_FILE", "").strip()
+EMBEDDING_KEY_FILE = (
+    Path(_EMBEDDING_KEY_FILE_VALUE).expanduser()
+    if _EMBEDDING_KEY_FILE_VALUE
+    else None
+)
 # The dashboard polls this jsonl file through /events to learn about matches.
 EVENT_LOG_PATH = SHARED_DIR / "recognition-events.jsonl"
-DOCKER_IMAGE = "faceroll-recognition:0.1.0"
+DOCKER_IMAGE = "faceroll-recognition:0.3.0"
 CONTAINER_NAME = "faceroll-recognizer-windows"
 HOST = "127.0.0.1"
 PORT = 8765
@@ -189,6 +195,25 @@ class SessionManager:
             ENROLLMENTS_DIR.chmod(0o700)
             DEEPFACE_HOME.chmod(0o700)
 
+    def _write_roster(self, configuration):
+        """Atomically publish the active course roster to the recognizer."""
+
+        roster_path = SHARED_DIR / "course-roster.json"
+        if configuration.allowed_uids is None:
+            roster_path.unlink(missing_ok=True)
+            return
+        payload = {
+            "sessionId": configuration.session_id,
+            "courseId": configuration.course_id,
+            "allowedUids": sorted(configuration.allowed_uids),
+        }
+        temporary_path = roster_path.with_suffix(".tmp")
+        temporary_path.write_text(
+            json.dumps(payload, separators=(",", ":")),
+            encoding="utf-8",
+        )
+        temporary_path.replace(roster_path)
+
     def _ensure_docker_image(self):
         docker_info = self._run_command(["docker", "info"])
         if docker_info.returncode != 0:
@@ -226,6 +251,12 @@ class SessionManager:
         return f"{mount}:ro" if read_only else mount
 
     def build_recognizer_command(self, configuration):
+        if (
+            EMBEDDING_KEY_FILE is None
+            or EMBEDDING_KEY_FILE.is_symlink()
+            or not EMBEDDING_KEY_FILE.is_file()
+        ):
+            raise RuntimeError("A regular FaceRoll embedding key file is required.")
         command = [
             "docker",
             "run",
@@ -239,6 +270,10 @@ class SessionManager:
             "DEEPFACE_HOME=/model-cache",
             "-e",
             "FACEROLL_ENROLLMENT_DIR=/data/enrollments",
+            "-e",
+            "FACEROLL_ROSTER_FILE=/app/shared/course-roster.json",
+            "-e",
+            "FACEROLL_EMBEDDING_KEY_FILE=/run/secrets/faceroll-embedding.key",
             "-v",
             self._docker_mount(SHARED_DIR, "/app/shared"),
             "-v",
@@ -249,6 +284,12 @@ class SessionManager:
             ),
             "-v",
             self._docker_mount(DEEPFACE_HOME, "/model-cache"),
+            "-v",
+            self._docker_mount(
+                EMBEDDING_KEY_FILE,
+                "/run/secrets/faceroll-embedding.key",
+                read_only=True,
+            ),
         ]
         if configuration.session_id:
             command.extend(
@@ -277,6 +318,7 @@ class SessionManager:
             self._ensure_directories()
             # A new live session should start with no unread recognition events.
             EVENT_LOG_PATH.write_text("", encoding="utf-8")
+            self._write_roster(configuration)
             self._remove_stale_container()
             self._ensure_docker_image()
 
@@ -309,6 +351,33 @@ class SessionManager:
             self._log("Live session processes started")
             return self.get_status()
 
+    def update_roster(self, configuration):
+        """Replace the active roster without restarting camera recognition."""
+
+        if configuration.allowed_uids is None:
+            raise ValueError("allowedUids is required for a roster update.")
+        with self._lock:
+            if not (
+                self._is_running(self.capture_process)
+                and self._is_running(self.recognizer_process)
+            ):
+                raise RuntimeError("No live recognition session is running.")
+            active = self.session_configuration
+            if (
+                configuration.session_id != active.session_id
+                or configuration.course_id != active.course_id
+            ):
+                raise ValueError("Roster update does not match the active session.")
+            updated = SessionConfiguration(
+                session_id=active.session_id,
+                course_id=active.course_id,
+                allowed_uids=configuration.allowed_uids,
+            )
+            self._write_roster(updated)
+            self.session_configuration = updated
+            self._log(f"Course roster updated: {len(updated.allowed_uids)} UIDs")
+            return self.get_status()
+
     def stop_session(self):
         with self._lock:
             self._terminate_process(self.capture_process, "capture")
@@ -318,6 +387,7 @@ class SessionManager:
             self.recognizer_process = None
             self.session_started_at = None
             self.session_configuration = SessionConfiguration()
+            (SHARED_DIR / "course-roster.json").unlink(missing_ok=True)
 
             self._remove_stale_container()
 
@@ -451,6 +521,12 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
 
             if parsed.path == "/stop-session":
                 status = SESSION_MANAGER.stop_session()
+                self._write_json(200, {"ok": True, "status": status})
+                return
+
+            if parsed.path == "/update-roster":
+                configuration = parse_session_configuration(self._read_json_body())
+                status = SESSION_MANAGER.update_roster(configuration)
                 self._write_json(200, {"ok": True, "status": status})
                 return
         except ValueError as error:

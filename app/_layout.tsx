@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { subscribeToAuthState } from '../services/auth';
@@ -6,11 +6,17 @@ import Colors from '../constants/Colors';
 
 export default function RootLayout() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [restoreAuthenticatedSession, setRestoreAuthenticatedSession] = useState(false);
+  const receivedInitialAuthState = useRef(false);
   const router = useRouter();
   const segments = useSegments();
 
   useEffect(() => {
     const unsubscribe = subscribeToAuthState((user) => {
+      if (!receivedInitialAuthState.current) {
+        receivedInitialAuthState.current = true;
+        setRestoreAuthenticatedSession(Boolean(user));
+      }
       setIsAuthenticated(!!user);
     });
     return unsubscribe;
@@ -23,10 +29,11 @@ export default function RootLayout() {
 
     if (!isAuthenticated && !inAuthGroup) {
       router.replace('/(auth)/login');
-    } else if (isAuthenticated && inAuthGroup) {
+    } else if (isAuthenticated && inAuthGroup && restoreAuthenticatedSession) {
+      setRestoreAuthenticatedSession(false);
       router.replace('/(tabs)/home');
     }
-  }, [isAuthenticated, segments]);
+  }, [isAuthenticated, restoreAuthenticatedSession, segments]);
 
   if (isAuthenticated === null) {
     return (

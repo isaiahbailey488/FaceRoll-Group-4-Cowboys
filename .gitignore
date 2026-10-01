@@ -48,6 +48,11 @@ web-build/
 # Firebase
 firebase-debug.log
 firebase-debug.*.log
+firebase-emulator-data/
+**/firebase-emulator-data/
+firebase-export-metadata.json
+auth_export/
+firestore_export/
 
 # Python / virtual environments
 backend/venv/
@@ -64,6 +69,8 @@ __pycache__/
 backend/face_data/*.json
 FaceRoll-System/recognition/**/embeddings/*.json
 FaceRoll-System/recognition/**/students/*/metadata.json
+faceroll-embedding.key
+embedding-storage.key
 
 # Recognition captures and event logs
 FaceRoll-System/recognition/**/shared/*.jpg

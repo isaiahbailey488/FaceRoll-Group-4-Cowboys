@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import ActivityItem from '../../components/ActivityItem';
 import FaceRollLogo from '../../components/FaceRollLogo';
 import Colors from '../../constants/Colors';
-import { getCurrentUser, getUserProfile, UserProfile, fallbackNameFromEmail } from '../../services/auth';
+import { getCurrentUser, getStudentDisplayName, getUserProfile, UserProfile } from '../../services/auth';
 import { getRecentActivity, formatAttendanceDate, AttendanceRecord } from '../../services/attendance';
 
 
@@ -80,10 +80,7 @@ export default function HomeScreen() {
   };
 
   const currentUser = getCurrentUser();
-  const firstName =
-    (profile?.fname && profile.fname.trim()) ||
-    (profile?.displayName && profile.displayName.split(' ')[0]) ||
-    fallbackNameFromEmail(currentUser?.email || '').firstName;
+  const firstName = getStudentDisplayName(profile, currentUser?.email).split(' ')[0];
 
   return (
     <SafeAreaView style={styles.safeArea}>

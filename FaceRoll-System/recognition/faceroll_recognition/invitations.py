@@ -205,6 +205,54 @@ def delete_course(uid, client, transact, course_id):
     return transact(operation)
 
 
+def mutate_membership(uid, client, transact, course_id, student_uid, action, *, now=None):
+    if not isinstance(course_id, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,200}', course_id):
+        raise InvitationError(400, 'invalid_course_id')
+    if not isinstance(student_uid, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', student_uid):
+        raise InvitationError(400, 'invalid_student_uid')
+    if action not in ('remove', 'restore'):
+        raise InvitationError(400, 'invalid_action')
+    instant = now or datetime.now(timezone.utc)
+    stamp = instant.isoformat(timespec='milliseconds').replace('+00:00', 'Z')
+
+    def operation(tx):
+        profile = client.collection('users').document(uid).get(transaction=tx).to_dict() or {}
+        if (profile.get('role') or profile.get('userType')) not in ('instructor', 'admin', 'administrator'):
+            raise InvitationError(403, 'instructor_required')
+        courses = list(client.collection('courses').where('courseId', '==', course_id).limit(2).stream(transaction=tx))
+        if not courses:
+            raise InvitationError(404, 'course_not_found')
+        if len(courses) != 1:
+            raise InvitationError(409, 'ambiguous_course')
+        if courses[0].to_dict().get('instructorId') != uid:
+            raise InvitationError(403, 'course_owner_required')
+
+        membership_id = f'{len(course_id)}_{course_id}_{student_uid}'
+        membership_ref = client.collection('enrollments').document(membership_id)
+        membership = membership_ref.get(transaction=tx).to_dict()
+        if membership is None:
+            raise InvitationError(404, 'membership_not_found')
+        if (membership.get('schemaVersion') != 1 or membership.get('courseId') != course_id
+                or membership.get('uid') != student_uid
+                or membership.get('status') not in ('active', 'dropped', 'removed')):
+            raise InvitationError(409, 'invalid_membership_state')
+
+        target_status = 'removed' if action == 'remove' else 'active'
+        changed = membership['status'] != target_status
+        if changed:
+            tx.update(membership_ref, {'status': target_status, 'updatedAt': stamp})
+        return {
+            'success': True,
+            'courseId': course_id,
+            'uid': student_uid,
+            'membershipId': membership_id,
+            'status': target_status,
+            'changed': changed,
+        }
+
+    return transact(operation)
+
+
 def invitation_blueprint(boundary=None):
     api = Blueprint('course_invitations', __name__)
     authenticate = boundary or firebase_boundary
@@ -264,6 +312,31 @@ def invitation_blueprint(boundary=None):
                 raise InvitationError(400, 'invalid_request')
             uid, client, transact = authenticate(header[1])
             return jsonify(delete_course(uid, client, transact, course_id))
+        except InvitationError as error:
+            return jsonify(success=False, error=error.code), error.status
+        except Exception:
+            return jsonify(success=False, error='invitation_service_unavailable'), 503
+
+    @api.post('/courses/<course_id>/members/<student_uid>')
+    def manage_membership(course_id, student_uid):
+        try:
+            header = request.headers.get('Authorization', '').split()
+            if len(header) != 2 or header[0].lower() != 'bearer':
+                raise InvitationError(401, 'authentication_required')
+            if request.content_length is None or request.content_length > 1024:
+                raise InvitationError(413, 'request_too_large')
+            payload = request.get_json(silent=True)
+            if not isinstance(payload, dict) or set(payload) != {'action'}:
+                raise InvitationError(400, 'invalid_request')
+            uid, client, transact = authenticate(header[1])
+            return jsonify(mutate_membership(
+                uid,
+                client,
+                transact,
+                course_id,
+                student_uid,
+                payload['action'],
+            ))
         except InvitationError as error:
             return jsonify(success=False, error=error.code), error.status
         except Exception:

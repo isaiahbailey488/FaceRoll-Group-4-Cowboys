@@ -143,3 +143,58 @@ test('does not overwrite attendance that already exists', async function () {
   assert.equal(created, false);
   assert.equal(harness.writes.length, 0);
 });
+
+function loadStudentIdHarness(profile) {
+  const writes = [];
+  const userRef = { collection: 'users', id: 'legacy-student' };
+  const firestore = function () { return db; };
+  const db = {
+    collection: function (name) {
+      return {
+        doc: function (id) {
+          return name === 'users' ? userRef : { collection: name, id: id };
+        },
+      };
+    },
+    runTransaction: async function (handler) {
+      return handler({
+        get: async function (ref) {
+          assert.equal(ref, userRef);
+          return { exists: true, data: function () { return profile; } };
+        },
+        set: function (ref, data, options) {
+          writes.push({ ref: ref, data: data, options: options });
+        },
+      });
+    },
+  };
+  const firebase = { apps: [{}], app: function () {}, firestore: firestore };
+  const window = { firebase: firebase, location: { hostname: 'dashboard.test' }, setTimeout: setTimeout };
+  vm.runInNewContext(clientSource, { window: window, Math: Math }, { filename: 'firebase-client.js' });
+  return { api: window.FaceRollFirebase, writes: writes, userRef: userRef };
+}
+
+test('upgrades a legacy student profile with a seven-digit ID on the user document', async function () {
+  const harness = loadStudentIdHarness({
+    uid: 'legacy-student', role: 'student', studentId: 'legacy-student',
+  });
+
+  const studentId = await harness.api.ensureSevenDigitStudentId('legacy-student');
+
+  assert.match(studentId, /^\d{7}$/);
+  assert.equal(harness.writes.length, 1);
+  assert.equal(harness.writes[0].ref, harness.userRef);
+  assert.equal(harness.writes[0].data.studentId, studentId);
+  assert.equal(harness.writes[0].options.merge, true);
+});
+
+test('keeps an existing seven-digit student ID unchanged', async function () {
+  const harness = loadStudentIdHarness({
+    uid: 'legacy-student', role: 'student', studentId: '4827316',
+  });
+
+  const studentId = await harness.api.ensureSevenDigitStudentId('legacy-student');
+
+  assert.equal(studentId, '4827316');
+  assert.equal(harness.writes.length, 0);
+});

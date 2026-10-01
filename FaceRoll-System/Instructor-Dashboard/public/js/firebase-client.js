@@ -115,6 +115,36 @@
     };
   }
 
+  function isSevenDigitStudentId(value) {
+    return /^\d{7}$/.test(String(value || ''));
+  }
+
+  function generateStudentId() {
+    return String(1000000 + Math.floor(Math.random() * 9000000));
+  }
+
+  async function ensureSevenDigitStudentId(userDocumentId) {
+    const documentId = String(userDocumentId || '').trim();
+    if (!documentId) throw new Error('A user document ID is required.');
+
+    const db = await waitForFirebase();
+    const userRef = db.collection('users').doc(documentId);
+
+    return db.runTransaction(async function (transaction) {
+      const snapshot = await transaction.get(userRef);
+      if (!snapshot.exists) return null;
+
+      const profile = snapshot.data() || {};
+      const role = String(profile.role || profile.userType || '').toLowerCase();
+      if (role !== 'student' && role !== 'learner') return null;
+      if (isSevenDigitStudentId(profile.studentId)) return String(profile.studentId);
+
+      const studentId = generateStudentId();
+      transaction.set(userRef, { studentId: studentId }, { merge: true });
+      return studentId;
+    });
+  }
+
   function snapshotToDocs(snapshot) {
     return snapshot.docs.map((doc) => ({
       id: doc.id,
@@ -256,6 +286,7 @@
     // Shared API used by the dashboard pages.
     readCollectionDocs,
     readDocument,
+    ensureSevenDigitStudentId,
     subscribeCollectionDocs,
     subscribeCollections,
     writeDocument,

@@ -1,6 +1,9 @@
 import importlib.util
+import json
+import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from faceroll_recognition import ClassroomFaceResult, IdentificationResult
 
@@ -67,6 +70,54 @@ class ClassroomWorkerEventTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "recognized Firebase UID"):
             CLASSROOM_WORKER.build_recognition_event(face)
+
+
+class DynamicRosterTests(unittest.TestCase):
+    def test_roster_file_changes_are_loaded_without_restarting_the_worker(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            roster = Path(temporary_directory) / "course-roster.json"
+            environment = {
+                "FACEROLL_ROSTER_FILE": str(roster),
+                "FACEROLL_SESSION_ID": "session-123",
+                "FACEROLL_COURSE_ID": "course-456",
+            }
+            with patch.dict(CLASSROOM_WORKER.os.environ, environment, clear=True):
+                roster.write_text(json.dumps({
+                    "sessionId": "session-123",
+                    "courseId": "course-456",
+                    "allowedUids": ["uid-a"],
+                }), encoding="utf-8")
+                self.assertEqual(
+                    CLASSROOM_WORKER.configured_allowed_uids(),
+                    frozenset({"uid-a"}),
+                )
+                roster.write_text(json.dumps({
+                    "sessionId": "session-123",
+                    "courseId": "course-456",
+                    "allowedUids": ["uid-b"],
+                }), encoding="utf-8")
+                self.assertEqual(
+                    CLASSROOM_WORKER.configured_allowed_uids(),
+                    frozenset({"uid-b"}),
+                )
+
+    def test_invalid_or_stale_roster_fails_closed(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            roster = Path(temporary_directory) / "course-roster.json"
+            roster.write_text(json.dumps({
+                "sessionId": "old-session",
+                "courseId": "course-456",
+                "allowedUids": ["uid-a"],
+            }), encoding="utf-8")
+            with patch.dict(CLASSROOM_WORKER.os.environ, {
+                "FACEROLL_ROSTER_FILE": str(roster),
+                "FACEROLL_SESSION_ID": "session-123",
+                "FACEROLL_COURSE_ID": "course-456",
+            }, clear=True):
+                self.assertEqual(
+                    CLASSROOM_WORKER.configured_allowed_uids(),
+                    frozenset(),
+                )
 
 
 if __name__ == "__main__":

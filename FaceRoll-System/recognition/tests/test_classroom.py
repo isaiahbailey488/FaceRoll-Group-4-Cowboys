@@ -16,6 +16,7 @@ from faceroll_recognition import (
 
 
 TIMESTAMP = "2026-09-08T12:00:00Z"
+TEST_KEY = b"\x11" * 32
 
 
 def unit_vector(index):
@@ -42,8 +43,8 @@ class ClassroomRecognizerTests(unittest.TestCase):
     def setUp(self):
         self.temporary_directory = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary_directory.name) / "enrollments"
-        self.store = MobileEnrollmentStore(self.root)
-        self.reader = EnrollmentReader(self.root)
+        self.store = MobileEnrollmentStore(self.root, encryption_key=TEST_KEY)
+        self.reader = EnrollmentReader(self.root, encryption_key=TEST_KEY)
         self.image = np.ones((100, 120, 3), dtype=np.uint8)
 
     def tearDown(self):

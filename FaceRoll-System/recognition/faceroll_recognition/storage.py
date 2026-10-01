@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import os
+import json
 import re
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
 from .engine import EmbeddingCandidate
+from .encryption import decrypt_record, encrypt_record, is_encrypted_envelope, load_encryption_key
 from .errors import (
     EnrollmentNotFoundError,
     RecognitionCoreError,
@@ -85,8 +87,17 @@ class EnrollmentLoadReport:
 class EnrollmentReader:
     """Read-only enrollment access intended for classroom recognition."""
 
-    def __init__(self, directory: str | Path):
+    def __init__(
+        self,
+        directory: str | Path,
+        *,
+        encryption_key: str | bytes | None = None,
+        key_file: str | Path | None = None,
+        _allow_plaintext: bool = False,
+    ):
         self._directory = Path(directory).expanduser()
+        self._encryption_key = load_encryption_key(encryption_key, key_file=key_file)
+        self._allow_plaintext = _allow_plaintext
 
     @property
     def directory(self) -> Path:
@@ -117,6 +128,17 @@ class EnrollmentReader:
             text = path.read_text(encoding="utf-8")
         except (OSError, UnicodeError) as error:
             raise StorageError(f"Could not read enrollment file '{path.name}'.") from error
+
+        try:
+            serialized = json.loads(text)
+        except json.JSONDecodeError:
+            serialized = None
+        if is_encrypted_envelope(serialized):
+            text = decrypt_record(serialized, uid=filename_uid, key=self._encryption_key)
+        elif not self._allow_plaintext:
+            raise StorageError(
+                "Unencrypted enrollment record is not allowed; run the enrollment migration."
+            )
 
         record = EnrollmentRecord.from_json(text)
         if record.student_uid != filename_uid:
@@ -166,6 +188,22 @@ class EnrollmentReader:
 class MobileEnrollmentStore(EnrollmentReader):
     """Enrollment mutations reserved for a future authenticated mobile service."""
 
+    def __init__(
+        self,
+        directory: str | Path,
+        *,
+        encryption_key: str | bytes | None = None,
+        key_file: str | Path | None = None,
+    ):
+        super().__init__(
+            directory,
+            encryption_key=encryption_key,
+            key_file=key_file,
+            _allow_plaintext=True,
+        )
+        self.migrate_plaintext_enrollments()
+        self._allow_plaintext = False
+
     def _ensure_directory_for_write(self) -> None:
         if self._directory.exists() and (
             self._directory.is_symlink() or not self._directory.is_dir()
@@ -187,17 +225,7 @@ class MobileEnrollmentStore(EnrollmentReader):
             )
         return requested
 
-    def save_mobile_enrollment(
-        self,
-        record: EnrollmentRecord,
-        *,
-        authenticated_uid: str,
-    ) -> Path:
-        """Atomically create or replace the authenticated student's enrollment."""
-
-        if not isinstance(record, EnrollmentRecord):
-            raise StorageError("Only a validated EnrollmentRecord can be stored.")
-        uid = self._authorize(record.student_uid, authenticated_uid)
+    def _atomic_write(self, uid: str, serialized: str) -> Path:
         self._ensure_directory_for_write()
         target = self._record_path(uid)
         if target.is_symlink():
@@ -214,7 +242,7 @@ class MobileEnrollmentStore(EnrollmentReader):
                 delete=False,
             ) as temporary:
                 temporary_path = Path(temporary.name)
-                temporary.write(record.to_json())
+                temporary.write(serialized)
                 temporary.write("\n")
                 temporary.flush()
                 os.fsync(temporary.fileno())
@@ -237,6 +265,48 @@ class MobileEnrollmentStore(EnrollmentReader):
                     temporary_path.unlink(missing_ok=True)
                 except OSError:
                     pass
+
+    def migrate_plaintext_enrollments(self) -> tuple[str, ...]:
+        """Encrypt valid legacy JSON records in place and leave bad files isolated."""
+
+        self._validate_directory_for_read()
+        if not self._directory.exists():
+            return ()
+        migrated = []
+        for path in sorted(self._directory.glob("*.json"), key=lambda item: item.name):
+            if path.is_symlink() or not path.is_file():
+                continue
+            try:
+                raw_text = path.read_text(encoding="utf-8")
+                raw_data = json.loads(raw_text)
+                if is_encrypted_envelope(raw_data):
+                    continue
+                record = EnrollmentRecord.from_json(raw_text)
+                filename_uid = _validate_storage_uid(path.stem)
+                if record.student_uid != filename_uid:
+                    continue
+                encrypted = encrypt_record(
+                    record.to_json(), uid=filename_uid, key=self._encryption_key
+                )
+                self._atomic_write(filename_uid, encrypted)
+                migrated.append(path.name)
+            except (RecognitionCoreError, OSError, UnicodeError, ValueError):
+                continue
+        return tuple(migrated)
+
+    def save_mobile_enrollment(
+        self,
+        record: EnrollmentRecord,
+        *,
+        authenticated_uid: str,
+    ) -> Path:
+        """Atomically create or replace the authenticated student's enrollment."""
+
+        if not isinstance(record, EnrollmentRecord):
+            raise StorageError("Only a validated EnrollmentRecord can be stored.")
+        uid = self._authorize(record.student_uid, authenticated_uid)
+        encrypted = encrypt_record(record.to_json(), uid=uid, key=self._encryption_key)
+        return self._atomic_write(uid, encrypted)
 
     def delete_enrollment(
         self,

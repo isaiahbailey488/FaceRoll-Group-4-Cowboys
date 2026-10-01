@@ -4,6 +4,7 @@ import {
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut,
+  updateProfile,
   User as FirebaseUser,
 } from 'firebase/auth';
 import {
@@ -14,6 +15,10 @@ import {
   updateDoc,
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
+import { generateStudentId, isSevenDigitStudentId } from './student-id';
+import { fallbackNameFromEmail, getStudentDisplayName } from './profile-name';
+
+export { fallbackNameFromEmail, getStudentDisplayName } from './profile-name';
 
 export interface User {
   uid: string;
@@ -44,36 +49,22 @@ function mapFirebaseUser(user: FirebaseUser): User {
   };
 }
 
-export function fallbackNameFromEmail(email: string) {
-  const localPart = (email || '').split('@')[0] || 'student';
-  const cleaned = localPart.replace(/[._-]+/g, ' ').trim();
-  const words = cleaned
-    .split(' ')
-    .filter(Boolean)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
-
-  if (!words.length) return { firstName: 'Student', lastName: 'User' };
-  if (words.length === 1) return { firstName: words[0], lastName: 'User' };
-  return { firstName: words[0], lastName: words.slice(1).join(' ') };
-}
-
 function normalizeProfile(uid: string, email: string, data: any): UserProfile {
-  const fallbackName = fallbackNameFromEmail(email);
-
-  const firstName = data?.fname || fallbackName.firstName;
-  const lastName = data?.lname || fallbackName.lastName;
-  const fullName = data?.fullName || data?.displayName || `${firstName} ${lastName}`.trim();
+  const resolvedName = getStudentDisplayName(data, email);
+  const resolvedParts = resolvedName.split(/\s+/).filter(Boolean);
+  const firstName = resolvedParts[0] || 'Student';
+  const lastName = resolvedParts.slice(1).join(' ');
 
   return {
     uid,
     userId: data?.userId || data?.uid || uid,
     studentId: data?.studentId || data?.userId || uid,
     email: data?.email || email,
-    displayName: data?.displayName || fullName,
+    displayName: resolvedName,
     fname: firstName,
     lname: lastName,
-    fullName,
-    name: data?.name || fullName,
+    fullName: resolvedName,
+    name: resolvedName,
     role: (data?.role || 'student') as 'student' | 'instructor' | 'admin',
     userType: data?.userType || data?.role || 'student',
     optOutFlag: Boolean(data?.optOutFlag),
@@ -109,44 +100,78 @@ async function ensureUserProfileDoc(
   uid: string,
   email: string,
   firstName?: string,
-  lastName?: string
+  lastName?: string,
+  replaceName = false
 ): Promise<void> {
   const userRef = doc(db, 'users', uid);
 
   // Try to read first. If rules block reads, we still try the write below.
   let existing = false;
+  let existingStudentId: unknown;
+  let existingProfile: any = null;
   try {
     const snap = await getDoc(userRef);
     existing = snap.exists();
+    existingProfile = existing ? snap.data() : null;
+    existingStudentId = existingProfile?.studentId;
   } catch (readErr: any) {
     if (!isPermissionDenied(readErr)) throw readErr;
     // Permission denied on read — assume doc does not exist and try to create.
   }
 
-  if (existing) return;
-
-  const fallback = fallbackNameFromEmail(email);
-  const fname = (firstName || fallback.firstName).trim();
-  const lname = (lastName || fallback.lastName).trim();
+  const fname = String(firstName || 'Student').trim();
+  const lname = String(lastName || '').trim();
   const fullName = `${fname} ${lname}`.trim();
+  const existingName = getStudentDisplayName(existingProfile, email);
+  const shouldUpdateExistingName = Boolean(firstName || lastName) &&
+    (replaceName || existingName === 'Student');
 
+  if (existing && isSevenDigitStudentId(existingStudentId)) {
+    if (shouldUpdateExistingName) {
+      await updateDoc(userRef, {
+        displayName: fullName,
+        fname,
+        lname,
+        fullName,
+        name: fullName,
+      });
+    }
+    return;
+  }
+
+  const newProfile = {
+    uid,
+    userId: uid,
+    email: email.toLowerCase().trim(),
+    displayName: fullName,
+    fname,
+    lname,
+    fullName,
+    name: fullName,
+    role: 'student' as const,
+    userType: 'student',
+    optOutFlag: false,
+    faceEnrolled: false,
+    createdAt: serverTimestamp(),
+  };
+
+  const studentId = generateStudentId();
+  const existingProfileUpdate = shouldUpdateExistingName
+    ? {
+        studentId,
+        displayName: fullName,
+        fname,
+        lname,
+        fullName,
+        name: fullName,
+      }
+    : { studentId };
   try {
-    await setDoc(userRef, {
-      uid,
-      userId: uid,
-      studentId: uid,
-      email: email.toLowerCase().trim(),
-      displayName: fullName,
-      fname,
-      lname,
-      fullName,
-      name: fullName,
-      role: 'student',
-      userType: 'student',
-      optOutFlag: false,
-      faceEnrolled: false,
-      createdAt: serverTimestamp(),
-    });
+    await setDoc(
+      userRef,
+      existing ? existingProfileUpdate : { ...newProfile, studentId },
+      { merge: true }
+    );
   } catch (writeErr: any) {
     if (isPermissionDenied(writeErr)) {
       throw new FirestoreRulesNotDeployedError(writeErr?.message);
@@ -164,8 +189,17 @@ export async function registerUser(
   const normalizedEmail = email.toLowerCase().trim();
   const credential = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
   const user = credential.user;
+  const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
 
-  await ensureUserProfileDoc(user.uid, normalizedEmail, firstName, lastName);
+  await updateProfile(user, { displayName: fullName });
+  await ensureUserProfileDoc(user.uid, normalizedEmail, firstName, lastName, true);
+  await updateDoc(doc(db, 'users', user.uid), {
+    displayName: fullName,
+    fname: firstName.trim(),
+    lname: lastName.trim(),
+    fullName,
+    name: fullName,
+  });
   return mapFirebaseUser(user);
 }
 
@@ -173,9 +207,18 @@ export async function loginUser(email: string, password: string): Promise<User> 
   const normalizedEmail = email.toLowerCase().trim();
   const credential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
   const user = credential.user;
+  const safeAuthName = getStudentDisplayName({ fullName: user.displayName }, normalizedEmail);
+  const authName = safeAuthName === 'Student'
+    ? []
+    : safeAuthName.split(/\s+/).filter(Boolean);
 
   // Ensure profile exists even for users created elsewhere
-  await ensureUserProfileDoc(user.uid, normalizedEmail);
+  await ensureUserProfileDoc(
+    user.uid,
+    normalizedEmail,
+    authName[0],
+    authName.slice(1).join(' ')
+  );
   return mapFirebaseUser(user);
 }
 

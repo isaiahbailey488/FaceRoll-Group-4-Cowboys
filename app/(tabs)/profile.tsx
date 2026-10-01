@@ -16,7 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Colors from '../../constants/Colors';
 import {
   getCurrentUser,
-  fallbackNameFromEmail,
+  getStudentDisplayName,
   getUserProfile,
   logoutUser,
   resetPassword,
@@ -171,16 +171,12 @@ export default function ProfileScreen() {
     );
   }
 
-  const emailName = fallbackNameFromEmail(authUser?.email || '');
-
-  const displayName =
-    (profile?.displayName && profile.displayName.trim()) ||
-    (profile?.fullName && profile.fullName.trim()) ||
-    `${emailName.firstName} ${emailName.lastName}`.trim();
+  const displayName = getStudentDisplayName(profile, authUser?.email);
   const displayEmail = profile?.email || authUser?.email || '';
   const displayStudentId = profile?.studentId || authUser?.uid || '';
-  const firstInitial = (profile?.fname || emailName.firstName).charAt(0);
-  const lastInitial = (profile?.lname || emailName.lastName).charAt(0);
+  const displayNameParts = displayName.split(/\s+/).filter(Boolean);
+  const firstInitial = (displayNameParts[0] || 'S').charAt(0);
+  const lastInitial = (displayNameParts[displayNameParts.length - 1] || '').charAt(0);
   const initials = `${firstInitial}${lastInitial}`.toUpperCase() || '?';
 
   return (

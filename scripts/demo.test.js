@@ -12,6 +12,7 @@ const {
   tailscaleConnection,
   configureTailscale,
   ensureDemoCertificate,
+  ensureEmbeddingKey,
   createDemoEnvironment,
   detectLanAddress,
   isPrivateLanAddress,
@@ -122,6 +123,22 @@ test('parses the optional demo environment file', function () {
   });
 });
 
+test('embedding key generation is stable, private, and validates existing keys', function () {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'faceroll-key-test-'));
+  try {
+    const keyFile = path.join(directory, 'private', 'embedding-storage.key');
+    assert.equal(ensureEmbeddingKey(keyFile), path.resolve(keyFile));
+    const first = fs.readFileSync(keyFile, 'ascii');
+    assert.equal(Buffer.from(first.trim(), 'base64url').length, 32);
+    ensureEmbeddingKey(keyFile);
+    assert.equal(fs.readFileSync(keyFile, 'ascii'), first);
+    fs.writeFileSync(keyFile, 'invalid');
+    assert.throws(() => ensureEmbeddingKey(keyFile), /32-byte key/);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('selects a private Wi-Fi address instead of a tunnel address', function () {
   const interfaces = {
     tailscale0: [{ family: 'IPv4', internal: false, address: '100.102.5.82' }],
@@ -141,6 +158,7 @@ test('demo environment removes cloud credentials and forces every client local',
       tlsCert: '/tls/server.pem',
       tlsKey: '/tls/server.key',
       enrollmentDirectory: '/data/enrollments',
+      embeddingKeyFile: '/keys/embedding-storage.key',
       deepfaceHome: '/data/models',
     });
     assert.equal(environment.GOOGLE_APPLICATION_CREDENTIALS, undefined);
@@ -148,6 +166,7 @@ test('demo environment removes cloud credentials and forces every client local',
     assert.equal(environment.FIRESTORE_EMULATOR_HOST, '127.0.0.1:8080');
     assert.equal(environment.EXPO_PUBLIC_FIREBASE_EMULATOR_HOST, '192.168.1.223');
     assert.equal(environment.EXPO_PUBLIC_RECOGNITION_API_URL, 'https://192.168.1.223:5055');
+    assert.equal(environment.FACEROLL_EMBEDDING_KEY_FILE, '/keys/embedding-storage.key');
   } finally {
     if (previousCredential === undefined) delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
     else process.env.GOOGLE_APPLICATION_CREDENTIALS = previousCredential;

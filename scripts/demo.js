@@ -124,6 +124,8 @@ function loadDemoConfiguration(environment = process.env) {
     tlsKey: values.FACEROLL_TLS_KEY || path.join(tlsRoot, 'faceroll-server.key'),
     enrollmentDirectory:
       values.FACEROLL_ENROLLMENT_DIR || path.join(dataRoot, 'enrollments'),
+    embeddingKeyFile:
+      values.FACEROLL_EMBEDDING_KEY_FILE || path.join(dataRoot, 'embedding-storage.key'),
     deepfaceHome:
       values.FACEROLL_DEEPFACE_HOME ||
       (windows
@@ -132,6 +134,26 @@ function loadDemoConfiguration(environment = process.env) {
     emulatorDataDirectory:
       values.FACEROLL_EMULATOR_DATA_DIR || path.join(dataRoot, 'firebase-emulator-data'),
   };
+}
+
+function ensureEmbeddingKey(keyFile) {
+  const resolved = path.resolve(keyFile);
+  fs.mkdirSync(path.dirname(resolved), { recursive: true, mode: 0o700 });
+  if (!fs.existsSync(resolved)) {
+    fs.writeFileSync(resolved, crypto.randomBytes(32).toString('base64url') + '\n', {
+      encoding: 'ascii',
+      mode: 0o600,
+      flag: 'wx',
+    });
+  }
+  const encoded = fs.readFileSync(resolved, 'ascii').trim();
+  let decoded;
+  try { decoded = Buffer.from(encoded, 'base64url'); } catch { decoded = Buffer.alloc(0); }
+  if (decoded.length !== 32 || decoded.toString('base64url') !== encoded) {
+    throw new Error('FaceRoll embedding key file must contain one base64url-encoded 32-byte key.');
+  }
+  if (process.platform !== 'win32') fs.chmodSync(resolved, 0o600);
+  return resolved;
 }
 
 function executable(name) {
@@ -366,6 +388,7 @@ function createDemoEnvironment(config) {
     FACEROLL_TLS_KEY: config.tlsKey,
     FACEROLL_REQUEST_LOGGING: '1',
     FACEROLL_ENROLLMENT_DIR: config.enrollmentDirectory,
+    FACEROLL_EMBEDDING_KEY_FILE: config.embeddingKeyFile,
     FACEROLL_DEEPFACE_HOME: config.deepfaceHome,
     DEEPFACE_HOME: config.deepfaceHome,
     EXPO_PUBLIC_RECOGNITION_API_URL: config.recognitionUrl || `https://${config.lanAddress}:5055`,
@@ -448,6 +471,7 @@ async function runDemo() {
   fs.mkdirSync(config.emulatorDataDirectory, { recursive: true, mode: 0o700 });
   fs.mkdirSync(config.enrollmentDirectory, { recursive: true, mode: 0o700 });
   fs.mkdirSync(config.deepfaceHome, { recursive: true, mode: 0o700 });
+  config.embeddingKeyFile = ensureEmbeddingKey(config.embeddingKeyFile);
 
   const environment = createDemoEnvironment(config);
   const build = commandResult(
@@ -571,6 +595,7 @@ module.exports = {
   tailscaleConnection,
   configureTailscale,
   ensureDemoCertificate,
+  ensureEmbeddingKey,
   createDemoEnvironment,
   detectLanAddress,
   isPrivateLanAddress,

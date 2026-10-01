@@ -259,6 +259,48 @@
       box-shadow: 0 12px 28px rgba(30, 64, 175, 0.24) !important;
     }
 
+    .profile-enrollment-section {
+      margin: 0 1.5rem 1.5rem;
+      padding: 1rem;
+      border: 1px solid #dbe4f0;
+      border-radius: 12px;
+      background: #f8fafc;
+    }
+
+    .profile-enrollment-section h3 { margin: 0; color: #0f172a; font-size: 1.05rem; }
+    .profile-enrollment-section > p { margin: 0.35rem 0 1rem; color: #64748b; }
+    .profile-enrollment-list { display: grid; gap: 0.65rem; }
+
+    .profile-enrollment-item {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      align-items: center;
+      gap: 1rem;
+      padding: 0.8rem;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      background: #ffffff;
+    }
+
+    .profile-enrollment-details { display: grid; gap: 0.2rem; color: #0f172a; }
+    .profile-enrollment-details span { color: #64748b; font-size: 0.85rem; }
+
+    .profile-enrollment-button {
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      padding: 0.5rem 0.75rem;
+      background: #eff6ff;
+      color: #1d4ed8;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .profile-enrollment-remove { border-color: #fecaca; background: #fef2f2; color: #b91c1c; }
+    .profile-enrollment-button:disabled { cursor: wait; opacity: 0.6; }
+    #profileEnrollmentStatus { min-height: 1.25rem; margin: 0.75rem 0 0; color: #166534; font-size: 0.9rem; }
+    #profileEnrollmentStatus.profile-enrollment-error { color: #b91c1c; }
+
     @media (max-width: 992px) {
       body#idhra3g .overview-section:first-of-type {
         grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
@@ -302,9 +344,14 @@
       .sidebar-brand-text {
         display: flex;
       }
+
+      .profile-enrollment-item {
+        grid-template-columns: 1fr;
+        align-items: stretch;
+      }
     }
   </style>
   </head>
   <body id="idhra3g" class="gjs-t-body body-root"><div class="app-wrapper"><!-- Sidebar navigation --><aside class="gjs-t-border sidebar-navigation"><div id="izkee" class="sidebar-header sidebar-brand"><div class="sidebar-brand-logo"><img src="./Transparent FaceRoll.png" alt="FaceRoll logo" id="i0pgol" class="logo-image"/></div><div class="sidebar-brand-text"><span class="sidebar-brand-title">FaceRoll</span></div></div><nav id="iqnsp" class="sidebar-menu"><ul class="sidebar-menu-list">
-            <li><a href="./courses.html" class="sidebar-link"><img src="https://api.iconify.design/lucide-book-open.svg?color=%2364748b" alt="" class="sidebar-icon"/><span class="sidebar-link-label">Courses</span></a></li></ul></nav><div class="sidebar-footer"><div class="profile-mini"><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36' viewBox='0 0 36 36'%3E%3Ccircle cx='18' cy='18' r='18' fill='%23e2e8f0'/%3E%3Ccircle cx='18' cy='13' r='6' fill='%2394a3b8'/%3E%3Cpath d='M8 29c1.8-5 5.8-7.5 10-7.5S26.2 24 28 29' fill='%2394a3b8'/%3E%3C/svg%3E" alt="Default profile" class="profile-avatar"/><div class="profile-text-group"><p class="profile-name">Loading...</p><p class="profile-role">Loading...</p></div></div></div></aside><!-- Main content --><div class="main-column"><main class="main-content"><!-- Student profile panel --><section class="gjs-t-border attendance-panel"><div class="attendance-panel-header"><div class="attendance-panel-title-group"><h2 id="iqv7uho" class="attendance-panel-title">Student Profile</h2><p>View detailed attendance information for this student and override records if needed.</p></div></div><!-- Student info --><div class="overview-section"><div class="gjs-t-border summary-card"><div class="summary-text"><span class="summary-label">Student Name</span><span id="ix63k7g" class="summary-value">Jane Doe</span></div></div><div class="gjs-t-border summary-card"><div class="summary-text"><span id="ib8d0ez" class="summary-label">Course(s)</span><span id="iobn7gg" class="summary-value">Course 1030</span></div></div><div class="gjs-t-border summary-card"><div class="summary-text"><span class="summary-label">Email</span><span id="inpdknn" class="summary-value">jane.doe@example.com</span></div></div></div><!-- Attendance summary --><div class="overview-section"><div class="gjs-t-border summary-card"><div class="summary-text"><span class="summary-label">Attendance Rate</span><span id="iaj9kju" class="summary-value">93%</span></div></div><div class="gjs-t-border summary-card"><div class="summary-text"><span class="summary-label">Sessions Attended</span><span id="iwzjofv" class="summary-value">28</span></div></div><div class="gjs-t-border summary-card"><div class="summary-text"><span class="summary-label">Late Arrivals</span><span id="ip95okd" class="summary-value">1</span></div></div><div class="gjs-t-border summary-card"><div class="summary-text"><span class="summary-label">Total Absences</span><span id="iq9g6ym" class="summary-value">2</span></div></div></div><!-- Attendance history --><div class="table-wrapper"><table class="attendance-table"><thead class="table-head"><tr><th class="table-head-cell">Date</th><th class="table-head-cell">Course</th><th class="table-head-cell">Current Status</th><th class="table-head-cell">Recorded Time</th><th class="table-head-cell">Override Status</th></tr></thead><tbody id="profileAttendanceBody" class="table-body"><tr><td colspan="5">Loading student profile...</td></tr></tbody></table></div><!-- Save override button --><div id="i3wlx77" class="session-controls"><button id="profileSaveButton" type="button" class="gjs-t-button" disabled>Save override</button></div><div id="profileSaveStatus" class="cell-notes" style="padding:0.75rem 1.5rem 0;color:#475569;">Ready to save attendance changes.</div></section></main></div></div><!-- Firebase and profile scripts --><script defer src="/__/firebase/11.6.0/firebase-app-compat.js"></script><script defer src="/__/firebase/11.6.0/firebase-firestore-compat.js"></script><script defer src="/__/firebase/11.6.0/firebase-auth-compat.js"></script><script defer src="/__/firebase/init.js"></script><script defer src="./js/sample-data.js"></script><script defer src="./js/firebase-client.js?v=20260913-local-init"></script><script defer src="./js/sidebar-user.js?v=20260915-courses"></script><script defer src="./js/student-screens.js?v=20260917-profile-save"></script></body>
+            <li><a href="./courses.html" class="sidebar-link"><img src="https://api.iconify.design/lucide-book-open.svg?color=%2364748b" alt="" class="sidebar-icon"/><span class="sidebar-link-label">Courses</span></a></li></ul></nav><div class="sidebar-footer"><div class="profile-mini"><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36' viewBox='0 0 36 36'%3E%3Ccircle cx='18' cy='18' r='18' fill='%23e2e8f0'/%3E%3Ccircle cx='18' cy='13' r='6' fill='%2394a3b8'/%3E%3Cpath d='M8 29c1.8-5 5.8-7.5 10-7.5S26.2 24 28 29' fill='%2394a3b8'/%3E%3C/svg%3E" alt="Default profile" class="profile-avatar"/><div class="profile-text-group"><p class="profile-name">Loading...</p><p class="profile-role">Loading...</p></div></div></div></aside><!-- Main content --><div class="main-column"><main class="main-content"><!-- Student profile panel --><section class="gjs-t-border attendance-panel"><div class="attendance-panel-header"><div class="attendance-panel-title-group"><h2 id="iqv7uho" class="attendance-panel-title">Student Profile</h2><p>View detailed attendance information for this student and override records if needed.</p></div></div><!-- Student info --><div class="overview-section"><div class="gjs-t-border summary-card"><div class="summary-text"><span class="summary-label">Student Name</span><span id="ix63k7g" class="summary-value">Jane Doe</span></div></div><div class="gjs-t-border summary-card"><div class="summary-text"><span id="ib8d0ez" class="summary-label">Enrolled Courses</span><span id="iobn7gg" class="summary-value">Course 1030</span></div></div><div class="gjs-t-border summary-card"><div class="summary-text"><span class="summary-label">Email</span><span id="inpdknn" class="summary-value">jane.doe@example.com</span></div></div></div><!-- Attendance summary --><div class="overview-section"><div class="gjs-t-border summary-card"><div class="summary-text"><span class="summary-label">Attendance Rate</span><span id="iaj9kju" class="summary-value">93%</span></div></div><div class="gjs-t-border summary-card"><div class="summary-text"><span class="summary-label">Sessions Attended</span><span id="iwzjofv" class="summary-value">28</span></div></div><div class="gjs-t-border summary-card"><div class="summary-text"><span class="summary-label">Late Arrivals</span><span id="ip95okd" class="summary-value">1</span></div></div><div class="gjs-t-border summary-card"><div class="summary-text"><span class="summary-label">Total Absences</span><span id="iq9g6ym" class="summary-value">2</span></div></div></div><section class="profile-enrollment-section" aria-labelledby="profileEnrollmentHeading"><h3 id="profileEnrollmentHeading">Course Enrollments</h3><p>Manage this student's access to your courses. Attendance history remains saved when an enrollment is removed.</p><div id="profileEnrollmentList" class="profile-enrollment-list">Loading enrollments...</div><p id="profileEnrollmentStatus" role="status" aria-live="polite"></p></section><!-- Attendance history --><div class="table-wrapper"><table class="attendance-table"><thead class="table-head"><tr><th class="table-head-cell">Date</th><th class="table-head-cell">Course</th><th class="table-head-cell">Current Status</th><th class="table-head-cell">Recorded Time</th><th class="table-head-cell">Override Status</th></tr></thead><tbody id="profileAttendanceBody" class="table-body"><tr><td colspan="5">Loading student profile...</td></tr></tbody></table></div><!-- Save override button --><div id="i3wlx77" class="session-controls"><button id="profileSaveButton" type="button" class="gjs-t-button" disabled>Save override</button></div><div id="profileSaveStatus" class="cell-notes" style="padding:0.75rem 1.5rem 0;color:#475569;">Ready to save attendance changes.</div></section></main></div></div><!-- Firebase and profile scripts --><script defer src="/__/firebase/11.6.0/firebase-app-compat.js"></script><script defer src="/__/firebase/11.6.0/firebase-firestore-compat.js"></script><script defer src="/__/firebase/11.6.0/firebase-auth-compat.js"></script><script defer src="/__/firebase/init.js"></script><script defer src="./js/sample-data.js"></script><script defer src="./js/firebase-client.js?v=20260913-local-init"></script><script defer src="./js/sidebar-user.js?v=20260915-courses"></script><script defer src="./js/course-roster-sync.js?v=20261001-profile-1"></script><script defer src="./js/student-screens.js?v=20261001-profile-enrollment-1"></script></body>
 </html>
