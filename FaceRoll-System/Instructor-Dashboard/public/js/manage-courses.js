@@ -1,5 +1,6 @@
 (function () {
   'use strict';
+  let courseListGeneration = 0;
 
   const SAMPLE_COURSES = [
     { courseId: 'CSCE4905', courseName: 'Capstone I', instructorId: 'instructor-demo' },
@@ -27,6 +28,7 @@
   }
 
   async function loadCourseList() {
+    const generation = ++courseListGeneration;
     const listEl = $('manageCoursesList');
     const panel = $('manageCoursesPanel');
     if (!listEl || !panel) return;
@@ -38,20 +40,20 @@
     }
 
     try {
-      const [courses, user] = await Promise.all([
-        api.readCollectionDocs('courses'),
-        api.waitForAuthUser(),
-      ]);
+      const user = await api.waitForAuthUser();
       if (!user) throw new Error('Sign in to view your courses.');
+      const queryOptions = {
+        filters: [{ field: 'instructorId', operator: '==', value: user.uid }],
+      };
+      const renderOwnedCourses = function (ownedCourses) {
+        if (generation !== courseListGeneration) return;
+        if (!ownedCourses.length) {
+          listEl.textContent = 'No courses yet. Add one above.';
+          return;
+        }
 
-      const ownedCourses = courses.filter((course) => course.instructorId === user.uid);
-      if (!ownedCourses.length) {
-        listEl.textContent = 'No courses yet. Add one above.';
-        return;
-      }
-
-      listEl.replaceChildren();
-      ownedCourses.forEach((course) => {
+        listEl.replaceChildren();
+        ownedCourses.forEach((course) => {
         const courseId = String(course.courseId || course.id || '');
         const courseName = String(course.courseName || course.name || courseId);
         if (!/^[A-Za-z0-9_-]{1,200}$/.test(courseId)) return;
@@ -80,9 +82,16 @@
         });
 
         row.append(details, inviteButton);
-        listEl.appendChild(row);
-      });
+          listEl.appendChild(row);
+        });
+      };
+      if (typeof api.readQueryDocsSWR === 'function') {
+        await api.readQueryDocsSWR('courses', queryOptions, renderOwnedCourses);
+      } else {
+        renderOwnedCourses(await api.readQueryDocs('courses', queryOptions));
+      }
     } catch (err) {
+      if (generation !== courseListGeneration) return;
       console.error('Failed to load course list:', err);
       listEl.textContent = 'Unable to load courses';
     }
@@ -178,6 +187,9 @@
     }
 
     window.addEventListener('faceroll:courses-updated', loadCourseList);
+    if (window.FaceRollFirebase && typeof window.FaceRollFirebase.onConnectionRestored === 'function') {
+      window.FaceRollFirebase.onConnectionRestored(loadCourseList);
+    }
     loadCourseList();
   }
 

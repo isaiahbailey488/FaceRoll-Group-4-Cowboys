@@ -73,6 +73,12 @@
       try {
         const firebaseClient = ensureFirebaseClient();
         await firebaseClient.signInWithEmail(String(emailInput.value || '').trim(), passwordInput.value);
+        submitButton.textContent = 'Loading dashboard...';
+        try {
+          await firebaseClient.readInstructorSnapshot();
+        } catch (snapshotError) {
+          console.warn('Dashboard data could not be prepared before navigation:', snapshotError);
+        }
         window.location.href = './instructor-dashboard.html';
       } catch (error) {
         console.error('Login failed:', error);
@@ -145,6 +151,12 @@
           createdAt: new Date().toISOString(),
         });
 
+        const activeUser = await firebaseClient.waitForAuthUser();
+        if (!activeUser || activeUser.uid !== user.uid) {
+          throw new Error('Registration completed, but the local sign-in session was not restored. Please register again.');
+        }
+        submitButton.textContent = 'Loading dashboard...';
+        await firebaseClient.readInstructorSnapshot();
         window.location.href = './instructor-dashboard.html';
       } catch (error) {
         console.error('Registration failed:', error);

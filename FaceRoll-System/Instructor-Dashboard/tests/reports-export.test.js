@@ -22,9 +22,9 @@ async function harness(fail = false) {
     attendance: [{ uid: 'u1', sessionId: 's1', status: 'Late' }],
   };
   vm.runInNewContext(source, {
-    window: { FaceRollFirebase: { async readCollectionDocs(name) {
+    window: { FaceRollFirebase: { async readInstructorSnapshot() {
       if (fail) throw new Error('offline');
-      return data[name];
+      return { ...data, instructor: { uid: 'teacher' }, enrollments: [] };
     } }, setTimeout() {} },
     document: { readyState: 'complete', body: Object.assign(element(), { id: 'iw11pz' }),
       getElementById(id) { return elements[id] ||= element(); }, createElement: element },

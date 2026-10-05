@@ -4,6 +4,7 @@
     <title>Instructor Admin Dashboard — Attendance Monitor</title>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <link rel="icon" href="/favicon.ico" type="image/png"/>
   <meta name="robots" content="index,follow">
   <meta name="generator" content="GrapesJS Studio">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Poppins:wght@600;700&amp;display=swap" rel="stylesheet"/>
@@ -460,19 +461,19 @@
           <!-- Today's summary cards -->
           <section class="overview-section">
             <div class="gjs-t-border summary-card">
-              <div class="summary-text"><span class="summary-label">Students Today</span><span id="statTotal" class="summary-value">0</span></div>
+              <div class="summary-text"><span class="summary-label">Students Today</span><span id="statTotal" class="summary-value">Loading...</span></div>
               <img src="https://api.iconify.design/lucide-users.svg?color=%231d4ed8" alt="" class="summary-icon"/>
             </div>
             <div id="ibdd1" class="gjs-t-border summary-card">
-              <div class="summary-text"><span class="summary-label">Present Today</span><span id="statPresent" class="summary-value">0</span></div>
+              <div class="summary-text"><span class="summary-label">Present Today</span><span id="statPresent" class="summary-value">Loading...</span></div>
               <img src="https://api.iconify.design/lucide-check-circle-2.svg?color=%2316a34a" alt="" class="summary-icon"/>
             </div>
             <div class="gjs-t-border summary-card">
-              <div class="summary-text"><span class="summary-label">Late Today</span><span id="statLate" class="summary-value">0</span></div>
+              <div class="summary-text"><span class="summary-label">Late Today</span><span id="statLate" class="summary-value">Loading...</span></div>
               <img src="https://api.iconify.design/lucide-clock-3.svg?color=%23f59e0b" alt="" class="summary-icon"/>
             </div>
             <div class="gjs-t-border summary-card">
-              <div class="summary-text"><span class="summary-label">Absent Today</span><span id="statAbsent" class="summary-value">0</span></div>
+              <div class="summary-text"><span class="summary-label">Absent Today</span><span id="statAbsent" class="summary-value">Loading...</span></div>
               <img src="https://api.iconify.design/lucide-x-circle.svg?color=%23dc2626" alt="" class="summary-icon"/>
             </div>
           </section>
@@ -557,10 +558,10 @@
     <script defer src="/__/firebase/11.6.0/firebase-app-compat.js"></script>
     <script defer src="/__/firebase/11.6.0/firebase-auth-compat.js"></script>
     <script defer src="/__/firebase/11.6.0/firebase-firestore-compat.js"></script>
-    <script defer src="/__/firebase/init.js"></script>
+    <script defer src="/__/firebase/init.js?useEmulator=true"></script>
     <script defer src="./js/sample-data.js"></script>
-    <script defer src="./js/firebase-client.js?v=20260913-local-init"></script>
-    <script defer src="./js/sidebar-user.js?v=20260915-courses"></script>
-    <script defer src="./js/instructor-dashboard.js?v=20260429-4"></script>
+    <script defer src="./js/firebase-client.js?v=20261005-resilience-1"></script>
+    <script defer src="./js/sidebar-user.js?v=20261004-split-cache-1"></script>
+    <script defer src="./js/instructor-dashboard.js?v=20261005-resilience-1"></script>
   </body>
 </html>

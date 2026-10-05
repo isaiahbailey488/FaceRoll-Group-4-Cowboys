@@ -167,6 +167,12 @@ test('demo environment removes cloud credentials and forces every client local',
     assert.equal(environment.EXPO_PUBLIC_FIREBASE_EMULATOR_HOST, '192.168.1.223');
     assert.equal(environment.EXPO_PUBLIC_RECOGNITION_API_URL, 'https://192.168.1.223:5055');
     assert.equal(environment.FACEROLL_EMBEDDING_KEY_FILE, '/keys/embedding-storage.key');
+    assert.equal(environment.FACEROLL_REQUEST_LOGGING, '0');
+    assert.equal(environment.FIREBASE_CLI_DISABLE_UPDATE_CHECK, '1');
+    assert.equal(environment.NO_UPDATE_NOTIFIER, '1');
+    assert.equal(createDemoEnvironment({
+      lanAddress: '192.168.1.223', requestLogging: true,
+    }).FACEROLL_REQUEST_LOGGING, '1');
   } finally {
     if (previousCredential === undefined) delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
     else process.env.GOOGLE_APPLICATION_CREDENTIALS = previousCredential;

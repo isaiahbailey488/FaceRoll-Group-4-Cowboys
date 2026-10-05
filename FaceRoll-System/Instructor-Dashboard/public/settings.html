@@ -4,6 +4,7 @@
     <title>Settings</title>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <link rel="icon" href="/favicon.ico" type="image/png"/>
   <meta name="robots" content="index,follow"/>
   <meta name="generator" content="GrapesJS Studio"/>
   <link rel="stylesheet" href="./style.css">
@@ -465,9 +466,9 @@
     <script defer src="/__/firebase/11.6.0/firebase-app-compat.js"></script>
     <script defer src="/__/firebase/11.6.0/firebase-firestore-compat.js"></script>
     <script defer src="/__/firebase/11.6.0/firebase-auth-compat.js"></script>
-    <script defer src="/__/firebase/init.js"></script>
-    <script defer src="./js/firebase-client.js?v=20260913-local-init"></script>
-    <script defer src="./js/sidebar-user.js?v=20260915-courses"></script>
+    <script defer src="/__/firebase/init.js?useEmulator=true"></script>
+    <script defer src="./js/firebase-client.js?v=20261005-resilience-1"></script>
+    <script defer src="./js/sidebar-user.js?v=20261004-split-cache-1"></script>
     <script>
 (function() {
   const toggleBtn = document.getElementById('allow-late-toggle');
@@ -521,7 +522,7 @@
     });
   }
 
-  async function loadSettings() {
+  async function loadSettings(backgroundRefresh) {
     try {
       const user = await waitForAuth();
       if (!user) {
@@ -536,11 +537,8 @@
         return;
       }
 
-      const db = window.firebase.firestore();
-      const snap = await db.collection('instructor_settings').doc(currentUid).get();
-
-      if (snap.exists) {
-        const data = snap.data() || {};
+      const renderSettings = function(data) {
+        if (data) {
         if (data.defaultAttendance) {
           defaultAttendanceEl.value = String(data.defaultAttendance).toLowerCase();
         }
@@ -552,12 +550,22 @@
         }
         setAllowLate(Boolean(data.allowLate));
         setStatus('Settings loaded from your instructor profile.', 'success');
-      } else {
+        } else if (!backgroundRefresh) {
         setStatus('No saved settings yet. Configure and click Save.', 'info');
+        }
+      };
+      if (typeof window.FaceRollFirebase.readDocumentSWR === 'function' && !backgroundRefresh) {
+        await window.FaceRollFirebase.readDocumentSWR(
+          'instructor_settings', currentUid, renderSettings
+        );
+      } else {
+        renderSettings(await window.FaceRollFirebase.readDocument('instructor_settings', currentUid));
       }
     } catch (err) {
       console.error('Failed to load instructor settings:', err);
-      setStatus('Could not load settings: ' + (err && err.message ? err.message : 'unknown error'), 'error');
+      if (!backgroundRefresh) {
+        setStatus('Could not load settings: ' + (err && err.message ? err.message : 'unknown error'), 'error');
+      }
     }
   }
 
@@ -600,9 +608,19 @@
 
   saveBtn.addEventListener('click', saveSettings);
 
-  document.addEventListener('DOMContentLoaded', loadSettings);
+  function watchForReconnect() {
+    if (window.FaceRollFirebase && typeof window.FaceRollFirebase.onConnectionRestored === 'function') {
+      window.FaceRollFirebase.onConnectionRestored(function() { loadSettings(true); });
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    watchForReconnect();
+    loadSettings(false);
+  });
   if (document.readyState === 'interactive' || document.readyState === 'complete') {
-    loadSettings();
+    watchForReconnect();
+    loadSettings(false);
   }
 })();
 </script>

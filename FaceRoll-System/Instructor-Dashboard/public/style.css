@@ -486,3 +486,8 @@ body#i1rrpa a:hover {
     margin-left: 0;
   }
 }
+/* Firebase Auth injects this fixed development banner when the local emulator
+   is active. Local-only routing remains enforced by firebase-client.js. */
+.firebase-emulator-warning {
+  display: none !important;
+}

@@ -49,6 +49,7 @@
     reverseRequestId: 0,
     saving: false,
     savedSnapshot: null,
+    loadGeneration: 0,
   };
 
   function setStatus(element, message, variant) {
@@ -573,6 +574,7 @@
   }
 
   async function verifyAccessAndLoadCourses(preserveSelection) {
+    const generation = ++state.loadGeneration;
     if (!firebaseApi || !utils) {
       throw new Error('The dashboard data client did not initialize.');
     }
@@ -582,7 +584,33 @@
       throw new Error('Sign in with an instructor account to manage course locations.');
     }
 
-    const profile = await firebaseApi.readDocument('users', authUser.uid);
+    const courseQuery = {
+      filters: [{ field: 'instructorId', operator: '==', value: authUser.uid }],
+    };
+    const normalizeCourses = function (courses) {
+      return courses.filter(function (course) { return Boolean(getCourseId(course)); })
+        .sort(function (first, second) {
+          return getCourseName(first).localeCompare(getCourseName(second));
+        });
+    };
+    const values = await Promise.all([
+      typeof firebaseApi.readDocumentSWR === 'function'
+        ? firebaseApi.readDocumentSWR('users', authUser.uid)
+        : firebaseApi.readDocument('users', authUser.uid),
+      typeof firebaseApi.readQueryDocsSWR === 'function'
+        ? firebaseApi.readQueryDocsSWR('courses', courseQuery, function (courses) {
+          if (generation !== state.loadGeneration) return;
+          const cachedCourses = normalizeCourses(courses);
+          if (cachedCourses.length) {
+            state.courses = cachedCourses;
+            populateCourses(state.courses, preserveSelection);
+            setStatus(elements.courseStatus, 'Showing saved courses while Firestore refreshes...', 'info');
+          }
+        })
+        : firebaseApi.readQueryDocs('courses', courseQuery),
+    ]);
+    const profile = values[0];
+    if (generation !== state.loadGeneration) return;
     const role = getFirstDefined(profile, ['role', 'userType']);
     if (!utils.isAuthorizedRole(role)) {
       throw new Error('Only instructors or administrators can change course locations.');
@@ -592,12 +620,8 @@
     state.userProfile = profile;
     state.authorized = true;
 
-    const courses = await firebaseApi.readCollectionDocs('courses');
-    state.courses = courses
-      .filter(function (course) { return Boolean(getCourseId(course)); })
-      .sort(function (first, second) {
-        return getCourseName(first).localeCompare(getCourseName(second));
-      });
+    state.courses = normalizeCourses(values[1]);
+    if (generation !== state.loadGeneration) return;
 
     if (!state.courses.length) {
       elements.courseSelect.innerHTML = '<option value="">No courses available</option>';
@@ -690,6 +714,15 @@
         setStatus(elements.courseStatus, 'Unable to refresh courses. Reload the page to try again.', 'error');
       }
     });
+    if (firebaseApi && typeof firebaseApi.onConnectionRestored === 'function') {
+      firebaseApi.onConnectionRestored(async function () {
+        try {
+          await verifyAccessAndLoadCourses(true);
+        } catch (error) {
+          console.error('Course settings reconnect refresh failed:', error);
+        }
+      });
+    }
     elements.courseSelect.addEventListener('change', handleCourseChange);
     elements.searchForm.addEventListener('submit', handleSearch);
     elements.enabledToggle.addEventListener('click', function () {

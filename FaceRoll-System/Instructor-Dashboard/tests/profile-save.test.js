@@ -10,6 +10,9 @@ test('profile has one renderer and first save persists the selected attendance r
   const html = fs.readFileSync(path.join(publicDir, 'student-profile.html'), 'utf8');
   assert.doesNotMatch(html, /src="[^" ]*student-profile-loader/);
   assert.equal((html.match(/src="[^" ]*student-screens/g) || []).length, 1);
+  assert.doesNotMatch(html, /Jane Doe|jane\.doe@example\.com|Course 1030|>93%<|>28<\/span>/);
+  ['ix63k7g', 'iobn7gg', 'inpdknn', 'iaj9kju', 'iwzjofv', 'ip95okd', 'iq9g6ym']
+    .forEach(id => assert.match(html, new RegExp(`id="${id}"[^>]*>Loading\\.\\.\\.<`)));
   assert.match(html, /id="profileEnrollmentList"/);
   assert.match(html, /Enrolled Courses/);
   const rosterHtml = fs.readFileSync(path.join(publicDir, 'student-roster.html'), 'utf8');
@@ -33,7 +36,7 @@ test('profile has one renderer and first save persists the selected attendance r
   const writes = [];
   const window = { location: { search: '?studentId=u1' }, setTimeout() {}, FaceRollCourseRoster: courseRoster,
     FaceRollFirebase: {
-      async readCollectionDocs(name) { return data[name]; },
+      async readInstructorSnapshot() { return { ...data, instructor: { uid: 'teacher' } }; },
       async waitForAuthUser() { return { uid: 'teacher' }; },
       async writeDocument(collection, id, update) {
         writes.push({ collection, id, status: update.status });

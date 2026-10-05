@@ -3,9 +3,41 @@
 
   const firebaseApi = window.FaceRollFirebase || null;
   const sampleDataApi = window.FaceRollSampleData || null;
+
+  function bindLatest(element, eventName, key, handler) {
+    if (!element) return;
+    const handlerKey = '__facerollHandler_' + key;
+    const boundKey = '__facerollBound_' + key;
+    element[handlerKey] = handler;
+    if (element[boundKey]) return;
+    element[boundKey] = true;
+    element.addEventListener(eventName, function (event) {
+      if (typeof element[handlerKey] === 'function') element[handlerKey](event);
+    });
+  }
   const PROFILE_OVERRIDE_STORAGE_KEY = 'faceroll-profile-overrides';
   const FACEROLL_BRIDGE_URL = 'http://127.0.0.1:8765';
   window.FaceRollProfileSave = null;
+
+  function renderRetryRow(tbody, columnCount, message) {
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    const row = document.createElement('tr');
+    const cell = document.createElement('td');
+    cell.colSpan = columnCount;
+    cell.textContent = message;
+    const retry = document.createElement('button');
+    retry.type = 'button';
+    retry.textContent = 'Retry';
+    if (retry.style) retry.style.marginLeft = '0.75rem';
+    retry.addEventListener('click', function () {
+      retry.disabled = true;
+      if (window.location && typeof window.location.reload === 'function') window.location.reload();
+    });
+    cell.appendChild(retry);
+    row.appendChild(cell);
+    tbody.appendChild(row);
+  }
 
   // ---------- Helpers ----------
 
@@ -312,19 +344,15 @@
     );
   }
 
-  async function loadProfileDataFromFirestore(requestedStudentId) {
+  async function loadProfileDataFromFirestore(requestedStudentId, forceRefresh) {
     if (!firebaseApi) return null;
 
-    const results = await Promise.all([
-      firebaseApi.readCollectionDocs('users'),
-      firebaseApi.readCollectionDocs('courses'),
-      firebaseApi.readCollectionDocs('sessions'),
-      firebaseApi.readCollectionDocs('attendance'),
-      firebaseApi.readCollectionDocs('enrollments'),
-      firebaseApi.waitForAuthUser(),
-    ]);
-    const users = results[0], courses = results[1], sessions = results[2], attendance = results[3];
-    const memberships = results[4], instructor = results[5];
+    const results = !forceRefresh && typeof firebaseApi.readInstructorSnapshotSWR === 'function'
+      ? await firebaseApi.readInstructorSnapshotSWR({})
+      : await firebaseApi.readInstructorSnapshot();
+    const users = results.users, courses = results.courses, sessions = results.sessions,
+      attendance = results.attendance, memberships = results.enrollments,
+      instructor = results.instructor;
     if (!instructor) throw new Error('Sign in to view student enrollment details.');
 
     const params = new URLSearchParams(window.location.search);
@@ -561,7 +589,8 @@
     renderRows();
   }
 
-  async function renderRosterPage() {
+  async function renderRosterPage(options) {
+    const backgroundRefresh = Boolean(options && options.background);
     const tbody = document.getElementById('rosterTbody');
     const courseFilter = document.getElementById('rosterCourseFilter');
     const searchInput = document.getElementById('rosterSearchInput');
@@ -575,23 +604,27 @@
       renderEmpty('Course enrollment service unavailable.');
       return;
     }
-    tbody.innerHTML = '<tr><td colspan="8">Loading course enrollments...</td></tr>';
+    if (!backgroundRefresh) tbody.innerHTML = '<tr><td colspan="8">Loading course enrollments...</td></tr>';
 
     let users, courses, sessions, attendance, memberships, instructor;
     try {
-      [users, courses, sessions, attendance, memberships, instructor] = await Promise.all([
-        firebaseApi.readCollectionDocs('users'),
-        firebaseApi.readCollectionDocs('courses'),
-        firebaseApi.readCollectionDocs('sessions'),
-        firebaseApi.readCollectionDocs('attendance'),
-        firebaseApi.readCollectionDocs('enrollments'),
-        firebaseApi.waitForAuthUser(),
-      ]);
+      const snapshot = !backgroundRefresh && typeof firebaseApi.readInstructorSnapshotSWR === 'function'
+        ? await firebaseApi.readInstructorSnapshotSWR({})
+        : await firebaseApi.readInstructorSnapshot();
+      users = snapshot.users;
+      courses = snapshot.courses;
+      sessions = snapshot.sessions;
+      attendance = snapshot.attendance;
+      memberships = snapshot.enrollments;
+      instructor = snapshot.instructor;
       if (!instructor) throw new Error('Sign in to manage your course roster.');
       await upgradeLegacyStudentIds(users);
     } catch (error) {
       console.error('Roster load failed:', error);
-      renderEmpty('Unable to load course enrollments.');
+      if (!backgroundRefresh) {
+        renderRetryRow(tbody, 8, 'Unable to load course enrollments. ' +
+          (error && error.message ? error.message : 'Check the emulator connection.'));
+      }
       return;
     }
 
@@ -686,8 +719,8 @@
       });
     }
 
-    courseFilter.addEventListener('change', renderRows);
-    searchInput.addEventListener('input', renderRows);
+    bindLatest(courseFilter, 'change', 'rosterCourse', renderRows);
+    bindLatest(searchInput, 'input', 'rosterSearch', renderRows);
     renderRows();
   }
 
@@ -712,9 +745,13 @@
     }
 
     let timerHandle = null;
-    let livePollHandle = null;
+    let liveAttendanceUnsubscribe = null;
     let bridgePollHandle = null;
+    let bridgePollInFlight = false;
+    let rosterUnsubscribe = null;
     let rosterSyncPromise = null;
+    let pendingRosterRows = null;
+    let liveRowsGeneration = 0;
     let activeRosterSignature = '';
     let activeRosterUids = new Set();
     let bridgeEventCursor = 0;
@@ -749,7 +786,14 @@
       timerHandle = setInterval(function () { updateDuration(startMs); }, 1000);
     }
     function stopTimer() { if (timerHandle) { clearInterval(timerHandle); timerHandle = null; } }
-    function stopPoller() { if (livePollHandle) { clearInterval(livePollHandle); livePollHandle = null; } }
+    function stopPoller() {
+      if (typeof liveAttendanceUnsubscribe === 'function') liveAttendanceUnsubscribe();
+      liveAttendanceUnsubscribe = null;
+    }
+    function stopRosterListener() {
+      if (typeof rosterUnsubscribe === 'function') rosterUnsubscribe();
+      rosterUnsubscribe = null;
+    }
     function stopBridgePoller() {
       if (bridgePollHandle) {
         clearInterval(bridgePollHandle);
@@ -767,9 +811,12 @@
       activeRosterSignature = '';
       activeRosterUids = new Set();
       rosterSyncPromise = null;
+      pendingRosterRows = null;
+      bridgePollInFlight = false;
+      liveRowsGeneration += 1;
       writtenBridgeEvents.clear();
       setSessionStatus('Not Started');
-      stopTimer(); stopPoller(); stopBridgePoller();
+      stopTimer(); stopPoller(); stopRosterListener(); stopBridgePoller();
       if (durationElement) durationElement.textContent = '00:00';
       setStartButtonState(false, false);
       renderEmpty();
@@ -802,27 +849,35 @@
         return;
       }
       try {
-        const results = await Promise.all([
-          firebaseApi.readCollectionDocs('courses'),
-          firebaseApi.waitForAuthUser(),
-        ]);
-        const user = results[1];
-        const courses = results[0].filter(function (course) {
-          return user && String(getFirstDefined(course, ['instructorId']) || '') === user.uid;
-        });
-        courseSelect.innerHTML = '';
-        if (!courses.length) {
-          courseSelect.innerHTML = '<option value="">No courses found</option>';
-          return;
+        const user = await firebaseApi.waitForAuthUser();
+        if (!user) throw new Error('Sign in to load courses.');
+        const queryOptions = {
+          filters: [{ field: 'instructorId', operator: '==', value: user.uid }],
+        };
+        const renderCourses = function (courses) {
+          const previousCourseId = courseSelect.value;
+          courseSelect.innerHTML = '';
+          if (!courses.length) {
+            courseSelect.innerHTML = '<option value="">No courses found</option>';
+            return;
+          }
+          courses.forEach(function (c) {
+            const opt = document.createElement('option');
+            const id = String(getFirstDefined(c, ['courseId']) || c.id || '');
+            const name = String(getFirstDefined(c, ['courseName', 'name', 'title', 'code']) || id);
+            opt.value = id;
+            opt.textContent = name;
+            courseSelect.appendChild(opt);
+          });
+          if (courses.some(function (course) {
+            return String(getFirstDefined(course, ['courseId']) || course.id || '') === previousCourseId;
+          })) courseSelect.value = previousCourseId;
+        };
+        if (typeof firebaseApi.readQueryDocsSWR === 'function') {
+          await firebaseApi.readQueryDocsSWR('courses', queryOptions, renderCourses);
+        } else {
+          renderCourses(await firebaseApi.readQueryDocs('courses', queryOptions));
         }
-        courses.forEach(function (c) {
-          const opt = document.createElement('option');
-          const id = String(getFirstDefined(c, ['courseId']) || c.id || '');
-          const name = String(getFirstDefined(c, ['courseName', 'name', 'title', 'code']) || id);
-          opt.value = id;
-          opt.textContent = name;
-          courseSelect.appendChild(opt);
-        });
       } catch (e) {
         console.error('Failed to load courses:', e);
         courseSelect.innerHTML = '<option value="">Unable to load courses</option>';
@@ -831,18 +886,28 @@
 
     async function loadCourseRosterUids(courseId) {
       // No roster means no authorized recognition candidates.
-      const enrollments = await firebaseApi.readCollectionDocs('enrollments');
+      const enrollments = await firebaseApi.readQueryDocs('enrollments', {
+        filters: [
+          { field: 'courseId', operator: '==', value: courseId },
+          { field: 'status', operator: '==', value: 'active' },
+        ],
+      });
       if (!window.FaceRollCourseRoster) throw new Error('Course roster validation is unavailable.');
       return window.FaceRollCourseRoster.activeRosterUids(enrollments, courseId);
     }
 
-    async function syncCourseRoster() {
+    async function syncCourseRoster(enrollmentRows) {
       if (!activeSessionDocId || !activeCourseId) return;
-      if (rosterSyncPromise) return rosterSyncPromise;
+      if (rosterSyncPromise) {
+        if (Array.isArray(enrollmentRows)) pendingRosterRows = enrollmentRows;
+        return rosterSyncPromise;
+      }
       const sessionId = activeSessionDocId;
       const courseId = activeCourseId;
       const operation = (async function () {
-        const allowedUids = await loadCourseRosterUids(courseId);
+        const allowedUids = Array.isArray(enrollmentRows)
+          ? window.FaceRollCourseRoster.activeRosterUids(enrollmentRows, courseId)
+          : await loadCourseRosterUids(courseId);
         if (sessionId !== activeSessionDocId || courseId !== activeCourseId) return;
         activeRosterUids = new Set(allowedUids);
         const signature = window.FaceRollCourseRoster.rosterSignature(allowedUids);
@@ -867,18 +932,28 @@
         console.error('Course roster sync failed:', error);
       } finally {
         if (rosterSyncPromise === operation) rosterSyncPromise = null;
+        if (pendingRosterRows) {
+          const pending = pendingRosterRows;
+          pendingRosterRows = null;
+          syncCourseRoster(pending);
+        }
       }
     }
 
-    async function fetchRows() {
+    async function fetchRows(attendanceRows) {
       if (!firebaseApi || !activeSessionDocId) return;
+      const generation = ++liveRowsGeneration;
+      const sessionId = activeSessionDocId;
       try {
-        const results = await Promise.all([
-          firebaseApi.readCollectionDocs('attendance'),
-          firebaseApi.readCollectionDocs('users'),
-          firebaseApi.readCollectionDocs('courses'),
-        ]);
-        const att = results[0], users = results[1], courses = results[2];
+        const att = Array.isArray(attendanceRows) ? attendanceRows :
+          await firebaseApi.readQueryDocs('attendance', {
+            filters: [{ field: 'sessionId', operator: '==', value: activeSessionDocId }],
+          });
+        const users = await firebaseApi.readDocuments('users', att.map(function (row) {
+          return getFirstDefined(row, ['uid', 'userId']);
+        }));
+        const courses = activeCourseId ? [{ id: activeCourseId, courseId: activeCourseId,
+          courseName: activeCourseName }] : [];
         const userMap = new Map();
         users.forEach(function (u) {
           [u.id, getFirstDefined(u, ['uid', 'userId', 'studentId', 'email'])]
@@ -914,13 +989,54 @@
           });
         const rows = Array.from(rowMap.values())
           .sort(function (a, b) { return String(a.recordedTime).localeCompare(String(b.recordedTime)); });
-        renderLiveRows(rows);
+        if (generation === liveRowsGeneration && sessionId === activeSessionDocId) {
+          renderLiveRows(rows);
+        }
       } catch (e) { console.error('Live refresh failed:', e); }
     }
 
-    function startPoller() {
-      stopPoller(); fetchRows();
-      livePollHandle = setInterval(fetchRows, 3000);
+    async function startPoller() {
+      stopPoller();
+      const sessionId = activeSessionDocId;
+      try {
+        const unsubscribe = await firebaseApi.subscribeQueryDocs('attendance', {
+          filters: [{ field: 'sessionId', operator: '==', value: sessionId }],
+        }, function (rows) {
+          if (sessionId === activeSessionDocId) fetchRows(rows);
+        }, function (error) {
+          console.error('Live attendance subscription failed:', error);
+          setSessionStatus('Attendance connection interrupted');
+        });
+        if (sessionId === activeSessionDocId) liveAttendanceUnsubscribe = unsubscribe;
+        else if (typeof unsubscribe === 'function') unsubscribe();
+      } catch (error) {
+        console.error('Unable to start live attendance subscription:', error);
+        setSessionStatus('Unable to load attendance');
+      }
+    }
+
+    async function startRosterListener() {
+      stopRosterListener();
+      const sessionId = activeSessionDocId;
+      const courseId = activeCourseId;
+      try {
+        const unsubscribe = await firebaseApi.subscribeQueryDocs('enrollments', {
+          filters: [
+            { field: 'courseId', operator: '==', value: courseId },
+            { field: 'status', operator: '==', value: 'active' },
+          ],
+        }, function (rows) {
+          if (sessionId === activeSessionDocId && courseId === activeCourseId) {
+            syncCourseRoster(rows);
+          }
+        }, function (error) {
+          console.error('Course roster subscription failed:', error);
+        });
+        if (sessionId === activeSessionDocId && courseId === activeCourseId) rosterUnsubscribe = unsubscribe;
+        else if (typeof unsubscribe === 'function') unsubscribe();
+      } catch (error) {
+        console.error('Unable to start course roster subscription:', error);
+      }
     }
 
     function buildUserLookup(users) {
@@ -955,14 +1071,14 @@
       const eventKey = String(getFirstDefined(event, ['cursor', 'timestamp', 'identity']) || '');
       if (eventKey && writtenBridgeEvents.has(eventKey)) return false;
 
-      const users = await firebaseApi.readCollectionDocs('users');
-      const userLookup = buildUserLookup(users);
       const authoritativeUid = String(getFirstDefined(event, ['uid']) || '').trim();
       if (!authoritativeUid) return false;
       if (!activeRosterUids.has(authoritativeUid)) {
         console.warn('Ignoring recognition event for a student outside the active course roster.');
         return false;
       }
+      const users = await firebaseApi.readDocuments('users', [authoritativeUid]);
+      const userLookup = buildUserLookup(users);
       const user = userLookup.get(normalizeLookupKey(authoritativeUid)) || null;
       if (!user) {
         console.warn('Ignoring recognition event for an unknown Firebase UID.');
@@ -1017,9 +1133,9 @@
 
     async function pollBridgeEvents() {
       // Cursor prevents the same bridge event from being processed twice.
-      if (!activeSessionDocId) return;
+      if (!activeSessionDocId || bridgePollInFlight) return;
+      bridgePollInFlight = true;
       try {
-        await syncCourseRoster();
         const payload = await requestBridge('/events?cursor=' + encodeURIComponent(String(bridgeEventCursor)));
         const events = Array.isArray(payload.events) ? payload.events : [];
         const processed = await window.FaceRollCourseRoster.processBridgeEvents(
@@ -1030,9 +1146,10 @@
         bridgeEventCursor = events.length
           ? processed.cursor
           : Number(payload.nextCursor || bridgeEventCursor || 0);
-        if (processed.wroteAttendance) fetchRows();
       } catch (e) {
         console.error('Bridge event poll failed:', e);
+      } finally {
+        bridgePollInFlight = false;
       }
     }
 
@@ -1044,13 +1161,15 @@
 
     async function readGrace() {
       try {
-        if (!window.firebase || typeof window.firebase.auth !== 'function') return 10;
-        const cu = window.firebase.auth().currentUser;
+        if (!firebaseApi) return 10;
+        const cu = await firebaseApi.waitForAuthUser();
         const uid = cu && cu.uid;
-        if (!uid || !window.firebase.firestore) return 10;
-        const snap = await window.firebase.firestore().collection('instructor_settings').doc(uid).get();
-        if (!snap.exists) return 10;
-        const v = Number.parseInt((snap.data() || {}).gracePeriodMinutes, 10);
+        if (!uid) return 10;
+        const settings = typeof firebaseApi.readDocumentSWR === 'function'
+          ? await firebaseApi.readDocumentSWR('instructor_settings', uid)
+          : await firebaseApi.readDocument('instructor_settings', uid);
+        if (!settings) return 10;
+        const v = Number.parseInt(settings.gracePeriodMinutes, 10);
         return Number.isFinite(v) && v >= 0 ? v : 10;
       } catch (e) { return 10; }
     }
@@ -1092,6 +1211,7 @@
         setStartButtonState(true, false);
         beginTimer(sessionStartedAt);
         startPoller();
+        startRosterListener();
         startBridgePoller();
       } catch (e) {
         console.error('Start failed:', e);
@@ -1148,7 +1268,8 @@
 
   // ---------- Reports ----------
 
-  async function renderReportsPage() {
+  async function renderReportsPage(options) {
+    const backgroundRefresh = Boolean(options && options.background);
     // Reports page: groups attendance by student and course.
     const tbody = document.getElementById('reportsTbody');
     if (!tbody) return;
@@ -1167,7 +1288,7 @@
       if (exportBtn) { exportBtn.disabled = true; exportBtn.onclick = null; }
       if (exportStatus) exportStatus.textContent = message;
     }
-    resetExport('Loading attendance data...');
+    if (!backgroundRefresh) resetExport('Loading attendance data...');
 
     function renderEmpty(msg) {
       resetExport(msg || 'No attendance records match the selected filters.');
@@ -1181,20 +1302,24 @@
 
     if (!firebaseApi) { renderEmpty('Firestore unavailable.'); return; }
 
-    tbody.innerHTML = '<tr><td colspan="6">Loading reports...</td></tr>';
+    if (!backgroundRefresh) tbody.innerHTML = '<tr><td colspan="6">Loading reports...</td></tr>';
 
     let users = [], courses = [], sessions = [], attendance = [];
     try {
-      const results = await Promise.all([
-        firebaseApi.readCollectionDocs('users'),
-        firebaseApi.readCollectionDocs('courses'),
-        firebaseApi.readCollectionDocs('sessions'),
-        firebaseApi.readCollectionDocs('attendance'),
-      ]);
-      users = results[0]; courses = results[1]; sessions = results[2]; attendance = results[3];
+      const results = !backgroundRefresh && typeof firebaseApi.readInstructorSnapshotSWR === 'function'
+        ? await firebaseApi.readInstructorSnapshotSWR({ includeEnrollments: false })
+        : await firebaseApi.readInstructorSnapshot({ includeEnrollments: false });
+      users = results.users;
+      courses = results.courses;
+      sessions = results.sessions;
+      attendance = results.attendance;
     } catch (e) {
       console.error('Reports load failed:', e);
-      renderEmpty('Unable to load reports.');
+      if (!backgroundRefresh) {
+        renderEmpty('Unable to load reports.');
+        renderRetryRow(tbody, 6, 'Unable to load reports. ' +
+          (e && e.message ? e.message : 'Check the emulator connection.'));
+      }
       return;
     }
 
@@ -1382,46 +1507,60 @@
       }
     }
 
-    if (courseFilter) courseFilter.addEventListener('change', renderRows);
-    if (fromDateInput) fromDateInput.addEventListener('change', renderRows);
-    if (toDateInput) toDateInput.addEventListener('change', renderRows);
-    if (statusFilter) statusFilter.addEventListener('change', renderRows);
+    bindLatest(courseFilter, 'change', 'reportsCourse', renderRows);
+    bindLatest(fromDateInput, 'change', 'reportsFrom', renderRows);
+    bindLatest(toDateInput, 'change', 'reportsTo', renderRows);
+    bindLatest(statusFilter, 'change', 'reportsStatus', renderRows);
     renderRows();
   }
 
   // ---------- Profile ----------
 
-  async function renderProfilePage() {
+  async function renderProfilePage(options) {
+    const backgroundRefresh = Boolean(options && options.background);
     const params = new URLSearchParams(window.location.search);
     const requestedStudentId = params.get('studentId') || 'student001';
     const historyBody = document.getElementById('profileAttendanceBody');
     const saveButton = document.getElementById('profileSaveButton') || document.querySelector('#i3wlx77 .gjs-t-button');
     const enrollmentList = document.getElementById('profileEnrollmentList');
     const enrollmentStatus = document.getElementById('profileEnrollmentStatus');
+    const nameEl = document.getElementById('ix63k7g');
+    const coursesEl = document.getElementById('iobn7gg');
+    const emailEl = document.getElementById('inpdknn');
     if (!historyBody) return;
 
-    if (saveButton) saveButton.disabled = true;
-
-    historyBody.innerHTML = '<tr><td colspan="5">Loading student profile...</td></tr>';
-    setProfileSaveStatus('Loading attendance history...');
-
-    let profileData = null;
-    let dataSource = 'firestore';
-    try {
-      profileData = await loadProfileDataFromFirestore(requestedStudentId);
-    } catch (error) {
-      console.error('Failed to load student profile from Firestore:', error);
+    if (!backgroundRefresh) {
+      if (saveButton) saveButton.disabled = true;
+      if (nameEl) nameEl.textContent = 'Loading...';
+      if (coursesEl) coursesEl.textContent = 'Loading...';
+      if (emailEl) emailEl.textContent = 'Loading...';
+      ['iaj9kju', 'iwzjofv', 'ip95okd', 'iq9g6ym'].forEach(function (id) {
+        const element = document.getElementById(id);
+        if (element) element.textContent = 'Loading...';
+      });
+      if (enrollmentList) enrollmentList.textContent = 'Loading enrollments...';
+      if (enrollmentStatus) enrollmentStatus.textContent = '';
+      historyBody.innerHTML = '<tr><td colspan="5">Loading student profile...</td></tr>';
+      setProfileSaveStatus('Loading attendance history...');
     }
 
-    if (!profileData) {
+    let profileData = null;
+    let profileLoadError = null;
+    let dataSource = 'firestore';
+    try {
+      profileData = await loadProfileDataFromFirestore(requestedStudentId, backgroundRefresh);
+    } catch (error) {
+      console.error('Failed to load student profile from Firestore:', error);
+      profileLoadError = error;
+    }
+
+    if (!profileData && !backgroundRefresh) {
       profileData = buildFallbackProfileData(requestedStudentId);
       dataSource = 'sample';
     }
 
     if (!profileData) {
-      const nameEl = document.getElementById('ix63k7g');
-      const coursesEl = document.getElementById('iobn7gg');
-      const emailEl = document.getElementById('inpdknn');
+      if (backgroundRefresh) return;
       if (nameEl) nameEl.textContent = requestedStudentId;
       if (coursesEl) coursesEl.textContent = 'No courses found';
       if (emailEl) emailEl.textContent = 'N/A';
@@ -1429,14 +1568,15 @@
       historyBody.innerHTML = '<tr><td colspan="5">Unable to load this student profile.</td></tr>';
       setProfileSaveStatus('Unable to find this student in Firestore or sample data.', true);
       if (enrollmentList) enrollmentList.textContent = 'No enrollment records found.';
+      if (profileLoadError) {
+        renderRetryRow(historyBody, 5, 'Unable to load this student profile. ' +
+          (profileLoadError.message || 'Check the emulator connection.'));
+      }
       return;
     }
 
     const student = profileData.student;
     let history = profileData.history || [];
-    const nameEl = document.getElementById('ix63k7g');
-    const coursesEl = document.getElementById('iobn7gg');
-    const emailEl = document.getElementById('inpdknn');
     if (nameEl) nameEl.textContent = student.name;
     if (coursesEl) coursesEl.textContent = (student.courses || []).join(', ') || 'No courses found';
     if (emailEl) emailEl.textContent = student.email;
@@ -1622,6 +1762,20 @@
       default:
         break;
     }
+  }
+
+  if (firebaseApi && typeof firebaseApi.onConnectionRestored === 'function') {
+    let reconnectRefresh = null;
+    firebaseApi.onConnectionRestored(function () {
+      if (reconnectRefresh) return;
+      const bodyId = document.body ? document.body.id : '';
+      if (bodyId === 'imwtil') reconnectRefresh = renderRosterPage({ background: true });
+      else if (bodyId === 'iw11pz') reconnectRefresh = renderReportsPage({ background: true });
+      else if (bodyId === 'idhra3g') reconnectRefresh = renderProfilePage({ background: true });
+      if (reconnectRefresh && typeof reconnectRefresh.finally === 'function') {
+        reconnectRefresh.finally(function () { reconnectRefresh = null; });
+      }
+    });
   }
 
   if (document.readyState === 'loading') {

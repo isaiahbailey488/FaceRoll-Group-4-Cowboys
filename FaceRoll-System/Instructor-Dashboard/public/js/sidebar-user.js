@@ -12,7 +12,11 @@
   const sidebarState = {
     authUser: null,
     users: [],
+    profileResolved: false,
   };
+  const SIDEBAR_PROFILE_CACHE_KEY = 'faceroll.sidebar-profile.v1';
+  let profileUnsubscribe = null;
+  let profileSubscriptionGeneration = 0;
   const sidebarItems = [
     { href: './instructor-dashboard.html', label: 'Dashboard', icon: 'lucide-home' },
     { href: './live-session.html', label: 'Live Session', icon: 'lucide-calendar-check' },
@@ -81,10 +85,6 @@
   }
 
   function getUserDisplayName(user, authUser) {
-    if (authUser && authUser.displayName) {
-      return String(authUser.displayName);
-    }
-
     const directName = getFirstDefined(user, ['name', 'fullName', 'displayName']);
     if (directName) {
       return String(directName);
@@ -98,11 +98,57 @@
       return joinedName;
     }
 
+    if (authUser && authUser.displayName &&
+        String(authUser.displayName).toLowerCase() !== String(authUser.email || '').toLowerCase()) {
+      return String(authUser.displayName);
+    }
+
     if (authUser && authUser.email) {
       return String(authUser.email);
     }
 
     return 'Not signed in';
+  }
+
+  function readCachedProfile(authUser) {
+    if (!authUser || !authUser.uid) return null;
+    if (typeof firebaseApi.readCachedUserProfile === 'function') {
+      const sharedProfile = firebaseApi.readCachedUserProfile(authUser.uid);
+      if (sharedProfile) return sharedProfile;
+    }
+    if (!globalThis.sessionStorage) return null;
+    try {
+      const cached = JSON.parse(globalThis.sessionStorage.getItem(SIDEBAR_PROFILE_CACHE_KEY) || 'null');
+      if (!cached || cached.authUid !== String(authUser.uid) || !cached.profile) return null;
+      if (typeof firebaseApi.cacheUserProfile === 'function') {
+        firebaseApi.cacheUserProfile(authUser.uid, cached.profile);
+        globalThis.sessionStorage.removeItem(SIDEBAR_PROFILE_CACHE_KEY);
+      }
+      return cached.profile;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function cacheProfile(authUser, profile) {
+    if (!authUser || !authUser.uid || !profile) return;
+    if (typeof firebaseApi.cacheUserProfile === 'function') {
+      firebaseApi.cacheUserProfile(authUser.uid, profile);
+      return;
+    }
+    if (!globalThis.sessionStorage) return;
+    const cachedProfile = { id: profile.id || String(authUser.uid) };
+    ['uid', 'userId', 'authUid', 'email', 'role', 'userType', 'name', 'fullName',
+      'displayName', 'fname', 'firstName', 'first_name', 'lname', 'lastName', 'last_name']
+      .forEach(function (key) {
+        if (profile[key] !== undefined) cachedProfile[key] = profile[key];
+      });
+    try {
+      globalThis.sessionStorage.setItem(SIDEBAR_PROFILE_CACHE_KEY, JSON.stringify({
+        authUid: String(authUser.uid),
+        profile: cachedProfile,
+      }));
+    } catch (error) {}
   }
 
   function findMatchedUser(authUser, users) {
@@ -140,6 +186,13 @@
   function renderSidebarUser() {
     const authUser = sidebarState.authUser;
     const matchedUser = findMatchedUser(authUser, sidebarState.users);
+
+    if (authUser && !sidebarState.profileResolved && !matchedUser) {
+      profileNameElement.textContent = 'Loading...';
+      profileRoleElement.textContent = 'Loading...';
+      publishSidebarUser(null, authUser);
+      return;
+    }
 
     profileNameElement.textContent = getUserDisplayName(matchedUser, authUser);
     profileRoleElement.textContent = formatRoleLabel(getFirstDefined(matchedUser, ['role', 'userType']));
@@ -207,9 +260,14 @@
     const authUser = sidebarState.authUser;
     const matchedUser = findMatchedUser(authUser, sidebarState.users);
 
-    menu.querySelector('.faceroll-account-name').textContent = getUserDisplayName(matchedUser, authUser);
+    const isLoadingProfile = Boolean(authUser && !sidebarState.profileResolved && !matchedUser);
+    menu.querySelector('.faceroll-account-name').textContent = isLoadingProfile
+      ? 'Loading...'
+      : getUserDisplayName(matchedUser, authUser);
     menu.querySelector('.faceroll-account-email').textContent = authUser && authUser.email ? String(authUser.email) : '';
-    menu.querySelector('.faceroll-account-role').textContent = formatRoleLabel(getFirstDefined(matchedUser, ['role', 'userType']));
+    menu.querySelector('.faceroll-account-role').textContent = isLoadingProfile
+      ? 'Loading...'
+      : formatRoleLabel(getFirstDefined(matchedUser, ['role', 'userType']));
   }
 
   async function signOutAndRedirect(button) {
@@ -221,6 +279,12 @@
         throw new Error('Firebase Auth is not available.');
       }
       await window.firebase.auth().signOut();
+      if (typeof firebaseApi.clearInstructorSnapshotCache === 'function') {
+        firebaseApi.clearInstructorSnapshotCache();
+      }
+      try {
+        if (globalThis.sessionStorage) globalThis.sessionStorage.removeItem(SIDEBAR_PROFILE_CACHE_KEY);
+      } catch (error) {}
       window.location.href = './index.html';
     } catch (error) {
       console.error('Failed to log out:', error);
@@ -263,14 +327,79 @@
 
   renderSidebarMenu();
   initAccountMenu();
+  if (typeof firebaseApi.readCachedAuthUserSummary === 'function') {
+    const cachedAuthUser = firebaseApi.readCachedAuthUserSummary();
+    if (cachedAuthUser && cachedAuthUser.uid) {
+      sidebarState.authUser = cachedAuthUser;
+      const cachedProfile = readCachedProfile(cachedAuthUser);
+      sidebarState.users = cachedProfile ? [cachedProfile] : [];
+      sidebarState.profileResolved = Boolean(cachedProfile);
+      renderSidebarUser();
+      renderAccountMenu();
+    }
+  }
+
+  function stopProfileSubscription() {
+    profileSubscriptionGeneration += 1;
+    if (typeof profileUnsubscribe === 'function') profileUnsubscribe();
+    profileUnsubscribe = null;
+  }
+
+  async function watchSignedInProfile(authUser) {
+    stopProfileSubscription();
+    if (!authUser || !authUser.uid) {
+      sidebarState.users = [];
+      sidebarState.profileResolved = true;
+      renderSidebarUser();
+      renderAccountMenu();
+      return;
+    }
+    const generation = profileSubscriptionGeneration;
+    try {
+      const unsubscribe = await firebaseApi.subscribeDocument(
+        'users',
+        authUser.uid,
+        function (profile, snapshotInfo) {
+          if (generation !== profileSubscriptionGeneration) return;
+          if (!profile && snapshotInfo && snapshotInfo.fromCache) {
+            return;
+          }
+          sidebarState.users = profile ? [profile] : [];
+          sidebarState.profileResolved = true;
+          if (profile) cacheProfile(authUser, profile);
+          renderSidebarUser();
+          renderAccountMenu();
+        },
+        function (error) {
+          console.error('Failed to watch instructor profile:', error);
+        }
+      );
+      if (generation === profileSubscriptionGeneration) profileUnsubscribe = unsubscribe;
+      else if (typeof unsubscribe === 'function') unsubscribe();
+    } catch (error) {
+      console.error('Failed to start instructor profile subscription:', error);
+    }
+  }
 
   firebaseApi
     .subscribeAuthState(
       // Keep the sidebar in sync with Firebase Auth changes.
       function (authUser) {
         sidebarState.authUser = authUser;
+        if (!authUser) {
+          if (typeof firebaseApi.clearInstructorSnapshotCache === 'function') {
+            firebaseApi.clearInstructorSnapshotCache();
+          }
+          try {
+            if (globalThis.sessionStorage) globalThis.sessionStorage.removeItem(SIDEBAR_PROFILE_CACHE_KEY);
+          } catch (error) {}
+        }
+        const cachedProfile = readCachedProfile(authUser);
+        sidebarState.users = cachedProfile ? [cachedProfile] : [];
+        sidebarState.profileResolved = Boolean(cachedProfile) || !authUser;
         renderSidebarUser();
         renderAccountMenu();
+        watchSignedInProfile(authUser);
       },
       function (error) {
         console.error('Failed to watch auth state for sidebar user:', error);
@@ -280,20 +409,5 @@
       console.error('Failed to start auth subscription for sidebar user:', error);
     });
 
-  firebaseApi
-    .subscribeCollectionDocs(
-      'users',
-      // Watch user profiles so display name/role changes show without refresh.
-      function (users) {
-        sidebarState.users = users;
-        renderSidebarUser();
-        renderAccountMenu();
-      },
-      function (error) {
-        console.error('Failed to watch users collection for sidebar user:', error);
-      }
-    )
-    .catch(function (error) {
-      console.error('Failed to start users subscription for sidebar user:', error);
-    });
+  window.addEventListener('pagehide', stopProfileSubscription);
 })();

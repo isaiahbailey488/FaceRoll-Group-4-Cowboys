@@ -133,6 +133,9 @@ function loadDemoConfiguration(environment = process.env) {
         : path.join(home, '.local', 'share', 'faceroll-deepface')),
     emulatorDataDirectory:
       values.FACEROLL_EMULATOR_DATA_DIR || path.join(dataRoot, 'firebase-emulator-data'),
+    requestLogging: ['1', 'true', 'yes', 'on'].includes(
+      String(values.FACEROLL_REQUEST_LOGGING || '').trim().toLowerCase()
+    ),
   };
 }
 
@@ -386,7 +389,9 @@ function createDemoEnvironment(config) {
     FACEROLL_API_PORT: '5055',
     FACEROLL_TLS_CERT: config.tlsCert,
     FACEROLL_TLS_KEY: config.tlsKey,
-    FACEROLL_REQUEST_LOGGING: '1',
+    FACEROLL_REQUEST_LOGGING: config.requestLogging ? '1' : '0',
+    FIREBASE_CLI_DISABLE_UPDATE_CHECK: '1',
+    NO_UPDATE_NOTIFIER: '1',
     FACEROLL_ENROLLMENT_DIR: config.enrollmentDirectory,
     FACEROLL_EMBEDDING_KEY_FILE: config.embeddingKeyFile,
     FACEROLL_DEEPFACE_HOME: config.deepfaceHome,

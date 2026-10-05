@@ -737,29 +737,10 @@
     if (courseNames.includes(currentValue)) courseFilter.value = currentValue;
   }
 
-  async function loadDashboardData() {
-    // Load the collections that are needed to resolve names, courses, sessions, and attendance.
-    if (!hasLoadedOnce) {
-      renderMessageRow('Loading attendance records from Firestore...');
-      setStatus('Loading data...');
-    }
-
-    const data = await Promise.all([
-      window.FaceRollFirebase.readCollectionDocs('users'),
-      window.FaceRollFirebase.readCollectionDocs('courses'),
-      window.FaceRollFirebase.readCollectionDocs('sessions'),
-      window.FaceRollFirebase.readCollectionDocs('attendance'),
-    ]);
-
-    const users = data[0];
-    const courses = data[1];
-    const sessions = data[2];
-    const attendance = data[3];
-
-    allAttendanceRows = buildAttendanceRows(attendance, users, courses, sessions);
+  function finishDashboardRender(users, rows) {
+    allAttendanceRows = rows;
     visibleAttendanceRows = allAttendanceRows.slice();
     currentPage = 1;
-
     updateSummaryCards(users, allAttendanceRows);
     populateCourseFilter(allAttendanceRows);
     if (hasActiveFilters()) {
@@ -771,6 +752,36 @@
     }
     setStatus('Data loaded successfully.');
     hasLoadedOnce = true;
+  }
+
+  async function loadDashboardData() {
+    // Load the collections that are needed to resolve names, courses, sessions, and attendance.
+    if (!hasLoadedOnce) {
+      renderMessageRow('Loading attendance records from Firestore...');
+      setStatus('Loading data...');
+    }
+
+    const data = await window.FaceRollFirebase.readInstructorSnapshot();
+    const users = data.users;
+    const courses = data.courses;
+    const sessions = data.sessions;
+    const attendance = data.attendance;
+
+    const nextRows = buildAttendanceRows(attendance, users, courses, sessions);
+    if (!nextRows.length) {
+      data.deferEmptyState = true;
+      setStatus('Verifying attendance data with Firestore...');
+      if (!hasLoadedOnce) {
+        renderMessageRow('Loading attendance records from Firestore...');
+        [statTotal, statPresent, statLate, statAbsent].forEach(function (element) {
+          if (element) element.textContent = 'Loading...';
+        });
+      }
+      return data;
+    }
+
+    finishDashboardRender(users, nextRows);
+    return data;
   }
 
   applyBtn.addEventListener('click', applyFiltersNow);
@@ -794,30 +805,188 @@
     });
   }
 
-  let autoRefreshHandle = null;
-  function startAutoRefresh() {
-    if (autoRefreshHandle) return;
-    autoRefreshHandle = window.setInterval(async function () {
-      try {
-        await loadDashboardData();
-      } catch (error) {}
-    }, 5000);
+  let realtimeUnsubscribers = [];
+  let realtimeGeneration = 0;
+  let scheduledReload = null;
+  let reloadInFlight = null;
+  let reloadQueued = false;
+  let stopReconnectRefresh = null;
+
+  function stopRealtimeRefresh() {
+    realtimeGeneration += 1;
+    realtimeUnsubscribers.forEach(function (unsubscribe) {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    });
+    realtimeUnsubscribers = [];
+    if (scheduledReload) window.clearTimeout(scheduledReload);
+    scheduledReload = null;
   }
 
-  loadDashboardData()
-    .then(function () {
-      startAutoRefresh();
-    })
-    .catch(function (error) {
+  function scheduleRealtimeReload() {
+    if (scheduledReload) window.clearTimeout(scheduledReload);
+    scheduledReload = window.setTimeout(async function () {
+      scheduledReload = null;
+      if (reloadInFlight) {
+        reloadQueued = true;
+        return;
+      }
+      reloadInFlight = loadDashboardData();
+      try {
+        const data = await reloadInFlight;
+        await startRealtimeRefresh(data);
+      } catch (error) {
+        console.error('Dashboard live refresh failed:', error);
+        setStatus('Live refresh failed. Showing the last loaded data.', true);
+      } finally {
+        reloadInFlight = null;
+        if (reloadQueued) {
+          reloadQueued = false;
+          scheduleRealtimeReload();
+        }
+      }
+    }, 150);
+  }
+
+  function stableSnapshotValue(value) {
+    if (value === null || value === undefined) return value;
+    if (typeof value.toMillis === 'function') return value.toMillis();
+    if (value instanceof Date) return value.getTime();
+    if (Array.isArray(value)) return value.map(stableSnapshotValue);
+    if (typeof value !== 'object') return value;
+    const normalized = {};
+    Object.keys(value).sort().forEach(function (key) {
+      normalized[key] = stableSnapshotValue(value[key]);
+    });
+    return normalized;
+  }
+
+  function getSnapshotFingerprint(rows) {
+    return JSON.stringify((rows || []).map(stableSnapshotValue).sort(function (left, right) {
+      return String(left.id || '').localeCompare(String(right.id || ''));
+    }));
+  }
+
+  async function startRealtimeRefresh(data) {
+    stopRealtimeRefresh();
+    const generation = realtimeGeneration;
+    const courseIds = data.courses.map(function (course) { return course.courseId || course.id; });
+    const sessionIds = data.sessions.map(function (session) { return session.sessionId || session.id; });
+    let pendingInitialSnapshots = 4;
+    let initialSnapshotMismatch = false;
+    const settleInitialSnapshot = function (mismatch) {
+      if (mismatch) initialSnapshotMismatch = true;
+      pendingInitialSnapshots -= 1;
+      if (pendingInitialSnapshots === 0 && !initialSnapshotMismatch &&
+          generation === realtimeGeneration && data.deferEmptyState) {
+        finishDashboardRender(data.users, []);
+      }
+    };
+    const subscribeAfterInitial = function (subscribe, expectedRows) {
+      let initial = true;
+      const expectedFingerprint = getSnapshotFingerprint(expectedRows);
+      return subscribe(function (rows) {
+        if (initial) {
+          initial = false;
+          const mismatch = getSnapshotFingerprint(rows) !== expectedFingerprint;
+          settleInitialSnapshot(mismatch);
+          if (generation === realtimeGeneration && mismatch) {
+            scheduleRealtimeReload();
+          }
+          return;
+        }
+        if (generation === realtimeGeneration) scheduleRealtimeReload();
+      });
+    };
+    const instructorUid = data.instructor.uid;
+    const subscriptions = await Promise.all([
+      subscribeAfterInitial(function (onChange) {
+        return window.FaceRollFirebase.subscribeQueryDocs('courses', {
+          filters: [{ field: 'instructorId', operator: '==', value: instructorUid }],
+        }, onChange, scheduleRealtimeReload);
+      }, data.courses),
+      subscribeAfterInitial(function (onChange) {
+        return window.FaceRollFirebase.subscribeQueryChunks('sessions', 'courseId', courseIds,
+          onChange, scheduleRealtimeReload);
+      }, data.sessions),
+      subscribeAfterInitial(function (onChange) {
+        return window.FaceRollFirebase.subscribeQueryChunks('attendance', 'sessionId', sessionIds,
+          onChange, scheduleRealtimeReload);
+      }, data.attendance),
+      subscribeAfterInitial(function (onChange) {
+        return window.FaceRollFirebase.subscribeQueryChunks('enrollments', 'courseId', courseIds,
+          onChange, scheduleRealtimeReload);
+      }, data.enrollments),
+    ]);
+    if (generation !== realtimeGeneration) {
+      subscriptions.forEach(function (unsubscribe) { if (typeof unsubscribe === 'function') unsubscribe(); });
+      return;
+    }
+    realtimeUnsubscribers = subscriptions;
+  }
+
+  window.addEventListener('pagehide', function () {
+    stopRealtimeRefresh();
+    if (typeof stopReconnectRefresh === 'function') stopReconnectRefresh();
+  });
+
+  function showInitialLoadFailure(error) {
+    renderMessageRow('Unable to load Firestore data.');
+    const cell = tbody.firstElementChild && tbody.firstElementChild.firstElementChild;
+    if (cell) {
+      const detail = document.createElement('span');
+      detail.textContent = ' ' + (error && error.message ? error.message : 'Check the emulator connection.');
+      const retry = document.createElement('button');
+      retry.type = 'button';
+      retry.textContent = 'Retry';
+      retry.style.marginLeft = '0.75rem';
+      retry.addEventListener('click', function () {
+        retry.disabled = true;
+        initializeDashboard();
+      });
+      cell.append(detail, retry);
+    }
+  }
+
+  async function initializeDashboard() {
+    try {
+      const authUser = await window.FaceRollFirebase.waitForAuthUser();
+      const cachedData = authUser && window.FaceRollFirebase.readCachedInstructorSnapshot
+        ? window.FaceRollFirebase.readCachedInstructorSnapshot(authUser.uid)
+        : null;
+      if (cachedData) {
+        const cachedRows = buildAttendanceRows(
+          cachedData.attendance || [],
+          cachedData.users || [],
+          cachedData.courses || [],
+          cachedData.sessions || []
+        );
+        if (cachedRows.length) {
+          finishDashboardRender(cachedData.users || [], cachedRows);
+          setStatus('Showing saved data while Firestore refreshes...');
+        }
+      }
+      const data = await loadDashboardData();
+      await startRealtimeRefresh(data);
+    } catch (error) {
       console.error('Failed to load dashboard data:', error);
       setStatus('Firestore load failed: ' + (error && error.message ? error.message : 'Unknown error'), true);
-
-      renderMessageRow('Unable to load Firestore data. Check Firebase Hosting auto-init and your Firestore collection fields.');
+      if (hasLoadedOnce) return;
+      showInitialLoadFailure(error);
       tableCount.textContent = 'Showing 0 of 0';
       updatePaginationControls();
       statTotal.textContent = '0';
       statPresent.textContent = '0';
       if (statLate) statLate.textContent = '0';
       statAbsent.textContent = '0';
+    }
+  }
+
+  if (window.FaceRollFirebase && typeof window.FaceRollFirebase.onConnectionRestored === 'function') {
+    stopReconnectRefresh = window.FaceRollFirebase.onConnectionRestored(function () {
+      if (hasLoadedOnce) setStatus('Connection restored. Refreshing attendance data...');
+      scheduleRealtimeReload();
     });
+  }
+
+  initializeDashboard();
 })();

@@ -50,9 +50,8 @@ test('course management lists only owned courses and opens invitations for the s
     window:{
       FaceRollFirebase:{
         waitForAuthUser:async()=>({uid:'owner-1'}),
-        readCollectionDocs:async()=>[
+        readQueryDocs:async()=>[
           {courseId:'OWNED',courseName:'Owned Course',instructorId:'owner-1'},
-          {courseId:'OTHER',courseName:'Other Course',instructorId:'owner-2'},
         ],
       },
       dispatchEvent:event=>events.push(event),
