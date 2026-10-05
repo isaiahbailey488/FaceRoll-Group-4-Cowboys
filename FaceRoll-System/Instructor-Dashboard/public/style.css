@@ -491,3 +491,8 @@ body#i1rrpa a:hover {
 .firebase-emulator-warning {
   display: none !important;
 }
+
+/* Protected pages stay hidden until Firebase Auth restores a valid user. */
+body[data-auth-required="true"] {
+  visibility: hidden !important;
+}

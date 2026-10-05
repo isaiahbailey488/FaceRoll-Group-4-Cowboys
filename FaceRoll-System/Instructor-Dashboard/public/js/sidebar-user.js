@@ -275,13 +275,10 @@
     try {
       button.disabled = true;
       button.textContent = 'Logging out...';
-      if (!window.firebase || typeof window.firebase.auth !== 'function') {
-        throw new Error('Firebase Auth is not available.');
+      if (typeof firebaseApi.signOutUser !== 'function') {
+        throw new Error('Firebase sign-out is not available.');
       }
-      await window.firebase.auth().signOut();
-      if (typeof firebaseApi.clearInstructorSnapshotCache === 'function') {
-        firebaseApi.clearInstructorSnapshotCache();
-      }
+      await firebaseApi.signOutUser();
       try {
         if (globalThis.sessionStorage) globalThis.sessionStorage.removeItem(SIDEBAR_PROFILE_CACHE_KEY);
       } catch (error) {}

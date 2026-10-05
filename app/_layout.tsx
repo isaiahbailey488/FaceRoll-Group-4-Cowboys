@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
-import { subscribeToAuthState } from '../services/auth';
+import { View, ActivityIndicator, AppState, StyleSheet } from 'react-native';
+import { getCurrentUser, subscribeToAuthState, validateCurrentSession } from '../services/auth';
 import Colors from '../constants/Colors';
 
 export default function RootLayout() {
@@ -12,14 +12,40 @@ export default function RootLayout() {
   const segments = useSegments();
 
   useEffect(() => {
-    const unsubscribe = subscribeToAuthState((user) => {
+    let active = true;
+    let validationGeneration = 0;
+
+    const applyAuthState = async (user: ReturnType<typeof getCurrentUser>) => {
+      const generation = ++validationGeneration;
+      const validatedUser = user ? await validateCurrentSession() : null;
+      if (!active || generation !== validationGeneration) return;
+
       if (!receivedInitialAuthState.current) {
         receivedInitialAuthState.current = true;
-        setRestoreAuthenticatedSession(Boolean(user));
+        setRestoreAuthenticatedSession(Boolean(validatedUser));
       }
-      setIsAuthenticated(!!user);
+      setIsAuthenticated(Boolean(validatedUser));
+    };
+
+    const unsubscribe = subscribeToAuthState((user) => {
+      void applyAuthState(user);
     });
-    return unsubscribe;
+    const appStateSubscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active' && receivedInitialAuthState.current) {
+        void applyAuthState(getCurrentUser());
+      }
+    });
+    const validationTimer = setInterval(() => {
+      void applyAuthState(getCurrentUser());
+    }, 5 * 60 * 1000);
+
+    return () => {
+      active = false;
+      validationGeneration += 1;
+      clearInterval(validationTimer);
+      appStateSubscription.remove();
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -27,13 +53,16 @@ export default function RootLayout() {
 
     const inAuthGroup = segments[0] === '(auth)';
 
-    if (!isAuthenticated && !inAuthGroup) {
+    // A successful interactive sign-in updates Firebase before the async token
+    // validation above finishes. Do not let the previous signed-out state send
+    // that new session back to Login while it is being validated.
+    if (!isAuthenticated && !inAuthGroup && !getCurrentUser()) {
       router.replace('/(auth)/login');
     } else if (isAuthenticated && inAuthGroup && restoreAuthenticatedSession) {
       setRestoreAuthenticatedSession(false);
       router.replace('/(tabs)/home');
     }
-  }, [isAuthenticated, restoreAuthenticatedSession, segments]);
+  }, [isAuthenticated, restoreAuthenticatedSession, segments, router]);
 
   if (isAuthenticated === null) {
     return (

@@ -4,11 +4,14 @@
   "version": "1.0.0",
   "scripts": {
     "start": "expo start",
+    "tunnel": "expo start --tunnel --go",
     "demo": "node scripts/demo.js",
+    "demo:tunnel": "node scripts/demo.js --expo-tunnel",
     "demo:check": "node scripts/demo.js --check",
     "test:demo": "node --test scripts/demo.test.js",
     "test:contracts": "node --test shared/course-contracts.test.js",
     "test:course-join": "node --test shared/course-join.test.js",
+    "test:auth-session": "node --test shared/auth-session.test.js",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web"
@@ -39,6 +42,7 @@
   },
   "devDependencies": {
     "@babel/core": "^7.24.0",
+    "@expo/ngrok": "^4.1.3",
     "@types/react": "~19.2.10",
     "typescript": "~6.0.3"
   }

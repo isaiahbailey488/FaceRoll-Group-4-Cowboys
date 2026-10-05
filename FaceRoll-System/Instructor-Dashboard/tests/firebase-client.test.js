@@ -20,6 +20,9 @@ function initializationHarness(hostname, initialized = false, autoConfigured = f
       calls.push(['signIn']);
       return { user: { uid: 'local-user' } };
     },
+    signOut: async () => {
+      calls.push(['signOut']);
+    },
   };
   const firestore = {
     _delegate: { _settings: { host: autoConfigured ? '127.0.0.1:8080' : 'firestore.googleapis.com' } },
@@ -58,6 +61,14 @@ test('existing Hosting app is reused after Hosting configures local emulators', 
   const { window, calls } = initializationHarness('localhost', true, true);
   await window.FaceRollFirebase.signInWithEmail('test@example.test', 'test-password');
   assert.deepEqual(calls, [['signIn']]);
+});
+
+test('an instructor can sign out and sign in again with the same Firebase client', async function () {
+  const { window, calls } = initializationHarness('localhost', true, true);
+  await window.FaceRollFirebase.signInWithEmail('test@example.test', 'test-password');
+  await window.FaceRollFirebase.signOutUser();
+  await window.FaceRollFirebase.signInWithEmail('test@example.test', 'test-password');
+  assert.deepEqual(calls, [['signIn'], ['signOut'], ['signIn']]);
 });
 
 test('Firestore persistence initializes once and synchronizes dashboard tabs', async function () {

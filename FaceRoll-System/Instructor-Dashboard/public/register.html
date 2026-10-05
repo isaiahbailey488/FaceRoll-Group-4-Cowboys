@@ -157,8 +157,75 @@
 
       body#i1rrpa #iecf0y {
         display: flex;
-        align-items: center;
-        gap: 10px;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 12px 14px;
+        border: 1px solid #dbe4f0;
+        border-radius: 12px;
+        background: #f8fafc;
+      }
+
+      body#i1rrpa #terms {
+        width: 18px;
+        height: 18px;
+        margin: 2px 0 0;
+        flex: 0 0 auto;
+        accent-color: #1d4ed8;
+      }
+
+      body#i1rrpa #terms:disabled {
+        cursor: not-allowed;
+        opacity: 0.55;
+      }
+
+      body#i1rrpa .terms-agreement-copy {
+        min-width: 0;
+      }
+
+      body#i1rrpa #iecf0y label {
+        display: inline;
+        margin: 0 !important;
+        color: #334155 !important;
+        font-size: 0.92rem !important;
+        font-weight: 500;
+      }
+
+      body#i1rrpa .terms-link {
+        display: block;
+        margin: 5px 0 0;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: #1d4ed8;
+        font: inherit;
+        font-size: 0.92rem;
+        font-weight: 700;
+        text-decoration: underline;
+        text-underline-offset: 3px;
+        cursor: pointer;
+      }
+
+      body#i1rrpa .terms-link:hover {
+        color: #1e40af;
+      }
+
+      body#i1rrpa .terms-review-status {
+        display: block;
+        margin-top: 5px;
+        color: #64748b;
+        font-size: 0.82rem;
+        line-height: 1.35;
+      }
+
+      body#i1rrpa .terms-review-status.is-complete {
+        color: #15803d;
+        font-weight: 600;
+      }
+
+      body#i1rrpa .terms-link:focus-visible,
+      body#i1rrpa .terms-dialog-close:focus-visible {
+        outline: 3px solid rgba(37, 99, 235, 0.28);
+        outline-offset: 3px;
       }
 
       body#i1rrpa .auth-message {
@@ -205,6 +272,101 @@
         font-weight: 600;
       }
 
+      body#i1rrpa .terms-dialog {
+        width: min(720px, calc(100% - 28px));
+        max-height: min(82vh, 760px);
+        margin: auto;
+        padding: 0;
+        overflow: hidden;
+        border: 1px solid #cbd5e1;
+        border-radius: 20px;
+        background: #ffffff;
+        color: #1e293b;
+        box-shadow: 0 28px 80px rgba(15, 23, 42, 0.28);
+      }
+
+      body#i1rrpa .terms-dialog::backdrop {
+        background: rgba(15, 23, 42, 0.58);
+        backdrop-filter: blur(3px);
+      }
+
+      body#i1rrpa .terms-dialog-content {
+        display: flex;
+        max-height: min(82vh, 760px);
+        flex-direction: column;
+      }
+
+      body#i1rrpa .terms-dialog-header {
+        padding: 24px 28px 18px;
+        border-bottom: 1px solid #e2e8f0;
+      }
+
+      body#i1rrpa .terms-dialog-header h2 {
+        margin: 0 0 5px;
+        color: #0f172a;
+        font-size: 1.5rem;
+        letter-spacing: -0.02em;
+      }
+
+      body#i1rrpa .terms-effective-date {
+        margin: 0;
+        color: #64748b;
+        font-size: 0.88rem;
+      }
+
+      body#i1rrpa .terms-dialog-body {
+        min-height: 0;
+        padding: 22px 28px;
+        overflow-y: auto;
+        line-height: 1.55;
+      }
+
+      body#i1rrpa .terms-dialog-body h3 {
+        margin: 20px 0 6px;
+        color: #0f172a;
+        font-size: 1rem;
+      }
+
+      body#i1rrpa .terms-dialog-body h3:first-child {
+        margin-top: 0;
+      }
+
+      body#i1rrpa .terms-dialog-body p,
+      body#i1rrpa .terms-dialog-body ul {
+        margin: 0 0 10px;
+        color: #475569;
+        font-size: 0.94rem;
+      }
+
+      body#i1rrpa .terms-dialog-body ul {
+        padding-left: 22px;
+      }
+
+      body#i1rrpa .terms-dialog-footer {
+        padding: 16px 28px 22px;
+        border-top: 1px solid #e2e8f0;
+        background: #f8fafc;
+        text-align: right;
+      }
+
+      body#i1rrpa .terms-dialog-close {
+        border: 1px solid #1d4ed8;
+        border-radius: 10px;
+        background: #1d4ed8;
+        color: #ffffff;
+        padding: 11px 18px;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      body#i1rrpa .terms-dialog-close:disabled {
+        border-color: #cbd5e1;
+        background: #e2e8f0;
+        color: #64748b;
+        cursor: not-allowed;
+      }
+
       @media (max-width: 600px) {
         body#i1rrpa .main-content {
           padding: 20px 14px !important;
@@ -229,6 +391,13 @@
           width: 64px;
           height: 64px;
           transform: scale(1.6);
+        }
+
+        body#i1rrpa .terms-dialog-header,
+        body#i1rrpa .terms-dialog-body,
+        body#i1rrpa .terms-dialog-footer {
+          padding-left: 18px;
+          padding-right: 18px;
         }
       }
     </style>
@@ -277,8 +446,25 @@
               </div>
               <p id="registerMessage" class="auth-message" aria-live="polite"></p>
               <div id="iecf0y">
-                <input type="checkbox" id="terms" name="terms" required aria-required="true" />
-                <label for="terms">Agree to Terms</label>
+                <input
+                  type="checkbox"
+                  id="terms"
+                  name="terms"
+                  required
+                  disabled
+                  aria-required="true"
+                  aria-describedby="termsReviewStatus"
+                  data-terms-reviewed="false"
+                />
+                <div class="terms-agreement-copy">
+                  <label for="terms">I agree to the FaceRoll Terms of Use and Privacy Notice.</label>
+                  <button type="button" id="openTermsButton" class="terms-link" aria-haspopup="dialog" aria-controls="termsDialog">
+                    Read the terms and privacy notice
+                  </button>
+                  <span id="termsReviewStatus" class="terms-review-status" role="status">
+                    Open the agreement and scroll to the bottom to enable acceptance.
+                  </span>
+                </div>
               </div>
               <button type="submit" id="irnt2i">Submit</button>
               <p class="security-note">
@@ -291,14 +477,103 @@
       </section>
       <section id="in12r" class="secondary-section"><div id="iv79f"></div></section>
     </main>
+    <dialog id="termsDialog" class="terms-dialog" aria-labelledby="termsDialogTitle">
+      <div class="terms-dialog-content">
+        <header class="terms-dialog-header">
+          <h2 id="termsDialogTitle">FaceRoll Terms of Use and Privacy Notice</h2>
+          <p class="terms-effective-date">Effective October 5, 2026</p>
+        </header>
+        <div id="termsDialogBody" class="terms-dialog-body" tabindex="0">
+          <h3>1. Purpose and authorized use</h3>
+          <p>
+            FaceRoll is an educational attendance system for authorized students, instructors, and administrators. You must
+            provide accurate account information and use the system only for legitimate course enrollment, attendance, and
+            administration. Instructor and administrator accounts may be used only by people authorized by their institution.
+          </p>
+
+          <h3>2. Account responsibilities</h3>
+          <p>
+            Keep your sign-in credentials private and promptly report suspected unauthorized access to your institution or
+            project administrator. You are responsible for activity performed through your account. Do not impersonate another
+            person, share attendance invitations improperly, or attempt to bypass FaceRoll security controls.
+          </p>
+
+          <h3>3. Attendance and facial recognition</h3>
+          <p>
+            FaceRoll may use facial recognition to help identify enrolled students and record attendance. Recognition results
+            can be incorrect and must be reviewable by the responsible instructor. FaceRoll should not be the only record used
+            for a decision that materially affects a student. Institutions are responsible for providing required notices,
+            obtaining any required consent, and offering an appropriate alternative attendance method.
+          </p>
+
+          <h3>4. Information FaceRoll processes</h3>
+          <ul>
+            <li>Account information, including name, email address, role, and authentication identifiers.</li>
+            <li>Course, enrollment, session, invitation, and attendance records.</li>
+            <li>Classroom location settings configured by an instructor, including coordinates and an attendance radius.</li>
+            <li>
+              Facial templates generated from enrollment photos. Enrollment photos are submitted to generate templates; the
+              templates are stored on the instructor recognition computer in encrypted form for classroom matching.
+            </li>
+            <li>Limited browser cache data used to keep the dashboard responsive during brief connection interruptions.</li>
+          </ul>
+          <p>
+            FaceRoll uses this information to authenticate users, manage courses, support attendance check-in, perform authorized
+            recognition, display reports, maintain security, and troubleshoot the service. Facial templates are biometric data
+            and must not be reused for unrelated monitoring, identification, advertising, or surveillance.
+          </p>
+
+          <h3>5. Data access, retention, and deletion</h3>
+          <p>
+            Authorized instructors and administrators can access records for the courses they manage. Data remains available as
+            needed to operate the course and meet the institution's recordkeeping requirements. Course deletion can remove its
+            roster, invitations, sessions, and attendance records. Requests to correct or delete account, attendance, or facial
+            enrollment data should be directed to the responsible instructor or institution administrator.
+          </p>
+
+          <h3>6. Course invitations and check-in</h3>
+          <p>
+            Course QR codes and invitation links are intended for eligible students. An invitation may expire, be revoked, or be
+            replaced. A student who has already enrolled remains enrolled until removed from the course. Attendance check-in is
+            available only when the student is enrolled and the instructor has an eligible session open.
+          </p>
+
+          <h3>7. Acceptable use</h3>
+          <p>
+            You may not disrupt the service; access data without permission; upload malicious content; falsify attendance;
+            reverse engineer security controls; or collect, export, or disclose student or biometric data without authorization.
+            You must follow applicable institutional policies and laws when using FaceRoll.
+          </p>
+
+          <h3>8. Service availability and changes</h3>
+          <p>
+            FaceRoll is under active development and may experience errors, interruptions, or changes. Instructors should verify
+            attendance records and maintain a manual fallback when needed. These terms may be updated as the system changes; a
+            revised effective date will identify the current version.
+          </p>
+
+          <h3>9. Agreement and questions</h3>
+          <p>
+            By creating an account and checking the agreement box, you confirm that you have read and accept these terms and this
+            privacy notice. For questions or requests about FaceRoll data, contact the FaceRoll project team or your institution's
+            administrator before using the system.
+          </p>
+        </div>
+        <div class="terms-dialog-footer">
+          <button type="button" id="closeTermsButton" class="terms-dialog-close" disabled>
+            Scroll to the bottom to continue
+          </button>
+        </div>
+      </div>
+    </dialog>
     <footer class="gjs-t-border footer">
-      <div id="iaihz" class="footer-container"><div id="irarf">© FaceRoll</div></div>
+      <div id="iaihz" class="footer-container"><div id="irarf">&copy; FaceRoll</div></div>
     </footer>
     <script defer src="/__/firebase/11.6.0/firebase-app-compat.js"></script>
     <script defer src="/__/firebase/11.6.0/firebase-auth-compat.js"></script>
     <script defer src="/__/firebase/11.6.0/firebase-firestore-compat.js"></script>
     <script defer src="/__/firebase/init.js?useEmulator=true"></script>
-    <script defer src="./js/firebase-client.js?v=20261005-resilience-1"></script>
-    <script defer src="./js/auth-pages.js?v=20261004-register-verify-1"></script>
+    <script defer src="./js/firebase-client.js?v=20261005-auth-cycle-1"></script>
+    <script defer src="./js/auth-pages.js?v=20261005-terms-review-2"></script>
   </body>
 </html>

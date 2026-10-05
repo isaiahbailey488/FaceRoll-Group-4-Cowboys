@@ -35,6 +35,7 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       await loginUser(email.trim(), password);
+      router.replace('/(tabs)/home');
     } catch (err: any) {
       const msg = err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password'
         ? 'Invalid email or password. Please try again.'

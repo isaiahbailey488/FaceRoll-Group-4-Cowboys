@@ -1,4 +1,6 @@
 (function () {
+  const TERMS_VERSION = '2026-10-05';
+
   function getFriendlyAuthMessage(error, fallbackMessage) {
     const code = error && error.code ? String(error.code) : '';
 
@@ -74,11 +76,6 @@
         const firebaseClient = ensureFirebaseClient();
         await firebaseClient.signInWithEmail(String(emailInput.value || '').trim(), passwordInput.value);
         submitButton.textContent = 'Loading dashboard...';
-        try {
-          await firebaseClient.readInstructorSnapshot();
-        } catch (snapshotError) {
-          console.warn('Dashboard data could not be prepared before navigation:', snapshotError);
-        }
         window.location.href = './instructor-dashboard.html';
       } catch (error) {
         console.error('Login failed:', error);
@@ -97,6 +94,7 @@
     const emailInput = document.getElementById('email');
     const passwordInput = document.getElementById('password');
     const confirmPasswordInput = document.getElementById('confirm-password');
+    const termsInput = document.getElementById('terms');
     const registerMessage = document.getElementById('registerMessage');
     const submitButton = document.getElementById('irnt2i');
 
@@ -107,6 +105,7 @@
       !emailInput ||
       !passwordInput ||
       !confirmPasswordInput ||
+      !termsInput ||
       !registerMessage ||
       !submitButton
     ) {
@@ -126,6 +125,19 @@
         return;
       }
 
+      if (termsInput.disabled || termsInput.dataset.termsReviewed !== 'true') {
+        setMessage('Open the Terms of Use and Privacy Notice and scroll to the bottom before accepting.');
+        const openTermsButton = document.getElementById('openTermsButton');
+        if (openTermsButton && typeof openTermsButton.focus === 'function') openTermsButton.focus();
+        return;
+      }
+
+      if (!termsInput.checked) {
+        setMessage('Select the checkbox to accept the Terms of Use and Privacy Notice.');
+        if (typeof termsInput.focus === 'function') termsInput.focus();
+        return;
+      }
+
       submitButton.disabled = true;
       submitButton.textContent = 'Creating account...';
 
@@ -136,6 +148,7 @@
           passwordInput.value
         );
         const nameParts = splitName(fullNameInput.value);
+        const registeredAt = new Date().toISOString();
 
         await firebaseClient.writeDocument('users', user.uid, {
           uid: user.uid,
@@ -148,7 +161,9 @@
           name: String(fullNameInput.value || '').trim(),
           fullName: String(fullNameInput.value || '').trim(),
           displayName: String(fullNameInput.value || '').trim(),
-          createdAt: new Date().toISOString(),
+          createdAt: registeredAt,
+          termsAcceptedAt: registeredAt,
+          termsVersion: TERMS_VERSION,
         });
 
         const activeUser = await firebaseClient.waitForAuthUser();
@@ -156,7 +171,6 @@
           throw new Error('Registration completed, but the local sign-in session was not restored. Please register again.');
         }
         submitButton.textContent = 'Loading dashboard...';
-        await firebaseClient.readInstructorSnapshot();
         window.location.href = './instructor-dashboard.html';
       } catch (error) {
         console.error('Registration failed:', error);
@@ -168,9 +182,68 @@
     });
   }
 
+  function setupTermsDialog() {
+    const dialog = document.getElementById('termsDialog');
+    const dialogBody = document.getElementById('termsDialogBody');
+    const openButton = document.getElementById('openTermsButton');
+    const closeButton = document.getElementById('closeTermsButton');
+    const termsInput = document.getElementById('terms');
+    const reviewStatus = document.getElementById('termsReviewStatus');
+
+    if (!dialog || !dialogBody || !openButton || !closeButton || !termsInput || !reviewStatus) return;
+
+    function hasReachedBottom() {
+      return dialogBody.scrollTop + dialogBody.clientHeight >= dialogBody.scrollHeight - 8;
+    }
+
+    function completeReview() {
+      termsInput.disabled = false;
+      termsInput.dataset.termsReviewed = 'true';
+      closeButton.disabled = false;
+      closeButton.textContent = 'Done — return to registration';
+      reviewStatus.textContent = 'Agreement reviewed. Select the checkbox to accept.';
+      reviewStatus.classList.add('is-complete');
+    }
+
+    function updateReviewProgress() {
+      if (termsInput.dataset.termsReviewed === 'true') {
+        completeReview();
+        return;
+      }
+      if (hasReachedBottom()) completeReview();
+    }
+
+    function openDialog() {
+      if (typeof dialog.showModal === 'function') {
+        dialog.showModal();
+      } else {
+        dialog.setAttribute('open', '');
+      }
+      updateReviewProgress();
+      if (typeof dialogBody.focus === 'function') dialogBody.focus();
+    }
+
+    function closeDialog() {
+      if (typeof dialog.close === 'function') {
+        dialog.close();
+      } else {
+        dialog.removeAttribute('open');
+      }
+      openButton.focus();
+    }
+
+    openButton.addEventListener('click', openDialog);
+    closeButton.addEventListener('click', closeDialog);
+    dialogBody.addEventListener('scroll', updateReviewProgress, { passive: true });
+    dialog.addEventListener('click', function (event) {
+      if (event.target === dialog) closeDialog();
+    });
+  }
+
   function init() {
     setupLoginPage();
     setupRegisterPage();
+    setupTermsDialog();
   }
 
   if (document.readyState === 'loading') {

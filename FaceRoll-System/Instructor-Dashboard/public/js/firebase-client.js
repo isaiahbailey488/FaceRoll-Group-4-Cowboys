@@ -1139,6 +1139,12 @@
     return credential.user;
   }
 
+  async function signOutUser() {
+    const auth = await waitForAuth();
+    await auth.signOut();
+    clearInstructorSnapshotCache();
+  }
+
   async function sendPasswordReset(email) {
     const auth = await waitForAuth();
     await auth.sendPasswordResetEmail(email);
@@ -1226,6 +1232,7 @@
     deleteDocument,
     signInWithEmail,
     registerWithEmail,
+    signOutUser,
     sendPasswordReset,
     getCurrentAuthUser,
     waitForAuthUser,

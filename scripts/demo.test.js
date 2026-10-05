@@ -8,6 +8,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const http = require('node:http');
 const {
+  expoStartArguments,
   selectNetworkMode,
   tailscaleConnection,
   configureTailscale,
@@ -20,6 +21,14 @@ const {
   resolveCommand,
   waitForEmulators,
 } = require('./demo.js');
+
+test('demo selects LAN normally and Expo tunnel only when requested', function () {
+  assert.deepEqual(expoStartArguments([]), ['expo', 'start', '--lan', '--clear']);
+  assert.deepEqual(
+    expoStartArguments(['--expo-tunnel']),
+    ['expo', 'start', '--tunnel', '--clear']
+  );
+});
 
 test('network prompt defaults local, accepts Tailscale, and flags bypass prompting', async () => {
   assert.equal(await selectNetworkMode([], true, async () => ''), 'local');

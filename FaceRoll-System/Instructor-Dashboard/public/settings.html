@@ -367,7 +367,7 @@
     }
   </style>
   </head>
-  <body id="i098oc" class="body-root">
+  <body id="i098oc" class="body-root" data-auth-required="true">
     <div class="app-wrapper">
       <!-- Sidebar navigation -->
       <nav class="sidebar-navigation">
@@ -467,8 +467,9 @@
     <script defer src="/__/firebase/11.6.0/firebase-firestore-compat.js"></script>
     <script defer src="/__/firebase/11.6.0/firebase-auth-compat.js"></script>
     <script defer src="/__/firebase/init.js?useEmulator=true"></script>
-    <script defer src="./js/firebase-client.js?v=20261005-resilience-1"></script>
-    <script defer src="./js/sidebar-user.js?v=20261004-split-cache-1"></script>
+    <script defer src="./js/firebase-client.js?v=20261005-auth-cycle-1"></script>
+    <script defer src="./js/auth-guard.js?v=20261005-auth-1"></script>
+    <script defer src="./js/sidebar-user.js?v=20261005-auth-cycle-1"></script>
     <script>
 (function() {
   const toggleBtn = document.getElementById('allow-late-toggle');

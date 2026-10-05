@@ -416,7 +416,7 @@
     }
   </style>
   </head>
-  <body id="i0mho" class="gjs-t-body body-root">
+  <body id="i0mho" class="gjs-t-body body-root" data-auth-required="true">
     <div class="app-wrapper">
       <!-- Sidebar navigation -->
       <aside class="gjs-t-border sidebar-navigation">
@@ -560,8 +560,9 @@
     <script defer src="/__/firebase/11.6.0/firebase-firestore-compat.js"></script>
     <script defer src="/__/firebase/init.js?useEmulator=true"></script>
     <script defer src="./js/sample-data.js"></script>
-    <script defer src="./js/firebase-client.js?v=20261005-resilience-1"></script>
-    <script defer src="./js/sidebar-user.js?v=20261004-split-cache-1"></script>
+    <script defer src="./js/firebase-client.js?v=20261005-auth-cycle-1"></script>
+    <script defer src="./js/auth-guard.js?v=20261005-auth-1"></script>
+    <script defer src="./js/sidebar-user.js?v=20261005-auth-cycle-1"></script>
     <script defer src="./js/instructor-dashboard.js?v=20261005-resilience-1"></script>
   </body>
 </html>

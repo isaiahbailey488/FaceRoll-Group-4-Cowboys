@@ -17,6 +17,7 @@ import {
 import { auth, db } from './firebase';
 import { generateStudentId, isSevenDigitStudentId } from './student-id';
 import { fallbackNameFromEmail, getStudentDisplayName } from './profile-name';
+import { isTerminalAuthError } from '../shared/auth-session';
 
 export { fallbackNameFromEmail, getStudentDisplayName } from './profile-name';
 
@@ -41,6 +42,8 @@ export interface UserProfile {
   faceEnrolled: boolean;
   createdAt?: any;
 }
+
+const SESSION_VALIDATION_TIMEOUT_MS = 6000;
 
 function mapFirebaseUser(user: FirebaseUser): User {
   return {
@@ -206,24 +209,61 @@ export async function registerUser(
 export async function loginUser(email: string, password: string): Promise<User> {
   const normalizedEmail = email.toLowerCase().trim();
   const credential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
-  const user = credential.user;
-  const safeAuthName = getStudentDisplayName({ fullName: user.displayName }, normalizedEmail);
-  const authName = safeAuthName === 'Student'
-    ? []
-    : safeAuthName.split(/\s+/).filter(Boolean);
-
-  // Ensure profile exists even for users created elsewhere
-  await ensureUserProfileDoc(
-    user.uid,
-    normalizedEmail,
-    authName[0],
-    authName.slice(1).join(' ')
-  );
-  return mapFirebaseUser(user);
+  // Authentication should not be held up by a Firestore profile read. Screens
+  // load and repair the signed-in user's profile through getUserProfile().
+  return mapFirebaseUser(credential.user);
 }
 
 export async function logoutUser(): Promise<void> {
   await signOut(auth);
+}
+
+export async function validateCurrentSession(): Promise<User | null> {
+  const sessionUser = auth.currentUser;
+  if (!sessionUser) return null;
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        const timeoutError: any = new Error('Session validation timed out.');
+        timeoutError.code = 'auth/network-request-failed';
+        reject(timeoutError);
+      }, SESSION_VALIDATION_TIMEOUT_MS);
+
+      sessionUser.getIdToken(true).then(
+        () => {
+          clearTimeout(timer);
+          resolve();
+        },
+        (error: unknown) => {
+          clearTimeout(timer);
+          reject(error);
+        }
+      );
+    });
+  } catch (error) {
+    if (isTerminalAuthError(error)) {
+      // Do not sign out a newer session that replaced the one being checked.
+      if (auth.currentUser === sessionUser) {
+        try {
+          await signOut(auth);
+        } catch {
+          // Routing still treats the invalid session as signed out.
+        }
+      }
+      const replacementUser = auth.currentUser;
+      return replacementUser && replacementUser !== sessionUser
+        ? mapFirebaseUser(replacementUser)
+        : null;
+    }
+
+    // Brief connectivity loss does not invalidate Firebase's persisted session.
+    const offlineUser = auth.currentUser;
+    return offlineUser ? mapFirebaseUser(offlineUser) : null;
+  }
+
+  const activeUser = auth.currentUser;
+  return activeUser ? mapFirebaseUser(activeUser) : null;
 }
 
 export async function resetPassword(email: string): Promise<void> {

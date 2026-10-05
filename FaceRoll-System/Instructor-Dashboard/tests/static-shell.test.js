@@ -35,3 +35,21 @@ test('dashboard pages do not contain corrupted UTF-8 text', function () {
       name + ' contains text that appears to have been decoded with the wrong character set');
   });
 });
+
+test('every protected instructor page loads the authentication guard', function () {
+  const protectedPages = [
+    'instructor-dashboard.html', 'live-session.html', 'student-roster.html',
+    'student-profile.html', 'reports.html', 'courses.html', 'settings.html',
+  ];
+  protectedPages.forEach(function (name) {
+    const html = fs.readFileSync(path.join(publicDirectory, name), 'utf8');
+    assert.match(html, /<body[^>]*data-auth-required="true"/);
+    const firebaseClientIndex = html.indexOf('/js/firebase-client.js');
+    const authGuardIndex = html.indexOf('/js/auth-guard.js');
+    const sidebarIndex = html.indexOf('/js/sidebar-user.js');
+    assert.ok(firebaseClientIndex >= 0 && authGuardIndex > firebaseClientIndex,
+      name + ' must load the auth guard after the Firebase client');
+    assert.ok(sidebarIndex < 0 || authGuardIndex < sidebarIndex,
+      name + ' must guard the page before loading sidebar data');
+  });
+});

@@ -14,6 +14,11 @@ const REPOSITORY_ROOT = path.resolve(__dirname, '..');
 const FIREBASE_PROJECT_ID = 'rollcall-2669b';
 const REQUIRED_PORTS = [4400, 9099, 8080, 5001, 8765, 5055];
 
+function expoStartArguments(args) {
+  const connection = args.includes('--expo-tunnel') ? '--tunnel' : '--lan';
+  return ['expo', 'start', connection, '--clear'];
+}
+
 async function selectNetworkMode(args, interactive, ask) {
   const modes = args.filter((arg) => arg === '--local' || arg === '--tailscale');
   if (modes.length > 1) throw new Error('Choose either --local or --tailscale.');
@@ -451,11 +456,12 @@ async function stopChild(child) {
 }
 
 async function runDemo() {
+  const commandArguments = process.argv.slice(2);
   const checkOnly = process.argv.includes('--check');
   let prompt;
   let mode;
   try {
-    mode = await selectNetworkMode(process.argv.slice(2), Boolean(process.stdin.isTTY), (question) => {
+    mode = await selectNetworkMode(commandArguments, Boolean(process.stdin.isTTY), (question) => {
       prompt ||= readline.createInterface({ input: process.stdin, output: process.stdout });
       return prompt.question(question);
     });
@@ -566,8 +572,14 @@ async function runDemo() {
     console.log(`Dashboard:        http://127.0.0.1:${hostingPort}`);
     console.log(`Firebase UI:      http://127.0.0.1:${emulatorStatus.ui.port}`);
     console.log(`Connection:       ${mode} (${config.lanAddress})`);
+    console.log(`Expo connection:  ${commandArguments.includes('--expo-tunnel') ? 'tunnel' : 'LAN'}`);
     console.log(`Recognition API:  ${environment.EXPO_PUBLIC_RECOGNITION_API_URL}`);
-    if (mode === 'tailscale') console.log('Keep Tailscale connected on the phone. Allow phone access to TCP 9099, 8080 and the Expo port through Windows Firewall.');
+    if (mode === 'tailscale') {
+      const requiredPorts = commandArguments.includes('--expo-tunnel')
+        ? 'TCP 9099 and 8080'
+        : 'TCP 9099, 8080 and the Expo port';
+      console.log(`Keep Tailscale connected on the phone. Allow phone access to ${requiredPorts} through Windows Firewall.`);
+    }
     console.log('Bridge:           http://127.0.0.1:8765');
     console.log('Firebase mode:    local emulators only');
     console.log('\nScan the Expo QR code below. Press Ctrl+C once to stop everything.\n');
@@ -576,7 +588,7 @@ async function runDemo() {
       children,
       'Expo',
       executable('npx'),
-      ['expo', 'start', '--lan', '--clear'],
+      expoStartArguments(commandArguments),
       { cwd: REPOSITORY_ROOT, env: environment }
     );
     expo.once('exit', (code) => {
@@ -596,6 +608,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  expoStartArguments,
   selectNetworkMode,
   tailscaleConnection,
   configureTailscale,
