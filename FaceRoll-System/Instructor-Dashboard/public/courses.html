@@ -159,15 +159,20 @@
                     <input
                       type="search"
                       id="location-search-input"
-                      placeholder="Search with HERE, e.g., Discovery Park, Frisco"
+                      placeholder="Search an address or choose Current location"
                       autocomplete="off"
                       disabled
                     />
                     <button type="submit" id="location-search-button" class="secondary-button" disabled>Search</button>
                   </div>
+                  <div id="current-location-options" class="search-results" aria-label="Location suggestions">
+                    <button type="button" id="current-location-button" class="search-result-button" disabled><strong>Current location</strong><span>Show where you are on the map</span></button>
+                  </div>
                 </form>
                 <div id="search-status" class="compact-status" role="status" aria-live="polite"></div>
                 <div id="search-results" class="search-results" aria-label="Location search results"></div>
+
+                <div id="current-location-status" class="compact-status" role="status" aria-live="polite"></div>
 
                 <div class="map-shell">
                   <div id="here-map" aria-label="Interactive classroom location map"></div>
@@ -239,7 +244,7 @@
     <script defer src="./js/firebase-client.js?v=20261005-auth-cycle-1"></script>
     <script defer src="./js/auth-guard.js?v=20261005-auth-1"></script>
     <script defer src="./js/sidebar-user.js?v=20261005-auth-cycle-1"></script>
-    <script defer src="./js/course-location.js?v=20261005-resilience-1"></script>
+    <script defer src="./js/course-location.js?v=20261008-coordinate-precision"></script>
     <script defer src="./js/manage-courses.js?v=20261005-resilience-1"></script>
     <script defer src="./js/courses-page.js?v=20260915-2"></script>
     <script type="module" src="./js/course-invitations.mjs"></script>

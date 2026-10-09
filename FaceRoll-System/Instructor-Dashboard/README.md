@@ -142,3 +142,15 @@ Dashboard Firestore rules allow course writes only for authenticated profiles wi
 - **Team:** Cowboys (Group 4)
 
 Course Settings uses HERE Maps with English labels, controls, and address results. Use `http://127.0.0.1:5001/course-settings.html`; this origin is authorized by the current HERE key. Other browser origins, including different ports, must be added to the key's trusted domains. Rejected access displays an actionable message without switching map providers. Internet access is required.
+
+Focus the location search field and choose **Current location** in Courses → Course Settings to request your browser location and center HERE Maps on a blue dot. The status shows the estimated accuracy. This one-time lookup also selects the location and updates the latitude and longitude fields. Save Classroom Location to persist it for the selected course. Location access requires browser permission and HTTPS or localhost.
+
+### Student zone-result contract (instructor side)
+
+Live Session displays only `attendance.locationStatus`: `in_zone` → In zone, `outside_zone` → Outside zone, `not_required` → Not required, and missing/unknown values → Not checked. It does not infer a passed location check from attendance or face recognition. Existing mobile clients can continue submitting records without this optional field.
+
+The dashboard Firestore rules allow only attendance metadata and these optional status values. They reject latitude, longitude, location objects, accuracy, and other unlisted fields, including nested objects in the allowed text fields. The saved course location is the classroom's zone configuration, not a student's position.
+
+Mobile integration is separate and has not been changed: it must perform a foreground check at check-in and send only the zone result, never student coordinates, distance, accuracy, or position history. Rules validate the record shape; they cannot prove that a client-supplied zone result is truthful. Deploy the dashboard rules with this update before relying on storage restrictions. The separate repository-root rules file is unchanged and does not contain these restrictions.
+
+To verify the privacy rules locally, start a separate Firestore emulator using the cached emulator JAR with `--host 127.0.0.1 --port 8181 --websocket_port 9181 --project_id demo-faceroll-location --rules firestore.rules` from this dashboard directory. Then run `node scripts/test-location-rules.cjs`. The test is pinned to that isolated local project and exercises valid statuses, older clients without a status, rejected coordinate fields/nested objects, and instructor attendance overrides.

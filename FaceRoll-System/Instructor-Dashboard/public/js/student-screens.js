@@ -771,7 +771,7 @@
       startButton.style.cursor = busy ? 'wait' : 'pointer';
     }
     function renderEmpty() {
-      tbody.innerHTML = '<tr><td colspan="4">No check-ins yet for this session.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="5">No check-ins yet for this session.</td></tr>';
       if (recognizedElement) recognizedElement.textContent = '0';
       if (lateElement) lateElement.textContent = '0';
     }
@@ -831,13 +831,16 @@
       tbody.innerHTML = '';
       rows.forEach(function (e) {
         const row = document.createElement('tr');
-        row.innerHTML = '<td></td><td></td><td><span class="status-badge live-status"></span></td><td></td>';
+        row.innerHTML = '<td></td><td></td><td><span class="status-badge live-status"></span></td><td></td><td></td>';
         row.children[0].textContent = e.studentName;
         row.children[1].textContent = e.course;
         row.children[2].firstElementChild.textContent = e.status;
         const cls = getStatusClass(e.status);
         if (cls) row.children[2].firstElementChild.classList.add(cls);
         row.children[3].textContent = e.recordedTime;
+        row.children[4].textContent = e.locationStatus === 'in_zone' ? 'In zone'
+          : e.locationStatus === 'outside_zone' ? 'Outside zone'
+          : e.locationStatus === 'not_required' ? 'Not required' : 'Not checked';
         tbody.appendChild(row);
       });
     }
@@ -978,6 +981,7 @@
             const displayName = recognitionName || (user ? getUserDisplayName(user) : 'Recognized Student');
             const row = {
               studentName: displayName,
+              locationStatus: d.locationStatus,
               course: courseMap.get(cid) || activeCourseName || 'Unknown Course',
               status: normalizeStatus(getFirstDefined(d, ['status']) || 'present') || 'Present',
               recordedTime: formatTimeDisplay(getFirstDefined(d, ['time', 'createdAt'])),
