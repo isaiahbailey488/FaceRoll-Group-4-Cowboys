@@ -91,6 +91,7 @@ export default function RootLayout() {
           presentation: 'fullScreenModal',
         }}
       />
+      <Stack.Screen name="help" options={{ headerShown: false }} />
     </Stack>
   );
 }
