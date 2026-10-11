@@ -14,11 +14,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import Colors from '../constants/Colors';
+import ScanTipsCard from '../components/ScanTipsCard';
 import { getCurrentUser, markFaceEnrolled } from '../services/auth';
 import {
   discardTemporaryCameraFile,
   enrollFace,
+  FaceScanFeedback,
   RecognitionApiError,
+  AUTH_ERROR_CODES,
+  scanFeedbackForError,
 } from '../services/recognition';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -63,6 +67,8 @@ export default function FaceEnrollmentScreen() {
     emptyCaptures
   );
   const [activeStep, setActiveStep] = useState(0);
+  const [failure, setFailure] = useState<FaceScanFeedback | null>(null);
+  const [showTips, setShowTips] = useState(true);
 
   useEffect(() => {
     if (permission && !permission.granted) {
@@ -95,7 +101,7 @@ export default function FaceEnrollmentScreen() {
       case 'success':
         return 'Face enrolled successfully!';
       case 'error':
-        return 'Enrollment failed. Retake a position or try submitting again.';
+        return failure?.hint ?? 'Enrollment failed. Retake a position or try submitting again.';
       default:
         return currentStep.instruction;
     }
@@ -146,6 +152,7 @@ export default function FaceEnrollmentScreen() {
 
   const handleRetake = (index: number) => {
     if (isBusy || isSuccess) return;
+    setFailure(null);
     setActiveStep(index);
     setEnrollState('idle');
   };
@@ -153,6 +160,7 @@ export default function FaceEnrollmentScreen() {
   const handleStartOver = () => {
     if (isBusy) return;
     clearCaptures();
+    setFailure(null);
     setEnrollState('idle');
   };
 
@@ -169,6 +177,7 @@ export default function FaceEnrollmentScreen() {
 
     const images = capturedImages.filter((image): image is string => Boolean(image));
     try {
+      setFailure(null);
       setEnrollState('processing');
       const result = await enrollFace(images);
       if (result.sampleCount !== 3 || result.model !== 'Facenet512') {
@@ -188,6 +197,7 @@ export default function FaceEnrollmentScreen() {
       if (__DEV__) {
         console.warn('Enrollment error:', error?.code || error?.message || error);
       }
+      setFailure(scanFeedbackForError(error, 'Enrollment failed'));
       setEnrollState('error');
 
       if (error?.code === 'firestore/rules-not-deployed') {
@@ -195,11 +205,8 @@ export default function FaceEnrollmentScreen() {
           'Enrollment Saved, Profile Update Failed',
           'Your embeddings were saved locally, but Firestore blocked the non-biometric enrollment-status update. Deploy the project Firestore rules before trying again.'
         );
-      } else {
-        Alert.alert(
-          'Enrollment Failed',
-          error?.message || 'Retake any unclear position and try again.'
-        );
+      } else if (error instanceof RecognitionApiError && AUTH_ERROR_CODES.has(error.code)) {
+        Alert.alert('Enrollment Failed', error.message);
       }
     }
   };
@@ -261,13 +268,24 @@ export default function FaceEnrollmentScreen() {
       <View style={styles.overlay}>
         <SafeAreaView style={styles.header}>
           <Text style={styles.screenLabel}>Private Face Enrollment</Text>
-          <TouchableOpacity
-            style={styles.closeButton}
-            onPress={handleClose}
-            disabled={isBusy}
-          >
-            <Ionicons name="close" size={22} color={Colors.white} />
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => setShowTips(true)}
+              disabled={isBusy}
+              accessibilityRole="button"
+              accessibilityLabel="Show scanning tips"
+            >
+              <Ionicons name="bulb-outline" size={20} color={Colors.white} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={handleClose}
+              disabled={isBusy}
+            >
+              <Ionicons name="close" size={22} color={Colors.white} />
+            </TouchableOpacity>
+          </View>
         </SafeAreaView>
 
         <View style={styles.progressRow}>
@@ -305,7 +323,11 @@ export default function FaceEnrollmentScreen() {
             <View style={[styles.ovalGuide, isSuccess && styles.ovalGuideSuccess]} />
           </View>
           <Text style={styles.positionTitle}>
-            {isReview ? `${capturedCount} of 3 captured` : currentStep.label}
+            {enrollState === 'error' && failure
+              ? failure.title
+              : isReview
+                ? `${capturedCount} of 3 captured`
+                : currentStep.label}
           </Text>
           <Text
             style={[
@@ -355,6 +377,10 @@ export default function FaceEnrollmentScreen() {
             </View>
           )}
         </View>
+
+        {showTips && !isBusy && !isSuccess ? (
+          <ScanTipsCard onDismiss={() => setShowTips(false)} />
+        ) : null}
       </View>
     </View>
   );
@@ -412,6 +438,7 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   screenLabel: { color: Colors.white, fontSize: 13, fontWeight: '600', opacity: 0.9 },
+  headerActions: { flexDirection: 'row', gap: 8 },
   closeButton: {
     width: 36,
     height: 36,

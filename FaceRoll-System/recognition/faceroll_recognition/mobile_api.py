@@ -20,6 +20,8 @@ from .errors import (
     DependencyUnavailableError,
     EnrollmentNotFoundError,
     InvalidImageError,
+    MultipleFacesDetectedError,
+    NoFaceDetectedError,
     RecognitionCoreError,
     StorageError,
 )
@@ -213,6 +215,16 @@ def _error_response(
     return jsonify(payload), status
 
 
+def _face_image_error_code(error: InvalidImageError) -> str:
+    """Return the specific mobile error code for a rejected face photograph."""
+
+    if isinstance(error, NoFaceDetectedError):
+        return "no_face_detected"
+    if isinstance(error, MultipleFacesDetectedError):
+        return "multiple_faces_detected"
+    return "invalid_face_image"
+
+
 def _bearer_token() -> str:
     header = request.headers.get("Authorization", "")
     scheme, separator, token = header.partition(" ")
@@ -392,7 +404,8 @@ def create_mobile_app(
                     finally:
                         del decoded
                 except InvalidImageError as error:
-                    raise InvalidImageError(
+                    # Keep the subclass so the response can report a specific code.
+                    raise type(error)(
                         f"Enrollment photo {sample_number}: {error}"
                     ) from error
                 log_request_stage(
@@ -431,7 +444,7 @@ def create_mobile_app(
         except ValueError as error:
             return _error_response(400, "invalid_request", str(error))
         except InvalidImageError as error:
-            return _error_response(422, "invalid_face_image", str(error))
+            return _error_response(422, _face_image_error_code(error), str(error))
         except RecognitionCoreError as error:
             return _error_response(500, "enrollment_failed", str(error))
         except Exception:
@@ -477,7 +490,9 @@ def create_mobile_app(
         except EnrollmentNotFoundError as error:
             return _error_response(404, "not_enrolled", str(error), recognized=False)
         except InvalidImageError as error:
-            return _error_response(422, "invalid_face_image", str(error), recognized=False)
+            return _error_response(
+                422, _face_image_error_code(error), str(error), recognized=False
+            )
         except RecognitionCoreError as error:
             return _error_response(500, "recognition_failed", str(error), recognized=False)
         except Exception:
