@@ -14,6 +14,7 @@ import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import Colors from '../constants/Colors';
+import ScanTipsCard from '../components/ScanTipsCard';
 import {
   submitAttendance,
   getActiveSessions,
@@ -22,8 +23,12 @@ import {
 import { getCurrentUser, getStudentDisplayName, getUserProfile, UserProfile } from '../services/auth';
 import {
   discardTemporaryCameraFile,
+  FaceScanFeedback,
+  NOT_RECOGNIZED_FEEDBACK,
   recognizeFace,
   RecognitionApiError,
+  AUTH_ERROR_CODES,
+  scanFeedbackForError,
 } from '../services/recognition';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -32,6 +37,15 @@ const OVAL_WIDTH = SCREEN_WIDTH * 0.55;
 const OVAL_HEIGHT = OVAL_WIDTH * 1.3;
 
 type CheckInState = 'idle' | 'capturing' | 'processing' | 'success' | 'not_recognized' | 'error' | 'no_session';
+
+// After this many consecutive failures, offer re-enrollment or a manual check-in.
+const MAX_FAILED_ATTEMPTS = 3;
+
+const PHOTO_REJECTED_CODES = new Set([
+  'no_face_detected',
+  'multiple_faces_detected',
+  'invalid_face_image',
+]);
 
 export default function AttendanceCheckInScreen() {
   const router = useRouter();
@@ -44,6 +58,10 @@ export default function AttendanceCheckInScreen() {
   const [activeSessions, setActiveSessions] = useState<Session[]>([]);
   const [selectedCourseId, setSelectedCourseId] = useState<string>('');
   const [loadingSession, setLoadingSession] = useState(true);
+  const [failure, setFailure] = useState<FaceScanFeedback | null>(null);
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [askedInstructor, setAskedInstructor] = useState(false);
+  const [showTips, setShowTips] = useState(true);
 
   const loadSessionData = useCallback(async () => {
     try {
@@ -111,6 +129,18 @@ export default function AttendanceCheckInScreen() {
     }
   }, [checkInState]);
 
+  const recordFailure = (feedback: FaceScanFeedback, state: 'not_recognized' | 'error') => {
+    setFailure(feedback);
+    setFailedAttempts((count) => count + 1);
+    setCheckInState(state);
+  };
+
+  const resetFailures = () => {
+    setFailure(null);
+    setFailedAttempts(0);
+    setAskedInstructor(false);
+  };
+
   const handleCheckIn = async () => {
     if (checkInState !== 'idle' && checkInState !== 'not_recognized' && checkInState !== 'error') return;
     if (!cameraRef.current) return;
@@ -151,6 +181,7 @@ export default function AttendanceCheckInScreen() {
 
     let capturedImage: string | null = null;
     try {
+      setAskedInstructor(false);
       setCheckInState('capturing');
 
       const photo = await cameraRef.current.takePictureAsync({
@@ -172,15 +203,17 @@ export default function AttendanceCheckInScreen() {
         activeSessions.find((s) => s.courseId === selectedCourseId) || activeSession;
 
       if (!sessionForCourse) {
-        setCheckInState('error');
-        Alert.alert('Error', 'Could not determine active session for selected course.');
+        recordFailure(
+          { title: 'Check-in failed', hint: 'Could not determine active session for selected course.' },
+          'error'
+        );
         return;
       }
 
       const result = await recognizeFace(capturedImage);
 
       if (!result.recognized || result.uid !== user.uid) {
-        setCheckInState('not_recognized');
+        recordFailure(NOT_RECOGNIZED_FEEDBACK, 'not_recognized');
         return;
       }
 
@@ -204,11 +237,13 @@ export default function AttendanceCheckInScreen() {
       });
 
       if (submitResult.duplicate) {
+        resetFailures();
         setCheckInState('idle');
         Alert.alert('Already Checked In', 'You have already checked in for this session.');
         return;
       }
 
+      resetFailures();
       setCheckInState('success');
 
       setTimeout(() => {
@@ -218,30 +253,22 @@ export default function AttendanceCheckInScreen() {
       if (__DEV__) {
         console.warn('Check-in error:', error?.code || error?.message || error);
       }
-      if (error instanceof RecognitionApiError) {
-        if (error.code === 'not_enrolled') {
-          setCheckInState('error');
-          Alert.alert('Face Not Enrolled', error.message, [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Enroll Now', onPress: () => router.push('/face-enrollment') },
-          ]);
-        } else if (error.code === 'invalid_face_image') {
-          setCheckInState('not_recognized');
-          Alert.alert('Face Could Not Be Verified', error.message);
-        } else if (
-          error.code === 'authentication_required' ||
-          error.code === 'student_required' ||
-          error.code === 'identity_mismatch'
-        ) {
-          setCheckInState('error');
-          Alert.alert('Verification Blocked', error.message);
-        } else {
-          setCheckInState('error');
-          Alert.alert('Recognition Unavailable', error.message);
-        }
-      } else {
+      const feedback = scanFeedbackForError(error, 'Check-in failed');
+      if (error instanceof RecognitionApiError && error.code === 'not_enrolled') {
+        setFailure(feedback);
         setCheckInState('error');
-        Alert.alert('Check-In Failed', error?.message || 'Please try again.');
+        Alert.alert('Face Not Enrolled', error.message, [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Enroll Now', onPress: () => router.push('/face-enrollment') },
+        ]);
+      } else if (error instanceof RecognitionApiError && AUTH_ERROR_CODES.has(error.code)) {
+        setFailure(feedback);
+        setCheckInState('error');
+        Alert.alert('Verification Blocked', error.message);
+      } else {
+        const photoRejected =
+          error instanceof RecognitionApiError && PHOTO_REJECTED_CODES.has(error.code);
+        recordFailure(feedback, photoRejected ? 'not_recognized' : 'error');
       }
     } finally {
       capturedImage = null;
@@ -282,6 +309,17 @@ export default function AttendanceCheckInScreen() {
   const isProcessing = checkInState === 'capturing' || checkInState === 'processing';
   const isSuccess = checkInState === 'success';
   const isNoSession = checkInState === 'no_session';
+  const isFailed = checkInState === 'not_recognized' || checkInState === 'error';
+  const showRecoveryOptions = isFailed && failedAttempts >= MAX_FAILED_ATTEMPTS;
+  const courseLabel = activeSession?.courseName || activeSession?.courseId || 'this class';
+  const feedback: FaceScanFeedback | null = !isFailed
+    ? null
+    : askedInstructor
+      ? {
+          title: 'Ask your instructor',
+          hint: `Let your instructor know face check-in isn't working for you. They can mark you present for ${courseLabel} manually.`,
+        }
+      : failure;
 
   return (
     <View style={styles.container}>
@@ -303,13 +341,26 @@ export default function AttendanceCheckInScreen() {
               {profile ? getStudentDisplayName(profile, profile.email) : ''}
             </Text>
           </View>
-          <TouchableOpacity
-            style={styles.closeButton}
-            onPress={handleClose}
-            disabled={isProcessing}
-          >
-            <Ionicons name="close" size={22} color={Colors.white} />
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            {!isNoSession && (
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => setShowTips(true)}
+                disabled={isProcessing}
+                accessibilityRole="button"
+                accessibilityLabel="Show scanning tips"
+              >
+                <Ionicons name="bulb-outline" size={20} color={Colors.white} />
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={handleClose}
+              disabled={isProcessing}
+            >
+              <Ionicons name="close" size={22} color={Colors.white} />
+            </TouchableOpacity>
+          </View>
         </SafeAreaView>
 
         {activeSessions.length > 0 && !isNoSession && (
@@ -370,15 +421,30 @@ export default function AttendanceCheckInScreen() {
               </View>
             )}
 
-            <Text
-              style={[
-                styles.statusText,
-                isSuccess && styles.statusTextSuccess,
-                (checkInState === 'not_recognized' || checkInState === 'error') && styles.statusTextError,
-              ]}
-            >
-              {statusMessage}
-            </Text>
+            {feedback ? (
+              <View style={styles.feedbackBlock}>
+                <Text style={styles.feedbackTitle}>{feedback.title}</Text>
+                <Text
+                  style={[
+                    styles.statusText,
+                    styles.feedbackHint,
+                    !askedInstructor && styles.statusTextError,
+                  ]}
+                >
+                  {feedback.hint}
+                </Text>
+              </View>
+            ) : (
+              <Text
+                style={[
+                  styles.statusText,
+                  isSuccess && styles.statusTextSuccess,
+                  isFailed && styles.statusTextError,
+                ]}
+              >
+                {statusMessage}
+              </Text>
+            )}
           </View>
         )}
 
@@ -395,6 +461,28 @@ export default function AttendanceCheckInScreen() {
               <View style={styles.successContainer}>
                 <Ionicons name="checkmark-circle" size={64} color={Colors.green} />
                 <Text style={styles.successText}>Attendance Recorded!</Text>
+              </View>
+            ) : showRecoveryOptions ? (
+              <View style={styles.recoveryActions}>
+                <TouchableOpacity
+                  style={styles.recoveryPrimaryButton}
+                  onPress={() => router.push('/face-enrollment')}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="camera-outline" size={18} color={Colors.navy} style={{ marginRight: 8 }} />
+                  <Text style={styles.recoveryPrimaryText}>Re-enroll face</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.recoverySecondaryButton}
+                  onPress={() => setAskedInstructor(true)}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="hand-left-outline" size={18} color={Colors.white} style={{ marginRight: 8 }} />
+                  <Text style={styles.recoverySecondaryText}>Ask instructor to mark me present</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={handleCheckIn} style={styles.recoveryRetryButton}>
+                  <Text style={styles.recoveryRetryText}>Try again</Text>
+                </TouchableOpacity>
               </View>
             ) : (
               <View style={styles.captureSection}>
@@ -418,6 +506,10 @@ export default function AttendanceCheckInScreen() {
             )}
           </View>
         )}
+
+        {showTips && !isNoSession && !isProcessing && !isSuccess ? (
+          <ScanTipsCard onDismiss={() => setShowTips(false)} />
+        ) : null}
       </View>
     </View>
   );
@@ -502,6 +594,10 @@ const styles = StyleSheet.create({
     fontSize: 11,
     opacity: 0.6,
     marginTop: 1,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    gap: 8,
   },
   closeButton: {
     width: 36,
@@ -631,6 +727,19 @@ const styles = StyleSheet.create({
   statusTextError: {
     color: '#FF6B6B',
   },
+  feedbackBlock: {
+    marginTop: 24,
+    alignItems: 'center',
+  },
+  feedbackTitle: {
+    color: Colors.white,
+    fontSize: 17,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  feedbackHint: {
+    marginTop: 4,
+  },
 
   noSessionContainer: {
     flex: 1,
@@ -707,6 +816,53 @@ const styles = StyleSheet.create({
   },
   captureButtonRetry: {
     borderColor: '#FF6B6B',
+  },
+  recoveryActions: {
+    width: '100%',
+    paddingHorizontal: 32,
+    alignItems: 'center',
+  },
+  recoveryPrimaryButton: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: Colors.white,
+    borderRadius: 12,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  recoveryPrimaryText: {
+    color: Colors.navy,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  recoverySecondaryButton: {
+    width: '100%',
+    maxWidth: 340,
+    borderRadius: 12,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recoverySecondaryText: {
+    color: Colors.white,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  recoveryRetryButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+  },
+  recoveryRetryText: {
+    color: Colors.white,
+    fontSize: 13,
+    textDecorationLine: 'underline',
   },
   captureButtonInner: {
     width: 56,

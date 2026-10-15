@@ -11,11 +11,14 @@ import numpy as np
 from faceroll_recognition import (
     ClassroomRecognizer,
     DetectedFaceEmbedding,
+    EnrollmentNotFoundError,
     EnrollmentReader,
     EnrollmentRecord,
     FaceRegion,
     InvalidImageError,
     MobileEnrollmentStore,
+    MultipleFacesDetectedError,
+    NoFaceDetectedError,
 )
 from faceroll_recognition.mobile_api import (
     API_VERSION,
@@ -111,7 +114,13 @@ def fake_decoder(value):
 
 def fake_embedding_generator(value):
     if value == "bad-face":
-        raise InvalidImageError("No face was detected in the image.")
+        raise NoFaceDetectedError("No face was detected in the image.")
+    if value == "two-faces":
+        raise MultipleFacesDetectedError(
+            "Exactly one face is required for this recognition operation."
+        )
+    if value == "corrupt-image":
+        raise InvalidImageError("Decoded data is not a supported image.")
     indices = {
         "front": 0,
         "left": 1,
@@ -246,8 +255,49 @@ class MobileRecognitionApiTests(unittest.TestCase):
             headers=AUTHORIZATION,
         )
         self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.get_json()["error"], "no_face_detected")
         self.assertIn("Enrollment photo 2", response.get_json()["message"])
         self.assertEqual(self.store.load("firebase-uid-123"), original)
+
+    def test_enrollment_reports_a_specific_code_for_each_rejected_photo(self):
+        cases = {
+            "bad-face": "no_face_detected",
+            "two-faces": "multiple_faces_detected",
+            "corrupt-image": "invalid_face_image",
+        }
+        for image, expected_code in cases.items():
+            with self.subTest(image=image):
+                response = self.client.post(
+                    "/enroll",
+                    json={"images": ["front", "left", image]},
+                    headers=AUTHORIZATION,
+                )
+                payload = response.get_json()
+                self.assertEqual(response.status_code, 422)
+                self.assertEqual(payload["error"], expected_code)
+                self.assertIn("Enrollment photo 3", payload["message"])
+        with self.assertRaises(EnrollmentNotFoundError):
+            self.store.load("firebase-uid-123")
+
+    def test_recognition_reports_a_specific_code_for_each_rejected_photo(self):
+        self.assertEqual(self.enroll().status_code, 200)
+        cases = {
+            "bad-face": "no_face_detected",
+            "two-faces": "multiple_faces_detected",
+            "corrupt-image": "invalid_face_image",
+        }
+        for image, expected_code in cases.items():
+            with self.subTest(image=image):
+                response = self.client.post(
+                    "/recognize",
+                    json={"image": image},
+                    headers=AUTHORIZATION,
+                )
+                payload = response.get_json()
+                self.assertEqual(response.status_code, 422)
+                self.assertEqual(payload["error"], expected_code)
+                self.assertFalse(payload["recognized"])
+                self.assertNotIn("uid", payload)
 
     def test_recognition_compares_against_the_authenticated_students_samples(self):
         self.assertEqual(self.enroll().status_code, 200)

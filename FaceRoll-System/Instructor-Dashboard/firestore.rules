@@ -146,6 +146,35 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.instructorId == request.auth.uid;
     }
 
+    // Allow only attendance metadata, never a student position or location object.
+    function hasPrivateAttendanceShape() {
+      return request.resource.data.keys().hasOnly([
+        'id', 'uid', 'userId', 'sessionId', 'courseId', 'membershipId', 'status', 'method',
+        'source', 'time', 'createdAt', 'studentName', 'displayName',
+        'matchedUser', 'recognitionIdentity', 'recognitionLabel',
+        'recognitionConfidence', 'recognitionDistance', 'locationStatus'
+      ]) && (!request.resource.data.keys().hasAny(['locationStatus'])
+        || request.resource.data.locationStatus in ['in_zone', 'outside_zone', 'not_required', 'not_checked'])
+        && (!request.resource.data.keys().hasAny(['id']) || request.resource.data.id is string)
+        && (!request.resource.data.keys().hasAny(['uid']) || request.resource.data.uid is string)
+        && (!request.resource.data.keys().hasAny(['userId']) || request.resource.data.userId is string)
+        && (!request.resource.data.keys().hasAny(['sessionId']) || request.resource.data.sessionId is string)
+        && (!request.resource.data.keys().hasAny(['courseId']) || request.resource.data.courseId is string)
+        && (!request.resource.data.keys().hasAny(['membershipId']) || request.resource.data.membershipId is string)
+        && (!request.resource.data.keys().hasAny(['status']) || request.resource.data.status is string)
+        && (!request.resource.data.keys().hasAny(['method']) || request.resource.data.method is string)
+        && (!request.resource.data.keys().hasAny(['source']) || request.resource.data.source is string)
+        && (!request.resource.data.keys().hasAny(['studentName']) || request.resource.data.studentName is string)
+        && (!request.resource.data.keys().hasAny(['displayName']) || request.resource.data.displayName is string)
+        && (!request.resource.data.keys().hasAny(['recognitionIdentity']) || request.resource.data.recognitionIdentity is string)
+        && (!request.resource.data.keys().hasAny(['recognitionLabel']) || request.resource.data.recognitionLabel is string)
+        && (!request.resource.data.keys().hasAny(['time']) || request.resource.data.time is string || request.resource.data.time is timestamp)
+        && (!request.resource.data.keys().hasAny(['createdAt']) || request.resource.data.createdAt is string || request.resource.data.createdAt is timestamp)
+        && (!request.resource.data.keys().hasAny(['matchedUser']) || request.resource.data.matchedUser is bool)
+        && (!request.resource.data.keys().hasAny(['recognitionConfidence']) || request.resource.data.recognitionConfidence is number)
+        && (!request.resource.data.keys().hasAny(['recognitionDistance']) || request.resource.data.recognitionDistance is number);
+    }
+
     match /attendance/{recordId} {
       // Reading a missing deterministic record is required by the create-only
       // attendance transaction. Existing records remain owner/instructor only.
@@ -153,12 +182,12 @@ service cloud.firestore {
         && (resource == null || resource.data.uid == request.auth.uid || isInstructorOrAdmin());
       allow list: if isSignedIn()
         && (isInstructorOrAdmin() || resource.data.uid == request.auth.uid);
-      allow create: if isValidAttendanceRecord(recordId)
+      allow create: if hasPrivateAttendanceShape() && isValidAttendanceRecord(recordId)
         && (
           isInstructorOrAdmin()
           || (isSignedIn() && request.resource.data.uid == request.auth.uid)
         );
-      allow update: if isInstructorOrAdmin() && hasNoBiometricPayload();
+      allow update: if isInstructorOrAdmin() && hasNoBiometricPayload() && hasPrivateAttendanceShape();
       allow delete: if isInstructorOrAdmin();
     }
 

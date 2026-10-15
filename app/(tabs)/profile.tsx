@@ -294,6 +294,28 @@ export default function ProfileScreen() {
             </View>
             <Ionicons name="chevron-forward" size={18} color={Colors.inputPlaceholder} />
           </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.settingRow}
+            activeOpacity={0.8}
+            onPress={() => router.push('/help')}
+          >
+            <View style={styles.settingLeft}>
+              <Ionicons
+                name="help-circle-outline"
+                size={22}
+                color={Colors.textSecondary}
+                style={styles.settingIcon}
+              />
+              <View>
+                <Text style={styles.settingLabel}>Help & FAQ</Text>
+                <Text style={styles.settingSubLabel}>
+                  Check-in, enrollment, and account help
+                </Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={Colors.inputPlaceholder} />
+          </TouchableOpacity>
         </View>
 
         <TouchableOpacity

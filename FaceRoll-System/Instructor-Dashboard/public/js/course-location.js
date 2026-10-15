@@ -16,6 +16,9 @@
     searchForm: document.getElementById('location-search-form'),
     searchInput: document.getElementById('location-search-input'),
     searchButton: document.getElementById('location-search-button'),
+    currentLocationButton: document.getElementById('current-location-button'),
+    currentLocationOptions: document.getElementById('current-location-options'),
+    currentLocationStatus: document.getElementById('current-location-status'),
     searchStatus: document.getElementById('search-status'),
     searchResults: document.getElementById('search-results'),
     mapContainer: document.getElementById('here-map'),
@@ -43,6 +46,8 @@
     behavior: null,
     searchService: null,
     marker: null,
+    currentLocationMarker: null,
+    locating: false,
     radiusCircle: null,
     mapReady: false,
     markerOffset: null,
@@ -100,6 +105,7 @@
     elements.radiusInput.disabled = !courseReady;
     elements.searchInput.disabled = !courseReady || !state.searchService;
     elements.searchButton.disabled = !courseReady || !state.searchService;
+    elements.currentLocationButton.disabled = !state.mapReady || state.locating;
     elements.locationCard.classList.toggle('is-disabled', !courseReady);
     updateSaveButton();
   }
@@ -141,8 +147,8 @@
 
     elements.address.textContent = state.location.addressLabel;
     elements.address.classList.remove('empty');
-    elements.latitude.textContent = Number(state.location.latitude).toFixed(6);
-    elements.longitude.textContent = Number(state.location.longitude).toFixed(6);
+    elements.latitude.textContent = String(state.location.latitude);
+    elements.longitude.textContent = String(state.location.longitude);
     updateSaveButton();
   }
 
@@ -414,6 +420,11 @@
     event.preventDefault();
     clearSearchResults();
     const query = String(elements.searchInput.value || '').trim();
+    elements.currentLocationOptions.classList.remove('has-results');
+    if (/^(use )?(my )?current location$/i.test(query)) {
+      showCurrentLocation();
+      return;
+    }
 
     if (!query) {
       setStatus(elements.searchStatus, 'Enter a campus building or address.', 'error');
@@ -470,6 +481,7 @@
     setToggleValue(false);
     setRadiusValue(DEFAULT_RADIUS_METERS);
     elements.searchInput.value = '';
+    elements.currentLocationOptions.classList.remove('has-results');
     clearSearchResults();
     setStatus(elements.searchStatus, '', 'info');
     showSelectedLocation();
@@ -701,6 +713,60 @@
     }
   }
 
+  function showCurrentLocation() {
+    if (!state.mapReady || state.locating) return;
+    elements.currentLocationOptions.classList.remove('has-results');
+    clearSearchResults();
+    elements.searchInput.value = 'Current location';
+    if (!window.navigator || !window.navigator.geolocation) {
+      setStatus(elements.currentLocationStatus, 'Location is unavailable in this browser. Use HTTPS or localhost, or search for an address.', 'error');
+      return;
+    }
+
+    state.locating = true;
+    elements.currentLocationButton.disabled = true;
+    elements.currentLocationButton.textContent = 'Finding your location...';
+    setStatus(elements.currentLocationStatus, 'Allow location access when your browser asks.', 'info');
+
+    function finish() {
+      state.locating = false;
+      elements.currentLocationButton.disabled = !state.mapReady;
+      elements.currentLocationButton.textContent = 'Current location';
+    }
+    function fail(error) {
+      finish();
+      const messages = {
+        1: 'Location access was denied. Allow location access in your browser’s site settings, then try again.',
+        2: 'Your current location could not be determined. Try again or search for an address.',
+        3: 'Finding your location timed out. Try again or search for an address.',
+      };
+      setStatus(elements.currentLocationStatus, messages[error && error.code] || 'Unable to show your location. Try again or search for an address.', 'error');
+    }
+
+    try {
+      window.navigator.geolocation.getCurrentPosition(function (result) {
+        try {
+          const position = { lat: result.coords.latitude, lng: result.coords.longitude };
+          if (!Number.isFinite(position.lat) || !Number.isFinite(position.lng)) throw new Error('Invalid position');
+          if (state.currentLocationMarker) state.map.removeObject(state.currentLocationMarker);
+          const icon = new window.H.map.Icon('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><circle cx="12" cy="12" r="10" fill="#2563eb" stroke="white" stroke-width="3"/></svg>', { anchor: { x: 12, y: 12 } });
+          state.currentLocationMarker = new window.H.map.Marker(position, { icon: icon });
+          state.currentLocationMarker.setData('current-location');
+          state.map.addObjects([state.currentLocationMarker]);
+          selectMapPosition(position.lat, position.lng, 'Current location', true);
+          finish();
+          const accuracy = Number.isFinite(result.coords.accuracy)
+            ? ' Estimated accuracy: ±' + result.coords.accuracy + ' meters.' : '';
+          setStatus(elements.currentLocationStatus, 'The blue dot shows your current location.' + accuracy + ' Coordinates updated. Save Classroom Location to apply.', 'success');
+        } catch (error) {
+          fail(error);
+        }
+      }, fail, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+    } catch (error) {
+      fail(error);
+    }
+  }
+
   function wireControls() {
     window.addEventListener('beforeunload', function (event) {
       if (!hasUnsavedChanges() && !state.saving) return;
@@ -725,6 +791,27 @@
     }
     elements.courseSelect.addEventListener('change', handleCourseChange);
     elements.searchForm.addEventListener('submit', handleSearch);
+    elements.currentLocationButton.addEventListener('click', showCurrentLocation);
+    function showLocationSuggestion() {
+      const query = elements.searchInput.value.trim().toLowerCase();
+      elements.currentLocationOptions.classList.toggle('has-results',
+        !query || 'current location'.startsWith(query));
+    }
+    elements.searchInput.addEventListener('focus', showLocationSuggestion);
+    elements.searchInput.addEventListener('input', showLocationSuggestion);
+    elements.searchInput.addEventListener('keydown', function (event) {
+      if (event.key === 'ArrowDown' && elements.currentLocationOptions.classList.contains('has-results')) {
+        event.preventDefault();
+        elements.currentLocationButton.focus();
+      }
+      if (event.key === 'Escape') elements.currentLocationOptions.classList.remove('has-results');
+    });
+    elements.currentLocationButton.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape') {
+        elements.searchInput.focus();
+        elements.currentLocationOptions.classList.remove('has-results');
+      }
+    });
     elements.enabledToggle.addEventListener('click', function () {
       setToggleValue(!state.enabled);
       markUnsaved('Location verification is now ' + (state.enabled ? 'enabled' : 'disabled') + '. Save to apply.');
@@ -736,6 +823,9 @@
     });
     elements.saveButton.addEventListener('click', saveLocation);
     document.addEventListener('click', function (event) {
+      if (!elements.searchForm.contains(event.target)) {
+        elements.currentLocationOptions.classList.remove('has-results');
+      }
       if (!elements.searchResults.contains(event.target) && event.target !== elements.searchInput) {
         clearSearchResults();
       }
