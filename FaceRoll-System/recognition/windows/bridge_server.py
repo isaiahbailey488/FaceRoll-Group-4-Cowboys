@@ -34,7 +34,7 @@ EMBEDDING_KEY_FILE = (
 )
 # The dashboard polls this jsonl file through /events to learn about matches.
 EVENT_LOG_PATH = SHARED_DIR / "recognition-events.jsonl"
-DOCKER_IMAGE = "faceroll-recognition:0.3.0"
+DOCKER_IMAGE = "faceroll-recognition:0.4.0"
 CONTAINER_NAME = "faceroll-recognizer-windows"
 HOST = "127.0.0.1"
 PORT = 8765
@@ -272,6 +272,8 @@ class SessionManager:
             "FACEROLL_ENROLLMENT_DIR=/data/enrollments",
             "-e",
             "FACEROLL_ROSTER_FILE=/app/shared/course-roster.json",
+            "-e",
+            "FACEROLL_FACE_POLICY_FILE=/data/enrollments/.face-privacy-policy",
             "-e",
             "FACEROLL_EMBEDDING_KEY_FILE=/run/secrets/faceroll-embedding.key",
             "-v",

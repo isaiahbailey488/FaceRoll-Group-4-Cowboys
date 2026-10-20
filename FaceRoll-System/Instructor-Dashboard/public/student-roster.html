@@ -10,6 +10,7 @@
   <meta property="og:title" content="Attendance"/>
   <link rel="stylesheet" href="./style.css">
   <link rel="stylesheet" href="./css/shared-consistency.css?v=20260917-tables">
+  <link rel="stylesheet" href="./css/course-invitations.css?v=20261015-students-invites-3">
   <style>
     .sidebar-navigation {
       width: 15rem;
@@ -273,6 +274,7 @@
                 <h2 id="inbi35f" class="attendance-panel-title">Student Roster</h2>
                 <p>View and manage students enrolled in your courses.</p>
               </div>
+              <button type="button" id="rosterInviteStudents" class="roster-invite-button" aria-haspopup="dialog" aria-controls="inviteStudentsDialog" disabled>Invite Students</button>
             </div>
             <!-- Roster filters -->
             <div class="filter-bar">
@@ -311,7 +313,41 @@
         </main>
       </div>
     </div>
+    <dialog class="invitation-dialog" id="inviteStudentsDialog" aria-labelledby="invitation-heading">
+      <div class="invitation-dialog-header">
+        <div>
+          <h2 id="invitation-heading">Invite Students</h2>
+          <p id="invitation-course-name">Choose a course to invite students.</p>
+        </div>
+        <button type="button" id="closeInvitationDialog" class="secondary-button" aria-label="Close student invitation window">Close</button>
+      </div>
+      <div class="invitation-dialog-body">
+        <label for="invitation-course">Course</label>
+        <select id="invitation-course" disabled></select>
+        <p>Reopen this window anytime to view the same QR code. Changing its expiration keeps previously shared copies working.</p>
+        <label for="invitation-expiration">Invitation expires</label>
+        <select id="invitation-expiration" aria-describedby="invitation-expiration-help" disabled>
+          <option value="2h">In 2 hours</option>
+          <option value="24h" selected>In 24 hours</option>
+          <option value="never">Never</option>
+        </select>
+        <p id="invitation-expiration-help">Timed options start when you create, save, or renew the invitation. Viewing it does not restart the timer.</p>
+        <div class="invitation-actions">
+          <button type="button" id="invitation-create" class="primary-button" disabled>Create QR Code</button>
+          <button type="button" id="invitation-update_expiration" class="primary-button" disabled hidden>Save Expiration</button>
+          <button type="button" id="invitation-renew" class="primary-button" disabled hidden>Renew Invitation</button>
+          <button type="button" id="invitation-replace" class="secondary-button" disabled>Replace QR Code</button>
+          <button type="button" id="invitation-revoke" class="secondary-button" disabled>Disable Invitation</button>
+          <button type="button" id="invitation-refresh" class="secondary-button" disabled>View QR Code</button>
+        </div>
+        <p id="invitation-status" role="status" aria-live="polite"></p>
+        <div class="invitation-qr-shell">
+          <canvas id="invitation-qr" hidden role="img" aria-label="Course invitation QR code"></canvas>
+        </div>
+      </div>
+    </dialog>
     <!-- Firebase and roster scripts -->
+    <script defer src="./js/runtime-config.js?v=20261015-students-invites-3"></script>
     <script defer src="/__/firebase/11.6.0/firebase-app-compat.js"></script>
     <script defer src="/__/firebase/11.6.0/firebase-firestore-compat.js"></script>
     <script defer src="/__/firebase/11.6.0/firebase-auth-compat.js"></script>
@@ -322,5 +358,6 @@
     <script defer src="./js/sidebar-user.js?v=20261005-auth-cycle-1"></script>
     <script defer src="./js/course-roster-sync.js?v=20261001-roster-1"></script>
     <script defer src="./js/student-screens.js?v=20261005-resilience-1"></script>
+    <script type="module" src="./js/course-invitations.mjs?v=20261015-students-invites-3"></script>
   </body>
 </html>

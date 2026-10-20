@@ -85,6 +85,54 @@ class CourseJoinTests(unittest.TestCase):
         self.assertEqual(self.db.data['enrollments', '6_COURSE_student']['createdAt'], created)
         self.assertEqual(self.db.data['enrollments', '6_COURSE_student']['status'], 'active')
 
+    def test_never_expiring_invitation_joins_in_future_and_can_be_disabled(self):
+        result = mutate_invitation('teacher', self.db, self.db.transact, 'COURSE', 'update_expiration',
+                                   expiration='never', now=self.now)
+        self.assertEqual(result['qrPayload']['token'], self.token)
+        self.now += timedelta(days=365)
+        self.assertEqual(self.redeem()['status'], 'active')
+        enrollment = copy.deepcopy(self.db.data['enrollments', '6_COURSE_student'])
+        mutate_invitation('teacher', self.db, self.db.transact, 'COURSE', 'revoke', now=self.now)
+        with self.assertRaises(InvitationError):
+            self.redeem()
+        self.assertEqual(self.db.data['enrollments', '6_COURSE_student'], enrollment)
+
+    def test_expired_invitation_renewal_reactivates_original_shared_code(self):
+        self.now += timedelta(hours=24)
+        with self.assertRaises(InvitationError):
+            self.redeem()
+        renewed = mutate_invitation('teacher', self.db, self.db.transact, 'COURSE', 'renew',
+                                    expiration='2h', now=self.now)
+        self.assertEqual(renewed['qrPayload']['token'], self.token)
+        self.assertEqual(self.redeem()['status'], 'active')
+        self.now += timedelta(hours=2)
+        with self.assertRaises(InvitationError):
+            self.redeem()
+
+    def test_missing_or_malformed_expiration_does_not_mean_never(self):
+        digest = self.db.data['courseInvitationHeads', 'COURSE']['tokenHash']
+        original = copy.deepcopy(self.db.data['courseInvitations', digest])
+        for expiration, expires_at in [('24h', None), ('never', 'bad'), ('never', original['expiresAt']),
+                                       ('24h', '2026-09-24T12:00:00')]:
+            self.db.data['courseInvitations', digest] = {**original, 'expiration': expiration, 'expiresAt': expires_at}
+            with self.assertRaises(InvitationError):
+                self.redeem()
+        self.db.data['courseInvitations', digest] = {**original, 'expiration': 'never'}
+        del self.db.data['courseInvitations', digest]['expiresAt']
+        with self.assertRaises(InvitationError):
+            self.redeem()
+
+    def test_replacement_preserves_existing_enrollment_and_legacy_codes_still_join(self):
+        head = self.db.data['courseInvitationHeads', 'COURSE']
+        head.pop('token')
+        self.db.data['courseInvitations', head['tokenHash']].pop('expiration')
+        self.redeem()
+        enrollment = copy.deepcopy(self.db.data['enrollments', '6_COURSE_student'])
+        mutate_invitation('teacher', self.db, self.db.transact, 'COURSE', 'replace', now=self.now)
+        self.assertEqual(self.db.data['enrollments', '6_COURSE_student'], enrollment)
+        with self.assertRaises(InvitationError):
+            self.redeem()
+
     def test_ownership_change_and_ambiguous_course_rejected(self):
         course = self.db.data['courses', 'different-document-id']
         course['instructorId'] = 'other'

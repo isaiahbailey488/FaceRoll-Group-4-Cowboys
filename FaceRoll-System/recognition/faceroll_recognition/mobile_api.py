@@ -27,6 +27,7 @@ from .errors import (
 )
 from .schemas import ENROLLMENT_SAMPLE_COUNT, EnrollmentRecord
 from .storage import MobileEnrollmentStore
+from .face_privacy import FacePrivacyError, FacePrivacyService, FirebaseFaceProfiles, consent_revision
 
 
 API_VERSION = "1.0.0"
@@ -52,6 +53,9 @@ class AuthenticatedStudent:
     uid: str
     student_id: str | None = None
     display_name: str | None = None
+    opted_out: bool = False
+    consent_revision: int = 0
+    deletion_pending: bool = False
 
 
 def _firebase_project_id() -> str | None:
@@ -157,6 +161,9 @@ class FirebaseStudentTokenVerifier:
                 uid=uid.strip(),
                 student_id=student_id,
                 display_name=display_name,
+                opted_out=profile.get('optOutFlag', False) is not False,
+                consent_revision=consent_revision(profile),
+                deletion_pending=profile.get('faceDataDeletionStatus') == 'pending',
             )
         except (AuthenticationError, StudentAuthorizationError):
             raise
@@ -266,6 +273,7 @@ def create_mobile_app(
     embedding_generator: Callable[[Any], Any] = generate_single_embedding,
     max_request_bytes: int = DEFAULT_MAX_REQUEST_BYTES,
     max_image_characters: int = DEFAULT_MAX_IMAGE_CHARACTERS,
+    privacy_service: FacePrivacyService | None = None,
 ) -> Flask:
     """Create the mobile API with replaceable boundaries for focused testing."""
 
@@ -278,11 +286,16 @@ def create_mobile_app(
         )
         enrollment_store = MobileEnrollmentStore(directory)
     verifier = token_verifier or FirebaseStudentTokenVerifier()
+    owns_privacy_service = privacy_service is None
+    privacy = privacy_service or FacePrivacyService(enrollment_store, FirebaseFaceProfiles())
 
     app = Flask(__name__)
     from .invitations import invitation_blueprint
     app.register_blueprint(invitation_blueprint())
     app.config["MAX_CONTENT_LENGTH"] = max_request_bytes
+    app.extensions['face_privacy'] = privacy
+    if owns_privacy_service:
+        privacy.start()
     request_logging = os.getenv("FACEROLL_REQUEST_LOGGING", "").lower() in {
         "1",
         "true",
@@ -332,6 +345,12 @@ def create_mobile_app(
                 authentication_started_at = time.monotonic()
                 log_request_stage("authentication_started", path=request.path)
                 student = verifier.verify(_bearer_token())
+                if request.path in ('/enroll', '/recognize'):
+                    if student.opted_out:
+                        raise FacePrivacyError()
+                    if student.deletion_pending:
+                        raise FacePrivacyError('face_deletion_pending')
+                    privacy.check(student.uid, student.consent_revision)
                 log_request_stage(
                     "authentication_completed",
                     path=request.path,
@@ -345,6 +364,10 @@ def create_mobile_app(
                 return _error_response(403, "student_required", str(error))
             except DependencyUnavailableError as error:
                 return _error_response(503, "authentication_unavailable", str(error))
+            except FacePrivacyError as error:
+                return _error_response(403, error.code, 'Facial recognition is disabled or your preference changed.')
+            except Exception:
+                return _error_response(503, 'face_preference_unavailable', 'Face preferences could not be verified.')
             return handler(student, *args, **kwargs)
 
         return wrapped
@@ -387,8 +410,10 @@ def create_mobile_app(
                 )
 
             vectors = []
+            privacy.begin_enrollment(student.uid, student.consent_revision)
             log_request_stage("enrollment_payload_validated", sample_count=len(images))
             for sample_number, value in enumerate(images, start=1):
+                privacy.check(student.uid, student.consent_revision)
                 sample_started_at = time.monotonic()
                 log_request_stage(
                     "embedding_started",
@@ -421,10 +446,7 @@ def create_mobile_app(
                 display_name=student.display_name,
                 vectors=vectors,
             )
-            enrollment_store.save_mobile_enrollment(
-                record,
-                authenticated_uid=student.uid,
-            )
+            privacy.save_enrollment(record, student.consent_revision)
             log_request_stage(
                 "enrollment_saved",
                 sample_count=len(record.embeddings),
@@ -441,6 +463,8 @@ def create_mobile_app(
             )
         except RequestEntityTooLarge:
             raise
+        except FacePrivacyError as error:
+            return _error_response(403, error.code, 'Facial recognition is disabled or your preference changed.')
         except ValueError as error:
             return _error_response(400, "invalid_request", str(error))
         except InvalidImageError as error:
@@ -461,6 +485,7 @@ def create_mobile_app(
     @student_required
     def recognize(student: AuthenticatedStudent):
         try:
+            privacy.check(student.uid, student.consent_revision, existing=True)
             data = _json_object()
             encoded = _image_string(
                 data.get("image"), max_characters=max_image_characters
@@ -472,6 +497,7 @@ def create_mobile_app(
             finally:
                 del decoded
             result = verify_embedding(query_vector, record.enrolled_vectors)
+            privacy.check(student.uid, student.consent_revision, existing=True)
             return jsonify(
                 {
                     "success": True,
@@ -485,6 +511,8 @@ def create_mobile_app(
             )
         except RequestEntityTooLarge:
             raise
+        except FacePrivacyError as error:
+            return _error_response(403, error.code, 'Facial recognition is disabled or your preference changed.', recognized=False)
         except ValueError as error:
             return _error_response(400, "invalid_request", str(error), recognized=False)
         except EnrollmentNotFoundError as error:
@@ -510,11 +538,8 @@ def create_mobile_app(
     @student_required
     def delete_enrollment(student: AuthenticatedStudent):
         try:
-            deleted = enrollment_store.delete_enrollment(
-                student.uid,
-                authenticated_uid=student.uid,
-            )
-            if not deleted:
+            deleted, deletion_status = privacy.delete(student.uid)
+            if not deleted and deletion_status not in ('pending', 'deleted') and not student.opted_out:
                 return _error_response(
                     404,
                     "not_enrolled",
@@ -525,6 +550,7 @@ def create_mobile_app(
                     "success": True,
                     "uid": student.uid,
                     "message": "Face enrollment deleted successfully.",
+                    "deletionStatus": deletion_status,
                 }
             )
         except StorageError as error:

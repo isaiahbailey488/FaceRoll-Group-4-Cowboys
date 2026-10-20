@@ -31,6 +31,9 @@ from faceroll_recognition.mobile_api import (
 )
 
 
+from faceroll_recognition.face_privacy import FacePrivacyService
+from .privacy_fakes import MemoryFaceProfiles
+
 AUTHORIZATION = {"Authorization": "Bearer valid-token"}
 TEST_KEY = b"\x22" * 32
 
@@ -138,8 +141,14 @@ class MobileRecognitionApiTests(unittest.TestCase):
         self.store = MobileEnrollmentStore(
             self.storage_directory, encryption_key=TEST_KEY
         )
+        self.profiles = MemoryFaceProfiles({
+            'firebase-uid-123': {'role': 'student', 'optOutFlag': False},
+            'different-student': {'role': 'student', 'optOutFlag': False},
+        })
+        self.privacy = FacePrivacyService(self.store, self.profiles, server_id='test-server')
         self.app = create_mobile_app(
             enrollment_store=self.store,
+            privacy_service=self.privacy,
             token_verifier=FakeTokenVerifier(),
             image_decoder=fake_decoder,
             embedding_generator=fake_embedding_generator,
@@ -183,7 +192,7 @@ class MobileRecognitionApiTests(unittest.TestCase):
             headers={"Authorization": "Bearer invalid-token"},
         )
         self.assertEqual(response.status_code, 401)
-        self.assertFalse(self.storage_directory.exists())
+        self.assertEqual(list(self.storage_directory.glob("*.json")), [])
 
     def test_non_student_account_is_rejected(self):
         response = self.client.post(
@@ -201,7 +210,7 @@ class MobileRecognitionApiTests(unittest.TestCase):
             )
             self.assertEqual(response.status_code, 400)
             self.assertIn("exactly 3", response.get_json()["message"])
-        self.assertFalse(self.storage_directory.exists())
+        self.assertEqual(list(self.storage_directory.glob("*.json")), [])
 
     def test_enrollment_identity_comes_from_verified_firebase_data(self):
         response = self.enroll()
@@ -222,7 +231,7 @@ class MobileRecognitionApiTests(unittest.TestCase):
             )
             self.assertEqual(response.status_code, 400)
             self.assertIn("Firebase token", response.get_json()["message"])
-        self.assertFalse(self.storage_directory.exists())
+        self.assertEqual(list(self.storage_directory.glob("*.json")), [])
 
     def test_raw_images_are_not_written_to_the_enrollment_file(self):
         self.assertEqual(self.enroll().status_code, 200)
@@ -375,6 +384,7 @@ class MobileRecognitionApiTests(unittest.TestCase):
     def test_request_size_limit_has_a_controlled_error(self):
         limited_app = create_mobile_app(
             enrollment_store=self.store,
+            privacy_service=self.privacy,
             token_verifier=FakeTokenVerifier(),
             image_decoder=fake_decoder,
             embedding_generator=fake_embedding_generator,

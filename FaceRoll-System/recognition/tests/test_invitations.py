@@ -1,7 +1,7 @@
 import copy
 import hashlib
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 from flask import Flask
@@ -93,18 +93,99 @@ class InvitationTests(unittest.TestCase):
         self.db = Store()
         self.now = datetime(2026, 9, 24, 12, tzinfo=timezone.utc)
 
-    def mutate(self, action='create', uid='teacher', course='COURSE'):
-        return mutate_invitation(uid, self.db, self.db.transact, course, action, now=self.now)
+    def mutate(self, action='create', uid='teacher', course='COURSE', **kwargs):
+        return mutate_invitation(uid, self.db, self.db.transact, course, action, now=self.now, **kwargs)
 
-    def test_create_hash_only_and_contract(self):
+    def test_create_hash_index_and_private_reopening_token(self):
         result = self.mutate()
         token = result['qrPayload']['token']
         self.assertRegex(token, r'^[a-f0-9]{64}$')
         digest = hashlib.sha256(token.encode()).hexdigest()
         record = self.db.data['courseInvitations', digest]
-        self.assertEqual(set(record), {'schemaVersion', 'courseId', 'createdBy', 'tokenHash', 'status', 'createdAt', 'updatedAt', 'expiresAt'})
+        self.assertEqual(set(record), {'schemaVersion', 'courseId', 'createdBy', 'tokenHash', 'status', 'createdAt', 'updatedAt', 'expiresAt', 'expiration'})
         self.assertEqual(record['expiresAt'], '2026-09-25T12:00:00.000Z')
-        self.assertNotIn(token, str(self.db.data))
+        self.assertNotIn(token, str(record))
+        self.assertEqual(self.db.data['courseInvitationHeads', 'COURSE']['token'], token)
+        self.assertEqual(result['status'], 'active')
+        self.assertTrue(result['canReopen'])
+
+    def test_reopening_from_persisted_store_preserves_token_expiry_and_all_records(self):
+        created = self.mutate()
+        self.now += timedelta(hours=1)
+        # A new request with no browser state needs only persisted server data.
+        before = copy.deepcopy(self.db.data)
+        reopened = self.mutate('view')
+        self.assertEqual(reopened, created)
+        self.assertEqual(self.db.data, before)
+
+    def test_empty_view_does_not_create_invitation(self):
+        before = copy.deepcopy(self.db.data)
+        self.assertEqual(self.mutate('view')['status'], 'none')
+        self.assertEqual(self.db.data, before)
+
+    def test_short_expiry_update_and_renew_keep_same_qr_and_membership(self):
+        created = self.mutate(expiration='2h')
+        self.assertEqual(created['expiresAt'], '2026-09-24T14:00:00.000Z')
+        self.db.data['enrollments', 'existing'] = {'status': 'active', 'courseId': 'COURSE'}
+        head = copy.deepcopy(self.db.data['courseInvitationHeads', 'COURSE'])
+        self.now += timedelta(hours=2)
+        expired = self.mutate('view')
+        self.assertEqual(expired['status'], 'expired')
+        self.assertIsNone(expired['qrPayload'])
+        with self.assertRaises(InvitationError) as error:
+            self.mutate('update_expiration', expiration='never')
+        self.assertEqual(error.exception.code, 'invitation_expired')
+        renewed = self.mutate('renew', expiration='never')
+        self.assertEqual(renewed['qrPayload'], created['qrPayload'])
+        self.assertIsNone(renewed['expiresAt'])
+        self.assertEqual(renewed['status'], 'active')
+        self.now += timedelta(days=365)
+        self.assertEqual(self.mutate('view'), renewed)
+        updated = self.mutate('update_expiration', expiration='24h')
+        self.assertEqual(updated['qrPayload'], created['qrPayload'])
+        self.assertEqual(updated['expiresAt'], '2027-09-25T14:00:00.000Z')
+        self.assertEqual(self.db.data['courseInvitationHeads', 'COURSE'], head)
+        self.assertEqual(self.db.data['enrollments', 'existing']['status'], 'active')
+        with self.assertRaises(InvitationError) as error:
+            self.mutate('renew', expiration='2h')
+        self.assertEqual(error.exception.code, 'invitation_not_expired')
+
+    def test_legacy_invitation_is_not_silently_replaced(self):
+        created = self.mutate()
+        head = self.db.data['courseInvitationHeads', 'COURSE']
+        head.pop('token')
+        self.db.data['courseInvitations', head['tokenHash']].pop('expiration')
+        before = copy.deepcopy(self.db.data)
+        result = self.mutate('view')
+        self.assertFalse(result['canReopen'])
+        self.assertIsNone(result['qrPayload'])
+        self.assertEqual(result['status'], 'active')
+        self.assertEqual(self.db.data, before)
+        with self.assertRaises(InvitationError):
+            self.mutate('update_expiration', expiration='never')
+        replacement = self.mutate('replace')
+        self.assertNotEqual(replacement['qrPayload'], created['qrPayload'])
+        self.assertTrue(self.mutate('view')['canReopen'])
+
+    def test_mismatched_saved_token_is_never_returned(self):
+        self.mutate()
+        self.db.data['courseInvitationHeads', 'COURSE']['token'] = 'f' * 64
+        viewed = self.mutate('view')
+        self.assertFalse(viewed['canReopen'])
+        self.assertIsNone(viewed['qrPayload'])
+
+    def test_invalid_expirations_and_failed_update_preserve_state(self):
+        self.mutate()
+        before = copy.deepcopy(self.db.data)
+        for expiration in [None, '', '1h', 2, True, [], {}]:
+            with self.assertRaises(InvitationError) as error:
+                self.mutate('update_expiration', expiration=expiration)
+            self.assertEqual(error.exception.code, 'invalid_expiration')
+            self.assertEqual(self.db.data, before)
+        self.db.fail_write = True
+        with self.assertRaises(RuntimeError):
+            self.mutate('update_expiration', expiration='never')
+        self.assertEqual(self.db.data, before)
 
     def test_duplicate_create_does_not_change_existing_invitation(self):
         self.mutate()
@@ -133,7 +214,7 @@ class InvitationTests(unittest.TestCase):
         for role in ['student', 'instructor', 'administrator']:
             self.db.data['users', 'outsider'] = {'role': role}
             before = copy.deepcopy(self.db.data)
-            for action in ['create', 'replace', 'revoke']:
+            for action in ['view', 'create', 'replace', 'revoke', 'update_expiration', 'renew']:
                 with self.assertRaises(InvitationError) as error:
                     self.mutate(action, uid='outsider')
                 self.assertEqual(error.exception.status, 403)
@@ -204,6 +285,39 @@ class InvitationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertNotIn('Storage failure', response.get_data(as_text=True))
 
+    def test_http_owner_only_reopening_and_expiration_contract(self):
+        self.db.data['users', 'other'] = {'role': 'instructor'}
+        self.db.data['users', 'student'] = {'role': 'student'}
+        def boundary(token):
+            return token, self.db, self.db.transact
+        app = Flask(__name__)
+        app.register_blueprint(invitation_blueprint(boundary))
+        client = app.test_client()
+        url = '/courses/COURSE/invitations'
+        headers = {'Authorization': 'Bearer teacher'}
+        self.assertEqual(client.get(url).status_code, 401)
+        for uid in ['other', 'student']:
+            self.assertEqual(client.get(url, headers={'Authorization': 'Bearer ' + uid}).status_code, 403)
+        self.assertEqual(client.get(url, headers=headers).json['status'], 'none')
+        created = client.post(url, headers=headers, json={'action': 'create', 'expiration': 'never'})
+        self.assertEqual(created.status_code, 200)
+        before = copy.deepcopy(self.db.data)
+        reopened = client.get(url, headers=headers)
+        self.assertEqual(reopened.json, created.json)
+        self.assertEqual(reopened.headers['Cache-Control'], 'no-store')
+        self.assertEqual(self.db.data, before)
+        for payload in [{'action': 'view'}, {'action': 'update_expiration'}, {'action': 'renew'},
+                        {'action': 'revoke', 'expiration': 'never'},
+                        {'action': 'update_expiration', 'expiration': None},
+                        {'action': 'update_expiration', 'expiration': 'never', 'uid': 'teacher'}]:
+            self.assertEqual(client.post(url, headers=headers, json=payload).status_code, 400)
+        updated = client.post(url, headers=headers, json={'action': 'update_expiration', 'expiration': '2h'})
+        self.assertEqual(updated.status_code, 200)
+        self.assertEqual(updated.json['qrPayload'], created.json['qrPayload'])
+        self.assertIsNotNone(updated.json['expiresAt'])
+        client.post(url, headers=headers, json={'action': 'revoke'})
+        self.assertEqual(client.get(url, headers=headers).json['status'], 'none')
+
     def test_firebase_boundary_verifies_revocation_and_uses_token_identity(self):
         with patch('firebase_admin.get_app'), \
              patch('firebase_admin.auth.verify_id_token', return_value={'uid': 'teacher'}) as verify, \
@@ -227,9 +341,28 @@ class InvitationTests(unittest.TestCase):
             response = client.options(url, headers={'Origin': 'https://dashboard.example'})
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.headers['Access-Control-Allow-Origin'], 'https://dashboard.example')
+            self.assertIn('GET', response.headers['Access-Control-Allow-Methods'])
+            self.assertEqual(client.get(url, headers={'Origin': 'https://untrusted.example'}).status_code, 403)
             response = client.options(url, headers={'Origin': 'https://untrusted.example'})
             self.assertEqual(response.status_code, 403)
             self.assertNotIn('Access-Control-Allow-Origin', response.headers)
+
+    def test_configured_demo_network_origin_supports_authenticated_get_preflight(self):
+        app = Flask(__name__)
+        app.register_blueprint(invitation_blueprint())
+        client = app.test_client()
+        origin = 'http://192.168.1.71:5002'
+        with patch.dict('os.environ', {'FACEROLL_DASHBOARD_ORIGINS': origin}, clear=True):
+            response = client.options('/courses/COURSE/invitations', headers={
+                'Origin': origin, 'Access-Control-Request-Method': 'GET',
+                'Access-Control-Request-Headers': 'authorization',
+            })
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.headers['Access-Control-Allow-Origin'], origin)
+            self.assertIn('GET', response.headers['Access-Control-Allow-Methods'])
+            self.assertEqual(client.options('/courses/COURSE/invitations', headers={
+                'Origin': 'http://192.168.1.72:5002',
+            }).status_code, 403)
 
 
 if __name__ == '__main__':

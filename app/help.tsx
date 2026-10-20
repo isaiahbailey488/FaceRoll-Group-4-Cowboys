@@ -90,7 +90,7 @@ const HELP_SECTIONS: HelpSection[] = [
       {
         question: 'Can I opt out of facial recognition?',
         answer:
-          'Yes. In Profile & Settings, turn on "Opt Out of Facial Recognition." Your instructor will then mark your attendance manually, and you won\'t be able to check in through the app.',
+          'Yes. In Profile & Settings, turn on "Opt Out of Facial Recognition." This disables facial recognition and requests permanent deletion of saved embeddings. The app shows whether deletion is complete or pending. Enabling it again requires fresh enrollment. Location-based check-in is still under development.',
       },
       {
         question: 'How do I change my password?',

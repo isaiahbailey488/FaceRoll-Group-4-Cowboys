@@ -66,6 +66,19 @@ test('invitation requires expiration after creation; revocation is a valid store
   assert.throws(() => contracts.validateInvitation({ ...invitation, status: 'expired' }), TypeError);
 });
 
+test('invitation accepts explicit duration choices and requires an explicit never marker for null expiry', () => {
+  for (const expiration of ['2h', '24h']) {
+    contracts.validateInvitation({ ...invitation, expiration });
+    assert.throws(() => contracts.validateInvitation({ ...invitation, expiration, expiresAt: null }), TypeError);
+  }
+  contracts.validateInvitation({ ...invitation, expiration: 'never', expiresAt: null });
+  assert.throws(() => contracts.validateInvitation({ ...invitation, expiration: 'never' }), TypeError);
+  assert.throws(() => contracts.validateInvitation({ ...invitation, expiresAt: null }), TypeError);
+  for (const expiration of ['', null, 2, true, '1h', [], {}]) {
+    assert.throws(() => contracts.validateInvitation({ ...invitation, expiration }), TypeError);
+  }
+});
+
 test('token and hash formats reject malformed values and raw tokens cannot enter stored invitations', () => {
   for (const token of ['', 'a'.repeat(63), 'g'.repeat(64), 123]) {
     assert.throws(() => contracts.validateQrPayload({ ...qr, token }), TypeError);

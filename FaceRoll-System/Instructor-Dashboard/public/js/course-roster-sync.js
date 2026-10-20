@@ -29,6 +29,18 @@
     return Array.from(uids).sort();
   }
 
+  function permitsFacialRecognition(user) {
+    return Boolean(user) && user.optOutFlag !== true &&
+      user.faceDataDeletionStatus !== 'pending' &&
+      (!(user.faceConsentRevision > 0) || user.faceEnrolled === true);
+  }
+
+  function facialRosterUids(memberships, courseId, users) {
+    const eligible = new Set((users || []).filter(permitsFacialRecognition)
+      .map(user => String(user.id || user.uid || '')));
+    return activeRosterUids(memberships, courseId).filter(uid => eligible.has(uid));
+  }
+
   function rosterSignature(uids) {
     return (Array.isArray(uids) ? uids : []).slice().sort().join('\u0000');
   }
@@ -133,6 +145,8 @@
 
   return {
     activeRosterUids,
+    facialRosterUids,
+    permitsFacialRecognition,
     rosterSignature,
     membershipId,
     processBridgeEvents,

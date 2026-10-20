@@ -40,15 +40,47 @@ def firebase_boundary(token):
     return uid, client, transact
 
 
-def mutate_invitation(uid, client, transact, course_id, action, *, now=None):
+def invitation_expiration(record):
+    """Only an explicit never setting permits a missing expiration timestamp."""
+    if 'expiration' in record and record['expiration'] not in ('2h', '24h', 'never'):
+        raise InvitationError(409, 'invalid_invitation_state')
+    if record.get('expiration') == 'never' and record.get('expiresAt', 'missing') is None:
+        return None
+    try:
+        expiration = datetime.fromisoformat(record['expiresAt'].replace('Z', '+00:00'))
+        if expiration.tzinfo is None or record.get('expiration') == 'never':
+            raise ValueError('Invalid expiration')
+        return expiration
+    except (KeyError, AttributeError, TypeError, ValueError):
+        raise InvitationError(409, 'invalid_invitation_state') from None
+
+
+def invitation_result(course_id, head, record, instant):
+    expiration = invitation_expiration(record)
+    token = head.get('token')
+    recoverable = (isinstance(token, str) and re.fullmatch(r'[a-f0-9]{64}', token) is not None
+                   and hashlib.sha256(token.encode()).hexdigest() == record.get('tokenHash'))
+    expired = expiration is not None and instant >= expiration
+    return dict(success=True, courseId=course_id, status='expired' if expired else 'active',
+                expiresAt=record['expiresAt'], expiration=record.get('expiration', '24h'),
+                canReopen=recoverable,
+                qrPayload=dict(schemaVersion=1, type='course-invitation', token=token)
+                if recoverable and not expired else None)
+
+
+def mutate_invitation(uid, client, transact, course_id, action, *, expiration='24h', now=None):
     if not isinstance(course_id, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,200}', course_id):
         raise InvitationError(400, 'invalid_course_id')
-    if action not in ('create', 'replace', 'revoke'):
+    if action not in ('view', 'create', 'replace', 'revoke', 'update_expiration', 'renew'):
         raise InvitationError(400, 'invalid_action')
+    if not isinstance(expiration, str) or expiration not in ('2h', '24h', 'never'):
+        raise InvitationError(400, 'invalid_expiration')
     instant = now or datetime.now(timezone.utc)
     stamp = instant.isoformat(timespec='milliseconds').replace('+00:00', 'Z')
-    expires = (instant + timedelta(hours=24)).isoformat(timespec='milliseconds').replace('+00:00', 'Z')
-    token = secrets.token_hex(32) if action != 'revoke' else None
+    expires = (None if expiration == 'never' else
+               (instant + timedelta(hours=2 if expiration == '2h' else 24))
+               .isoformat(timespec='milliseconds').replace('+00:00', 'Z'))
+    token = secrets.token_hex(32) if action in ('create', 'replace') else None
     digest = hashlib.sha256(token.encode()).hexdigest() if token else None
     head_ref = client.collection('courseInvitationHeads').document(course_id)
 
@@ -68,8 +100,28 @@ def mutate_invitation(uid, client, transact, course_id, action, *, now=None):
         old_hash = head.get('tokenHash')
         old_ref = client.collection('courseInvitations').document(old_hash) if old_hash else None
         old = old_ref.get(transaction=tx).to_dict() if old_ref else None
-        if old_hash and (not old or old.get('courseId') != course_id):
+        if old_hash and (not old or old.get('courseId') != course_id
+                         or old.get('tokenHash') != old_hash or old.get('schemaVersion') != 1
+                         or old.get('createdBy') != uid or old.get('status') != 'active'):
             raise InvitationError(409, 'invalid_invitation_state')
+        if action == 'view':
+            if not old:
+                return dict(success=True, courseId=course_id, status='none', qrPayload=None,
+                            expiresAt=None, expiration='24h', canReopen=False)
+            return invitation_result(course_id, head, old, instant)
+        if action in ('update_expiration', 'renew'):
+            if not old:
+                raise InvitationError(409, 'invitation_unavailable')
+            current = invitation_result(course_id, head, old, instant)
+            if not current['canReopen']:
+                raise InvitationError(409, 'invitation_not_recoverable')
+            if action == 'update_expiration' and current['status'] == 'expired':
+                raise InvitationError(409, 'invitation_expired')
+            if action == 'renew' and current['status'] != 'expired':
+                raise InvitationError(409, 'invitation_not_expired')
+            changes = dict(expiresAt=expires, expiration=expiration, updatedAt=stamp)
+            tx.update(old_ref, changes)
+            return invitation_result(course_id, head, {**old, **changes}, instant)
         if action == 'create' and old_hash:
             raise InvitationError(409, 'invitation_exists')
         new_ref = client.collection('courseInvitations').document(digest) if digest else None
@@ -82,11 +134,13 @@ def mutate_invitation(uid, client, transact, course_id, action, *, now=None):
             return {'success': True, 'courseId': course_id, 'revoked': bool(old_hash)}
         record = dict(schemaVersion=1, courseId=course_id, createdBy=uid,
                       tokenHash=digest, status='active', createdAt=stamp,
-                      updatedAt=stamp, expiresAt=expires)
+                      updatedAt=stamp, expiresAt=expires, expiration=expiration)
         tx.create(new_ref, record)
-        tx.set(head_ref, dict(schemaVersion=1, courseId=course_id, tokenHash=digest))
-        return {'success': True, 'courseId': course_id, 'expiresAt': expires,
-                'qrPayload': dict(schemaVersion=1, type='course-invitation', token=token)}
+        # This collection denies all client access. Only the owner-authorized API
+        # returns the durable token, allowing the same QR to reopen on any device.
+        head = dict(schemaVersion=1, courseId=course_id, tokenHash=digest, token=token)
+        tx.set(head_ref, head)
+        return invitation_result(course_id, head, record, instant)
 
     return transact(operation)
 
@@ -110,10 +164,10 @@ def redeem_invitation(uid, client, transact, token, *, join=False, clock=None):
                 or not re.fullmatch(r'[A-Za-z0-9_-]{1,200}', course_id)):
             raise InvitationError(404, 'invitation_unavailable')
         try:
-            expiration = datetime.fromisoformat(invitation['expiresAt'].replace('Z', '+00:00'))
-            if expiration.tzinfo is None or current_time() >= expiration:
-                raise ValueError('Expired')
-        except (KeyError, AttributeError, TypeError, ValueError):
+            expiration = invitation_expiration(invitation)
+            if expiration is not None and current_time() >= expiration:
+                raise InvitationError(404, 'invitation_unavailable')
+        except InvitationError:
             raise InvitationError(404, 'invitation_unavailable') from None
         head = client.collection('courseInvitationHeads').document(course_id).get(transaction=tx).to_dict() or {}
         if head.get('tokenHash') != digest:
@@ -146,7 +200,7 @@ def redeem_invitation(uid, client, transact, token, *, join=False, clock=None):
             if not duplicate:
                 # Recheck expiry just before writing; retries re-read all authorization state.
                 instant = current_time()
-                if instant >= expiration:
+                if expiration is not None and instant >= expiration:
                     raise InvitationError(404, 'invitation_unavailable')
                 stamp = instant.isoformat(timespec='milliseconds').replace('+00:00', 'Z')
                 if existing:
@@ -275,24 +329,34 @@ def invitation_blueprint(boundary=None):
         if origin and response.status_code != 403:
             response.headers['Access-Control-Allow-Origin'] = origin
             response.headers['Vary'] = 'Origin'
-            response.headers['Access-Control-Allow-Methods'] = 'POST, DELETE, OPTIONS'
+            response.headers['Access-Control-Allow-Methods'] = 'GET, POST, DELETE, OPTIONS'
             response.headers['Access-Control-Allow-Headers'] = 'Authorization, Content-Type'
         response.headers['Cache-Control'] = 'no-store'
         return response
 
-    @api.post('/courses/<course_id>/invitations')
+    @api.route('/courses/<course_id>/invitations', methods=['GET', 'POST'])
     def manage(course_id):
         try:
             header = request.headers.get('Authorization', '').split()
             if len(header) != 2 or header[0].lower() != 'bearer':
                 raise InvitationError(401, 'authentication_required')
-            if request.content_length is None or request.content_length > 1024:
-                raise InvitationError(413, 'request_too_large')
-            payload = request.get_json(silent=True)
-            if not isinstance(payload, dict) or set(payload) != {'action'}:
-                raise InvitationError(400, 'invalid_request')
+            if request.method == 'GET':
+                if request.content_length not in (None, 0):
+                    raise InvitationError(400, 'invalid_request')
+                payload = {'action': 'view'}
+            else:
+                if request.content_length is None or request.content_length > 1024:
+                    raise InvitationError(413, 'request_too_large')
+                payload = request.get_json(silent=True)
+                if (not isinstance(payload, dict) or 'action' not in payload
+                        or set(payload) - {'action', 'expiration'}
+                        or payload['action'] not in ('create', 'replace', 'revoke', 'update_expiration', 'renew')
+                        or (payload['action'] == 'revoke' and 'expiration' in payload)
+                        or (payload['action'] in ('update_expiration', 'renew') and 'expiration' not in payload)):
+                    raise InvitationError(400, 'invalid_request')
             uid, client, transact = authenticate(header[1])
-            result = mutate_invitation(uid, client, transact, course_id, payload['action'])
+            result = mutate_invitation(uid, client, transact, course_id, payload['action'],
+                                       expiration=payload.get('expiration', '24h'))
             response = jsonify(result)
             response.headers['Cache-Control'] = 'no-store'
             return response

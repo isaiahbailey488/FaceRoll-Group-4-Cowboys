@@ -9,6 +9,7 @@ For the complete project overview, mobile setup, system architecture, and shared
 - Register and sign in with Firebase Authentication
 - View attendance summaries and records
 - Manage courses and student rosters
+- Reopen class QR invitations and choose a 2-hour, 24-hour, or unlimited lifetime
 - Start and monitor live attendance sessions
 - View Present, Late, and Absent statuses
 - Correct attendance records manually
@@ -20,6 +21,22 @@ For the complete project overview, mobile setup, system architecture, and shared
 - Configure grace-period and late-attendance behavior
 - Configure a per-course classroom location and attendance radius with HERE Maps
 - Adjust the radius with a keyboard-accessible slider from 1–15 meters in 1-meter steps (default: 15 meters)
+
+## Class QR Invitations
+
+On **Students**, choose **Invite Students** above the roster. A popup opens with the roster's selected course, or the first available course when viewing All Courses. Instructors can switch classes inside the popup without changing the roster's filters or layout. The window loads the current invitation from the server, including after a refresh, sign-in, or device change. Viewing or refreshing an invitation never generates a replacement or restarts its expiration. Course deletion remains in course management on **Courses**.
+
+**View QR Code** reloads the saved invitation. If another tab has already created a code, choosing Create automatically loads that existing invitation. The invitation module uses a versioned URL and Hosting revalidation headers so older cached scripts do not leave the expiration dropdown disabled after an update. After updating a running local demo, reload Students with Ctrl+Shift+R. The demo launcher authorizes the dashboard's detected Hosting port and selected LAN or Tailscale address for invitation requests on its next start.
+
+Choose **In 2 hours**, **In 24 hours** (the default), or **Never**. Timed expiration starts when the instructor creates, saves, or renews the invitation. **Save Expiration** keeps the same QR code. After expiry, **Renew Invitation** deliberately reactivates that code and all previously shared copies. **Replace QR Code** generates a different code and invalidates the old copies; **Disable Invitation** prevents further joins. Both actions preserve existing enrollments and attendance history.
+
+Students already enrolled receive an already-joined result. Students who left voluntarily can rejoin using their existing membership. Students removed by the instructor must have access restored by the instructor.
+
+The recognition API serves an authenticated, owner-only `GET /courses/{courseId}/invitations` with `Cache-Control: no-store`. The existing POST endpoint accepts `create`, `replace`, `revoke`, `update_expiration`, and `renew`; creation, replacement, expiration updates, and renewal accept an `expiration` value of `2h`, `24h`, or `never`. Creation and replacement default to `24h`; updates and renewal require an explicit choice. Never-expiring records use both `expiration: "never"` and `expiresAt: null`; missing or malformed expiration data is rejected.
+
+For durable reopening, the server stores the current raw token in the private `courseInvitationHeads` document alongside its hash. The `courseInvitations` records retain their hash index and do not store raw tokens. Both Firestore rules files deny all direct client access to these collections; only the owner-authorized Admin SDK API returns a QR payload. Tokens must not be logged, put in URLs, or cached in browser storage. No new encryption key or runtime configuration is required.
+
+Older hash-only invitations remain valid until their existing expiration or explicit revocation. Their original tokens cannot be recovered from a hash, so the window explains that a one-time explicit replacement is needed for reopening. Loading an older invitation never silently replaces or disables it. Deploy the dashboard and recognition API together to enable the new controls.
 
 ## Directory Structure
 

@@ -73,10 +73,29 @@ class ClassroomWorkerEventTests(unittest.TestCase):
 
 
 class DynamicRosterTests(unittest.TestCase):
+    def test_consent_policy_intersects_roster_and_fails_closed_when_missing_stale_or_invalid(self):
+        import time
+        with tempfile.TemporaryDirectory() as directory:
+            policy = Path(directory) / '.face-privacy-policy'
+            with patch.dict(CLASSROOM_WORKER.os.environ, {'FACEROLL_FACE_POLICY_FILE': str(policy)}, clear=True):
+                self.assertEqual(CLASSROOM_WORKER.apply_face_policy(frozenset({'a'})), frozenset())
+                for payload in [[], {}, {'validUntil': 0, 'allowedUids': ['a']},
+                                {'validUntil': float('nan'), 'allowedUids': ['a']},
+                                {'validUntil': float('inf'), 'allowedUids': ['a']},
+                                {'validUntil': time.time() + 8, 'allowedUids': ['../a']}]:
+                    policy.write_text(json.dumps(payload))
+                    self.assertEqual(CLASSROOM_WORKER.apply_face_policy(frozenset({'a'})), frozenset())
+                policy.write_text(json.dumps({'validUntil': time.time() + 8, 'allowedUids': ['b', 'c']}))
+                self.assertEqual(CLASSROOM_WORKER.apply_face_policy(frozenset({'a', 'b'})), frozenset({'b'}))
+
     def test_roster_file_changes_are_loaded_without_restarting_the_worker(self):
+        import time
         with tempfile.TemporaryDirectory() as temporary_directory:
             roster = Path(temporary_directory) / "course-roster.json"
+            policy = Path(temporary_directory) / '.face-privacy-policy'
+            policy.write_text(json.dumps({'validUntil': time.time() + 8, 'allowedUids': ['uid-a', 'uid-b']}))
             environment = {
+                'FACEROLL_FACE_POLICY_FILE': str(policy),
                 "FACEROLL_ROSTER_FILE": str(roster),
                 "FACEROLL_SESSION_ID": "session-123",
                 "FACEROLL_COURSE_ID": "course-456",

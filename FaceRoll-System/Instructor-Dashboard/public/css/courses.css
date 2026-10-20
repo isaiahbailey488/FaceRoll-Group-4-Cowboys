@@ -16,8 +16,7 @@
   flex-shrink: 0;
 }
 
-#manageCoursesPanel:not([open]),
-#inviteStudentsDialog:not([open]) {
+#manageCoursesPanel:not([open]) {
   display: none;
 }
 
@@ -145,18 +144,7 @@
   box-shadow: 0 24px 64px rgba(15, 23, 42, 0.24);
 }
 
-#inviteStudentsDialog {
-  width: min(560px, calc(100% - 2rem));
-  max-height: calc(100dvh - 2rem);
-  margin: auto;
-  padding: 0;
-  overflow-y: auto;
-  color: var(--fr-text);
-  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.24);
-}
-
-#manageCoursesPanel::backdrop,
-#inviteStudentsDialog::backdrop {
+#manageCoursesPanel::backdrop {
   background: rgba(15, 23, 42, 0.5);
 }
 
@@ -173,55 +161,8 @@
   margin-top: 0.25rem;
 }
 
-body:has(#manageCoursesPanel[open]),
-body:has(#inviteStudentsDialog[open]) {
+body:has(#manageCoursesPanel[open]) {
   overflow: hidden;
-}
-
-.invitation-dialog-header {
-  align-items: flex-start;
-}
-
-.invitation-dialog-body,
-.invitation-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-}
-
-.invitation-dialog-body {
-  flex-direction: column;
-}
-
-.invitation-qr-shell {
-  display: flex;
-  min-height: 1px;
-  justify-content: center;
-}
-
-#invitation-qr {
-  max-width: 100%;
-  height: auto;
-  padding: 0.75rem;
-  border: 1px solid var(--fr-border-soft);
-  border-radius: 16px;
-  background: #ffffff;
-}
-
-.invitation-danger-zone {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-top: 0.75rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--fr-border-soft);
-}
-
-.invitation-danger-zone p {
-  margin: 0.25rem 0 0;
-  color: var(--fr-muted);
-  font-size: 0.85rem;
 }
 
 .danger-button {
@@ -230,8 +171,7 @@ body:has(#inviteStudentsDialog[open]) {
 }
 
 @media (max-width: 520px) {
-  .manage-courses-list .course-list-item,
-  .invitation-danger-zone {
+  .manage-courses-list .course-list-item {
     align-items: stretch;
     flex-direction: column;
   }

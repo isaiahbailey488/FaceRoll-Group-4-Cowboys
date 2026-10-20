@@ -2,12 +2,25 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   activeRosterUids,
+  facialRosterUids,
   rosterSignature,
   membershipId,
   processBridgeEvents,
   membershipRosterRows,
   requestMembershipChange,
 } = require('../public/js/course-roster-sync.js');
+
+test('facial roster excludes opt-out, pending deletion, missing users and old enrollments after opt-in', () => {
+  const ids = ['legacy', 'out', 'pending', 'fresh', 'needs-enrollment', 'missing'];
+  const memberships = ids.map(uid => ({ courseId: 'c', uid, status: 'active' }));
+  assert.deepEqual(facialRosterUids(memberships, 'c', [
+    { id: 'legacy' },
+    { id: 'out', optOutFlag: true, faceEnrolled: true },
+    { id: 'pending', faceDataDeletionStatus: 'pending' },
+    { id: 'fresh', faceConsentRevision: 2, faceEnrolled: true },
+    { id: 'needs-enrollment', faceConsentRevision: 2, faceEnrolled: false },
+  ]), ['fresh', 'legacy']);
+});
 
 test('camera roster includes only active memberships for the selected course', () => {
   const memberships = [

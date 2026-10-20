@@ -117,6 +117,14 @@ function messageForError(code: string): string {
       return 'Only authenticated student accounts can use facial recognition.';
     case 'not_enrolled':
       return 'No face enrollment exists for this student. Enroll your face first.';
+    case 'facial_recognition_opted_out':
+      return 'Facial recognition is off. You can manage this preference in Profile & Settings.';
+    case 'face_deletion_pending':
+      return 'Your saved facial data is still being deleted. Facial recognition remains disabled.';
+    case 'face_preference_changed':
+      return 'Your face preference changed. Reopen this screen before trying again.';
+    case 'face_preference_unavailable':
+      return 'Your face preference could not be verified. Check your connection and try again.';
     case 'no_face_detected':
       return "We couldn't find your face. Center it in the oval and move to better light.";
     case 'multiple_faces_detected':
@@ -137,6 +145,7 @@ export const AUTH_ERROR_CODES: ReadonlySet<string> = new Set([
   'authentication_required',
   'student_required',
   'identity_mismatch',
+  'facial_recognition_opted_out', 'face_deletion_pending', 'face_preference_changed', 'face_preference_unavailable',
 ]);
 
 export type FaceScanFeedback = {
@@ -181,7 +190,8 @@ export function scanFeedbackForError(error: unknown, fallbackTitle: string): Fac
 async function authenticatedRequest<T>(
   path: string,
   method: 'POST' | 'DELETE',
-  body?: Record<string, unknown>
+  body?: Record<string, unknown>,
+  timeoutMs = REQUEST_TIMEOUT_MS
 ): Promise<{ data: T; authenticatedUid: string }> {
   const startedAt = Date.now();
   const currentUser = auth.currentUser;
@@ -285,7 +295,7 @@ async function authenticatedRequest<T>(
           messageForError('recognition_timeout')
         )
       );
-    }, REQUEST_TIMEOUT_MS);
+    }, timeoutMs);
   });
 
   try {
@@ -381,10 +391,10 @@ export async function recognizeFace(image: string): Promise<RecognitionResult> {
   };
 }
 
-export async function deleteFaceEnrollment(): Promise<void> {
+export async function deleteFaceEnrollment(): Promise<'pending' | 'deleted'> {
   const { data, authenticatedUid } = await authenticatedRequest<any>(
     '/enrollment',
-    'DELETE'
+    'DELETE', undefined, 15000
   );
   if (data.success !== true || data.uid !== authenticatedUid) {
     throw new RecognitionApiError(
@@ -392,4 +402,6 @@ export async function deleteFaceEnrollment(): Promise<void> {
       'The deletion response did not match the authenticated student.'
     );
   }
+  if (!['pending', 'deleted'].includes(data.deletionStatus)) throw new Error('Deletion could not be confirmed. Retry to check its status.');
+  return data.deletionStatus;
 }

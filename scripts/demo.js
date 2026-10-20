@@ -380,6 +380,13 @@ async function validateConfiguration(config, checkPorts) {
   }
 }
 
+function dashboardOrigins(host, port, configured = '') {
+  return [...new Set([
+    ...String(configured).split(',').map(origin => origin.trim()).filter(Boolean),
+    `http://127.0.0.1:${port}`, `http://localhost:${port}`, `http://${host}:${port}`,
+  ])].join(',');
+}
+
 function createDemoEnvironment(config) {
   const environment = { ...process.env };
   delete environment.GOOGLE_APPLICATION_CREDENTIALS;
@@ -539,6 +546,9 @@ async function runDemo() {
     });
     const emulatorStatus = await waitForEmulators('http://127.0.0.1:4400/emulators');
     const hostingPort = emulatorStatus.hosting.port;
+    environment.FACEROLL_DASHBOARD_ORIGINS = dashboardOrigins(
+      config.lanAddress, hostingPort, environment.FACEROLL_DASHBOARD_ORIGINS
+    );
     await waitForUrl(`http://127.0.0.1:${hostingPort}`);
 
     startChild(
@@ -615,6 +625,7 @@ module.exports = {
   ensureDemoCertificate,
   ensureEmbeddingKey,
   createDemoEnvironment,
+  dashboardOrigins,
   detectLanAddress,
   isPrivateLanAddress,
   loadDemoConfiguration,
