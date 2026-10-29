@@ -11,15 +11,16 @@
     <link rel="stylesheet" href="./css/shared-consistency.css?v=20260917-tables"/>
     <link rel="stylesheet" href="./css/course-settings.css?v=20260924-map"/>
     <link rel="stylesheet" href="./css/courses.css?v=20261015-students-invites-3"/>
+  <link rel="stylesheet" href="./css/dashboard-theme.css?v=20261029-theme-1">
   </head>
-  <body class="body-root course-settings-page" data-auth-required="true">
+  <body class="body-root course-settings-page instructor-workspace" data-auth-required="true">
     <div class="app-wrapper">
       <aside class="sidebar-navigation">
         <div class="sidebar-header sidebar-brand">
-          <div class="sidebar-brand-logo">
-            <img src="./Transparent FaceRoll.png" alt="FaceRoll logo"/>
+          <a href="./instructor-dashboard.html" class="sidebar-brand-lockup" aria-label="FaceRoll dashboard"><div class="sidebar-brand-logo">
+            <img src="./Updated%20FaceRoll.png" alt="FaceRoll logo"/>
           </div>
-          <div class="sidebar-brand-text"><span class="sidebar-brand-title">FaceRoll</span></div>
+          <div class="sidebar-brand-text"><span class="sidebar-brand-title">FaceRoll</span></div></a>
         </div>
         <nav class="sidebar-menu" aria-label="Instructor dashboard">
           <ul class="sidebar-menu-list">
@@ -181,7 +182,7 @@
                 </fieldset>
 
                 <div class="privacy-notice">
-                  <img src="https://api.iconify.design/lucide-shield-check.svg?color=%231e40af" alt=""/>
+                  <svg class="notice-icon" aria-hidden="true" focusable="false"><use href="./icons.svg#shield-check"></use></svg>
                   <p>FaceRoll checks a student’s foreground location only when the student initiates check-in. Precise student coordinates are used temporarily for verification and are not retained.</p>
                 </div>
               </div>
@@ -192,7 +193,7 @@
                 Choose a course and classroom location to save.
               </div>
               <button type="button" id="save-location-button" class="primary-button" disabled>
-                <img src="https://api.iconify.design/lucide-save.svg?color=%23ffffff" alt=""/>
+                <svg class="button-icon" aria-hidden="true" focusable="false"><use href="./icons.svg#save"></use></svg>
                 <span>Save Classroom Location</span>
               </button>
             </div>
@@ -214,7 +215,7 @@
     <script defer src="./js/course-location-utils.js?v=20260924-radius"></script>
     <script defer src="./js/firebase-client.js?v=20261005-auth-cycle-1"></script>
     <script defer src="./js/auth-guard.js?v=20261005-auth-1"></script>
-    <script defer src="./js/sidebar-user.js?v=20261005-auth-cycle-1"></script>
+    <script defer src="./js/sidebar-user.js?v=20261029-theme-1"></script>
     <script defer src="./js/course-location.js?v=20261008-coordinate-precision"></script>
     <script defer src="./js/manage-courses.js?v=20261015-students-invites-3"></script>
     <script defer src="./js/courses-page.js?v=20260915-2"></script>

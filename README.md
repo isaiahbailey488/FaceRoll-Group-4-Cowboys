@@ -16,7 +16,7 @@ Students who opt out of facial recognition remain visible in the instructor rost
 
 ### Student Mobile App
 
-The student-facing application handles account registration, profiles, facial enrollment, attendance check-in, and attendance activity. It is built with Expo SDK 57, React Native, TypeScript, and Expo Router.
+The student-facing application handles account registration, profiles, facial enrollment, attendance check-in, and attendance activity. It is built with Expo SDK 58, React Native, TypeScript, and Expo Router. Use an SDK 58-compatible Expo Go app when testing on a physical phone.
 
 ### Instructor Dashboard
 
@@ -92,7 +92,7 @@ FaceRoll is maintained as a monorepo. The student mobile application was initial
 
 ## Prerequisites
 
-- Node.js 18+ and npm
+- Node.js 22.13+ (22.x LTS) or 24.3+ (24.x LTS), and npm
 - Expo Go, or an iOS/Android simulator or emulator
 - Python 3.10+ and pip
 - Firebase CLI

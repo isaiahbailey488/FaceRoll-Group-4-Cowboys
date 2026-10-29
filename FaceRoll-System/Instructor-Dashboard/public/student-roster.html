@@ -235,18 +235,19 @@
       }
     }
   </style>
+  <link rel="stylesheet" href="./css/dashboard-theme.css?v=20261029-theme-1">
   </head>
-  <body id="imwtil" class="body-root" data-auth-required="true">
+  <body id="imwtil" class="body-root instructor-workspace" data-auth-required="true">
     <div class="app-wrapper">
       <!-- Sidebar navigation -->
       <nav class="sidebar-navigation">
         <div class="sidebar-header sidebar-brand">
-          <div class="sidebar-brand-logo"><img src="./Transparent FaceRoll.png" alt="FaceRoll logo"/></div>
-          <div class="sidebar-brand-text"><span class="sidebar-brand-title">FaceRoll</span></div>
+          <a href="./instructor-dashboard.html" class="sidebar-brand-lockup" aria-label="FaceRoll dashboard"><div class="sidebar-brand-logo"><img src="./Updated%20FaceRoll.png" alt="FaceRoll logo"/></div>
+          <div class="sidebar-brand-text"><span class="sidebar-brand-title">FaceRoll</span></div></a>
         </div>
         <div class="sidebar-menu">
           <ul class="sidebar-menu-list">
-            <li><a href="./courses.html" class="sidebar-link"><img src="https://api.iconify.design/lucide-book-open.svg?color=%2364748b" alt="" class="sidebar-icon"/><span class="sidebar-link-label">Courses</span></a></li>
+            <li><a href="./courses.html" class="sidebar-link"><svg class="sidebar-icon" aria-hidden="true" focusable="false"><use href="./icons.svg#book-open"></use></svg><span class="sidebar-link-label">Courses</span></a></li>
             <li><a href="./instructor-dashboard.html" class="sidebar-link"><span class="sidebar-link-label">Dashboard</span></a></li>
             <li><a href="./live-session.html" class="sidebar-link"><span class="sidebar-link-label">Live Session</span></a></li>
             <li><a href="./student-roster.html" class="sidebar-link-active"><span class="sidebar-link-label">Students</span></a></li>
@@ -355,7 +356,7 @@
     <script defer src="./js/sample-data.js"></script>
     <script defer src="./js/firebase-client.js?v=20261005-auth-cycle-1"></script>
     <script defer src="./js/auth-guard.js?v=20261005-auth-1"></script>
-    <script defer src="./js/sidebar-user.js?v=20261005-auth-cycle-1"></script>
+    <script defer src="./js/sidebar-user.js?v=20261029-theme-1"></script>
     <script defer src="./js/course-roster-sync.js?v=20261001-roster-1"></script>
     <script defer src="./js/student-screens.js?v=20261005-resilience-1"></script>
     <script type="module" src="./js/course-invitations.mjs?v=20261015-students-invites-3"></script>
