@@ -703,6 +703,12 @@
           '<td><div class="roster-actions"><a class="student-action-link">View Profile</a></div></td>',
         ].join('');
         row.children[0].textContent = rowData.name;
+        if (rowData.user && rowData.user.optOutFlag === true) {
+          const privacyLabel = document.createElement('small');
+          privacyLabel.textContent = 'Facial recognition off';
+          privacyLabel.style.display = 'block';
+          row.children[0].appendChild(privacyLabel);
+        }
         row.children[1].textContent = rowData.studentId;
         row.children[2].textContent = rowData.email;
         row.children[3].textContent = rowData.courseName;
@@ -754,6 +760,10 @@
     let liveRowsGeneration = 0;
     let activeRosterSignature = '';
     let activeRosterUids = new Set();
+    const consentListeners = new Map();
+    const liveConsentProfiles = new Map();
+    let consentListenerGeneration = 0;
+    let currentRosterRows = [];
     let bridgeEventCursor = 0;
     const writtenBridgeEvents = new Set();
     let sessionStartedAt = null;
@@ -791,6 +801,11 @@
       liveAttendanceUnsubscribe = null;
     }
     function stopRosterListener() {
+      consentListenerGeneration += 1;
+      consentListeners.forEach(subscription => { if (typeof subscription.unsubscribe === 'function') subscription.unsubscribe(); });
+      consentListeners.clear();
+      liveConsentProfiles.clear();
+      currentRosterRows = [];
       if (typeof rosterUnsubscribe === 'function') rosterUnsubscribe();
       rosterUnsubscribe = null;
     }
@@ -896,7 +911,14 @@
         ],
       });
       if (!window.FaceRollCourseRoster) throw new Error('Course roster validation is unavailable.');
-      return window.FaceRollCourseRoster.activeRosterUids(enrollments, courseId);
+      return facialRosterUids(enrollments, courseId);
+    }
+
+    async function facialRosterUids(enrollments, courseId) {
+      const uids = window.FaceRollCourseRoster.activeRosterUids(enrollments, courseId);
+      const users = uids.length ? await firebaseApi.readDocuments('users', uids) : [];
+      return window.FaceRollCourseRoster.facialRosterUids(enrollments, courseId,
+        users.map(user => liveConsentProfiles.has(user.id) ? liveConsentProfiles.get(user.id) : user).filter(Boolean));
     }
 
     async function syncCourseRoster(enrollmentRows) {
@@ -909,7 +931,7 @@
       const courseId = activeCourseId;
       const operation = (async function () {
         const allowedUids = Array.isArray(enrollmentRows)
-          ? window.FaceRollCourseRoster.activeRosterUids(enrollmentRows, courseId)
+          ? await facialRosterUids(enrollmentRows, courseId)
           : await loadCourseRosterUids(courseId);
         if (sessionId !== activeSessionDocId || courseId !== activeCourseId) return;
         activeRosterUids = new Set(allowedUids);
@@ -1031,6 +1053,33 @@
           ],
         }, function (rows) {
           if (sessionId === activeSessionDocId && courseId === activeCourseId) {
+            currentRosterRows = rows;
+            const generation = consentListenerGeneration;
+            const uids = new Set(window.FaceRollCourseRoster.activeRosterUids(rows, courseId));
+            consentListeners.forEach((subscription, uid) => {
+              if (!uids.has(uid)) {
+                if (typeof subscription.unsubscribe === 'function') subscription.unsubscribe();
+                consentListeners.delete(uid);
+                liveConsentProfiles.delete(uid);
+              }
+            });
+            uids.forEach(uid => {
+              if (consentListeners.has(uid)) return;
+              const subscription = { unsubscribe: null };
+              consentListeners.set(uid, subscription);
+              firebaseApi.subscribeDocument('users', uid, profile => {
+                if (generation !== consentListenerGeneration || consentListeners.get(uid) !== subscription) return;
+                liveConsentProfiles.set(uid, profile);
+                syncCourseRoster(currentRosterRows);
+              }, () => {
+                if (generation !== consentListenerGeneration || consentListeners.get(uid) !== subscription) return;
+                liveConsentProfiles.set(uid, null);
+                syncCourseRoster(currentRosterRows);
+              }).then(unsubscribe => {
+                if (generation === consentListenerGeneration && consentListeners.get(uid) === subscription) subscription.unsubscribe = unsubscribe;
+                else unsubscribe();
+              }).catch(error => console.error('Face preference subscription failed:', error));
+            });
             syncCourseRoster(rows);
           }
         }, function (error) {
@@ -1088,6 +1137,9 @@
         console.warn('Ignoring recognition event for an unknown Firebase UID.');
         return false;
       }
+
+      if (!window.FaceRollCourseRoster.permitsFacialRecognition(user) ||
+          (liveConsentProfiles.has(authoritativeUid) && !window.FaceRollCourseRoster.permitsFacialRecognition(liveConsentProfiles.get(authoritativeUid)))) return false;
 
       const recognitionLabel = getRecognitionLabel(event);
       const uid = authoritativeUid;

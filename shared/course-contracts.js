@@ -48,13 +48,18 @@ function validateMembership(value) {
 }
 
 function validateInvitation(value) {
-  object(value, ['schemaVersion', 'courseId', 'createdBy', 'tokenHash', 'status', 'createdAt', 'updatedAt', 'expiresAt']);
+  const hasExpiration = value && Object.prototype.hasOwnProperty.call(value, 'expiration');
+  object(value, ['schemaVersion', 'courseId', 'createdBy', 'tokenHash', 'status', 'createdAt', 'updatedAt', 'expiresAt',
+    ...(hasExpiration ? ['expiration'] : [])]);
   identifier(value.courseId, 'courseId', 200);
   identifier(value.createdBy, 'createdBy');
   if (typeof value.tokenHash !== 'string' || !/^[a-f0-9]{64}$/.test(value.tokenHash)) fail('tokenHash');
   if (!['active', 'revoked'].includes(value.status)) fail('status');
   const created = chronology(value);
-  if (timestamp(value.expiresAt, 'expiresAt') <= created) fail('expiresAt');
+  if (hasExpiration && !['2h', '24h', 'never'].includes(value.expiration)) fail('expiration');
+  if (value.expiration === 'never') {
+    if (value.expiresAt !== null) fail('expiresAt');
+  } else if (timestamp(value.expiresAt, 'expiresAt') <= created) fail('expiresAt');
   return { ...value };
 }
 

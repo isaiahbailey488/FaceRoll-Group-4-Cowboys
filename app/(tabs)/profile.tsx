@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,10 +14,13 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import Colors from '../../constants/Colors';
+import { deleteFaceEnrollment } from '../../services/recognition';
+import { deletionMessage, LOCATION_CHECK_IN_PENDING } from '../../shared/face-privacy';
+import { useFacePrivacy } from '../../hooks/useFacePrivacy';
 import {
   getCurrentUser,
   getStudentDisplayName,
-  getUserProfile,
+  getFacePrivacyProfile,
   logoutUser,
   resetPassword,
   updateOptOut,
@@ -31,12 +34,15 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [loggingOut, setLoggingOut] = useState(false);
   const [updatingOptOut, setUpdatingOptOut] = useState(false);
+  const privacy = useFacePrivacy();
+  const faceProfile = privacy.profile ?? profile;
+  useEffect(() => { if (privacy.profile) setProfile(privacy.profile); }, [privacy.profile]);
 
   const loadProfile = useCallback(async () => {
     try {
       const user = getCurrentUser();
       if (!user) return;
-      const userProfile = await getUserProfile(user.uid);
+      const userProfile = await getFacePrivacyProfile(user.uid);
       setProfile(userProfile);
     } catch (error: any) {
       if (__DEV__) {
@@ -53,7 +59,7 @@ export default function ProfileScreen() {
     }, [loadProfile])
   );
 
-  const handleOptOutToggle = async (value: boolean) => {
+  const saveOptOut = async (value: boolean) => {
     setUpdatingOptOut(true);
     try {
       const user = getCurrentUser();
@@ -62,23 +68,55 @@ export default function ProfileScreen() {
         return;
       }
       await updateOptOut(user.uid, value);
-      setProfile((prev) => (prev ? { ...prev, optOutFlag: value } : prev));
+      setProfile((prev) => (prev ? { ...prev, optOutFlag: value, faceEnrolled: false,
+        ...(value ? { faceDataDeletionStatus: 'pending' } : {}) } : prev));
+      if (value) {
+        let status: 'pending' | 'deleted' = 'pending';
+        try { status = await deleteFaceEnrollment(); } catch {
+          try { status = (await getFacePrivacyProfile(user.uid)).faceDataDeletionStatus === 'deleted' ? 'deleted' : 'pending'; } catch { /* Retry when online. */ }
+        }
+        setProfile(prev => prev ? { ...prev, optOutFlag: true, faceEnrolled: false, faceDataDeletionStatus: status } : prev);
+        Alert.alert('Facial Recognition Off', deletionMessage(status));
+      } else {
+        Alert.alert('Fresh Enrollment Required', 'Facial recognition is enabled. Enroll your face again before using face check-in.');
+      }
     } catch (err: any) {
       if (err?.code === 'firestore/rules-not-deployed') {
         Alert.alert(
-          'Firestore Rules Not Deployed',
-          'Your opt-out preference could not be saved. Deploy firestore.rules to your Firebase project (see FIRESTORE_SETUP.md) and try again.'
+          'Preference Not Changed',
+          'Your preference could not be saved. Please contact your instructor before trying again.'
         );
       } else {
-        Alert.alert('Error', 'Could not update your preference. Please try again.');
+        Alert.alert('Preference Not Changed', err?.code === 'face_deletion_pending'
+          ? err.message : 'Could not save your preference. Check your connection and try again.');
       }
     } finally {
       setUpdatingOptOut(false);
     }
   };
 
+  const handleOptOutToggle = (value: boolean) => {
+    if (value) {
+      Alert.alert('Turn Off Facial Recognition?',
+        'This stops facial recognition and permanently deletes your saved facial embeddings from registered recognition computers when they are online. You will need fresh enrollment if you enable it again. Location-based check-in is not available yet.',
+        [{ text: 'Cancel', style: 'cancel' }, { text: 'Turn Off and Delete', style: 'destructive', onPress: () => { void saveOptOut(true); } }]);
+    } else {
+      void saveOptOut(false);
+    }
+  };
+
+  const retryDeletion = async () => {
+    setUpdatingOptOut(true);
+    let status: 'pending' | 'deleted' = 'pending';
+    try { status = await deleteFaceEnrollment(); } catch { /* Retry remains available; never undo opt-out. */ }
+    setProfile(prev => prev ? { ...prev, faceEnrolled: false, faceDataDeletionStatus: status } : prev);
+    Alert.alert(status === 'deleted' ? 'Facial Data Deleted' : 'Deletion Pending', deletionMessage(status));
+    setUpdatingOptOut(false);
+  };
+
   const handleEnrollPress = () => {
-    const alreadyEnrolled = Boolean(profile?.faceEnrolled);
+    if (privacy.state !== 'ready') return;
+    const alreadyEnrolled = Boolean(faceProfile?.faceEnrolled);
 
     if (!alreadyEnrolled) {
       router.push('/face-enrollment');
@@ -217,30 +255,40 @@ export default function ProfileScreen() {
           <View style={styles.settingRow}>
             <View style={styles.settingLeft}>
               <Ionicons
-                name={profile?.faceEnrolled ? 'checkmark-circle' : 'alert-circle-outline'}
+                name={faceProfile?.faceEnrolled ? 'checkmark-circle' : 'alert-circle-outline'}
                 size={22}
-                color={profile?.faceEnrolled ? Colors.present : Colors.late}
+                color={faceProfile?.faceEnrolled ? Colors.present : Colors.late}
                 style={styles.settingIcon}
               />
               <View>
                 <Text style={styles.settingLabel}>Face Enrollment</Text>
                 <Text style={styles.settingSubLabel}>
-                  {profile?.faceEnrolled ? 'Enrolled — ready for check-in' : 'Not enrolled yet'}
+                  {faceProfile?.optOutFlag ? 'Facial recognition is off' : faceProfile?.faceEnrolled ? 'Enrolled — ready for check-in' : 'Not enrolled yet'}
                 </Text>
               </View>
             </View>
           </View>
 
-          <TouchableOpacity
+          {!faceProfile?.optOutFlag && <TouchableOpacity
             style={styles.enrollButton}
+            disabled={privacy.state !== 'ready'}
             onPress={handleEnrollPress}
             activeOpacity={0.85}
           >
             <Ionicons name="camera-outline" size={18} color={Colors.white} style={{ marginRight: 8 }} />
             <Text style={styles.enrollButtonText}>
-              {profile?.faceEnrolled ? 'Re-enroll Face' : 'Enroll Face'}
+              {faceProfile?.faceEnrolled ? 'Re-enroll Face' : 'Enroll Face'}
             </Text>
-          </TouchableOpacity>
+          </TouchableOpacity>}
+
+          {faceProfile?.optOutFlag && <View style={{ paddingVertical: 12, gap: 10 }}>
+            <Text style={styles.settingSubLabel}>{deletionMessage(faceProfile.faceDataDeletionStatus)}</Text>
+            <Text style={styles.settingSubLabel}>{LOCATION_CHECK_IN_PENDING}</Text>
+            {faceProfile.faceDataDeletionStatus !== 'deleted' && <TouchableOpacity
+              style={styles.enrollButton} disabled={updatingOptOut} onPress={() => { void retryDeletion(); }}>
+              <Text style={styles.enrollButtonText}>{updatingOptOut ? 'Checking Deletion…' : 'Retry Facial Data Deletion'}</Text>
+            </TouchableOpacity>}
+          </View>}
 
           <View style={styles.settingRow}>
             <View style={styles.settingLeft}>
@@ -253,7 +301,7 @@ export default function ProfileScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.settingLabel}>Opt Out of Facial Recognition</Text>
                 <Text style={styles.settingSubLabel}>
-                  Your attendance will be marked manually by your instructor.
+                  Turn off facial recognition and delete your saved facial embeddings.
                 </Text>
               </View>
             </View>
@@ -261,13 +309,15 @@ export default function ProfileScreen() {
               <ActivityIndicator size="small" color={Colors.navy} />
             ) : (
               <Switch
-                value={profile?.optOutFlag ?? false}
+                disabled={!privacy.profile || updatingOptOut}
+                value={faceProfile?.optOutFlag ?? false}
                 onValueChange={handleOptOutToggle}
                 trackColor={{ false: Colors.inputBorder, true: Colors.navyLight }}
                 thumbColor={Colors.white}
               />
             )}
           </View>
+          {privacy.unavailable && <Text style={styles.settingSubLabel}>Connect to verify your facial recognition preference. Reload this page to try again.</Text>}
         </View>
 
         <View style={styles.section}>

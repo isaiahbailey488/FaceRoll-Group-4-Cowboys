@@ -14,8 +14,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import Colors from '../constants/Colors';
+import { useFacePrivacy } from '../hooks/useFacePrivacy';
+import { useCaptureCamera } from '../hooks/useCaptureCamera';
+import FacePrivacyGate from '../components/FacePrivacyGate';
 import ScanTipsCard from '../components/ScanTipsCard';
-import { getCurrentUser, markFaceEnrolled } from '../services/auth';
+import { getCurrentUser, getFacePrivacyProfile } from '../services/auth';
+import { faceAccessState } from '../shared/face-privacy';
 import {
   discardTemporaryCameraFile,
   enrollFace,
@@ -59,8 +63,10 @@ const emptyCaptures = (): Array<string | null> => [null, null, null];
 
 export default function FaceEnrollmentScreen() {
   const router = useRouter();
+  const privacy = useFacePrivacy();
   const cameraRef = useRef<CameraView>(null);
   const redirectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const captureRevision = useRef<number | null>(null);
   const [permission, requestPermission] = useCameraPermissions();
   const [enrollState, setEnrollState] = useState<EnrollmentState>('idle');
   const [capturedImages, setCapturedImages] = useState<Array<string | null>>(
@@ -69,12 +75,30 @@ export default function FaceEnrollmentScreen() {
   const [activeStep, setActiveStep] = useState(0);
   const [failure, setFailure] = useState<FaceScanFeedback | null>(null);
   const [showTips, setShowTips] = useState(true);
+  const camera = useCaptureCamera(privacy.state === 'ready' && permission?.granted === true);
 
   useEffect(() => {
-    if (permission && !permission.granted) {
+    if (camera.screenActive && privacy.state === 'ready' && permission && !permission.granted) {
       requestPermission();
     }
-  }, [permission, requestPermission]);
+  }, [permission, requestPermission, privacy.state, camera.screenActive]);
+
+  useEffect(() => {
+    if (!camera.screenActive) {
+      setEnrollState(previous => previous === 'capturing' || previous === 'processing'
+        ? capturedImages.every(Boolean) ? 'review' : 'idle' : previous);
+      if (redirectTimer.current) clearTimeout(redirectTimer.current);
+    }
+  }, [camera.screenActive, capturedImages]);
+
+  useEffect(() => {
+    if (privacy.state !== 'ready') {
+      setCapturedImages(emptyCaptures());
+      captureRevision.current = null;
+      setEnrollState('idle');
+      if (redirectTimer.current) clearTimeout(redirectTimer.current);
+    }
+  }, [privacy.state]);
 
   useEffect(
     () => () => {
@@ -108,32 +132,62 @@ export default function FaceEnrollmentScreen() {
   })();
 
   const clearCaptures = () => {
+    captureRevision.current = null;
     setCapturedImages(emptyCaptures());
     setActiveStep(0);
   };
 
   const handleCapture = async () => {
-    if (enrollState !== 'idle' || !cameraRef.current) return;
+    if (privacy.state !== 'ready') return;
+    if (enrollState !== 'idle') return;
+    if (!camera.active) { camera.start(); return; }
+    if (!camera.ready || !cameraRef.current) return;
     if (!getCurrentUser()) {
       Alert.alert('Sign In Required', 'You must be logged in to enroll your face.');
       return;
     }
 
+    const operation = camera.beginOperation();
+    if (!operation) return;
+    setEnrollState('capturing');
     try {
-      setEnrollState('capturing');
+      const user = getCurrentUser();
+      if (!user) { camera.stop(); setEnrollState('idle'); return; }
+      const consent = await getFacePrivacyProfile(user.uid);
+      if (!operation.isCurrent()) return;
+      if (faceAccessState(consent) !== 'ready') { camera.stop(); setEnrollState('idle'); return; }
+      const revision = consent.faceConsentRevision ?? 0;
+      if (captureRevision.current !== null && captureRevision.current !== revision) {
+        clearCaptures();
+        camera.stop();
+        setEnrollState('idle');
+        return;
+      }
+      captureRevision.current = revision;
+      if (!cameraRef.current) { camera.stop(); setEnrollState('idle'); return; }
       const photo = await cameraRef.current.takePictureAsync({
         base64: true,
         quality: 0.8,
         skipProcessing: false,
       });
+      discardTemporaryCameraFile(photo?.uri);
+      if (!operation.isCurrent()) return;
+      // The final photo is all the hardware we need, even while consent is rechecked.
+      const updated = [...capturedImages];
+      updated[activeStep] = photo?.base64 || null;
+      if (updated.every(Boolean)) camera.stop();
       if (!photo?.base64) {
-        discardTemporaryCameraFile(photo?.uri);
         throw new Error('Failed to capture image.');
       }
 
-      const updated = [...capturedImages];
-      updated[activeStep] = photo.base64;
-      discardTemporaryCameraFile(photo.uri);
+      const latest = await getFacePrivacyProfile(user.uid);
+      if (!operation.isCurrent()) return;
+      if (faceAccessState(latest) !== 'ready' || (latest.faceConsentRevision ?? 0) !== revision || captureRevision.current !== revision) {
+        clearCaptures();
+        camera.stop();
+        setEnrollState('idle');
+        return;
+      }
       setCapturedImages(updated);
 
       const nextMissing = updated.findIndex((image) => !image);
@@ -144,9 +198,13 @@ export default function FaceEnrollmentScreen() {
         setEnrollState('review');
       }
     } catch (error: any) {
+      if (!operation.isCurrent()) return;
+      camera.stop();
       if (__DEV__) console.warn('Capture error:', error?.message || error);
       setEnrollState('idle');
       Alert.alert('Capture Failed', error?.message || 'Please try taking the photo again.');
+    } finally {
+      operation.finish();
     }
   };
 
@@ -155,6 +213,7 @@ export default function FaceEnrollmentScreen() {
     setFailure(null);
     setActiveStep(index);
     setEnrollState('idle');
+    camera.start();
   };
 
   const handleStartOver = () => {
@@ -162,9 +221,11 @@ export default function FaceEnrollmentScreen() {
     clearCaptures();
     setFailure(null);
     setEnrollState('idle');
+    camera.start();
   };
 
   const handleSubmit = async () => {
+    if (privacy.state !== 'ready') return;
     const user = getCurrentUser();
     if (!user) {
       Alert.alert('Sign In Required', 'You must be logged in to enroll your face.');
@@ -176,10 +237,29 @@ export default function FaceEnrollmentScreen() {
     }
 
     const images = capturedImages.filter((image): image is string => Boolean(image));
+    const operation = camera.beginOperation();
+    if (!operation) return;
+    camera.stop();
+    setEnrollState('processing');
     try {
+      const consent = await getFacePrivacyProfile(user.uid);
+      if (!operation.isCurrent()) return;
+      const revision = consent.faceConsentRevision ?? 0;
+      if (faceAccessState(consent) !== 'ready' || captureRevision.current !== revision) {
+        clearCaptures();
+        setEnrollState('idle');
+        return;
+      }
       setFailure(null);
-      setEnrollState('processing');
       const result = await enrollFace(images);
+      if (!operation.isCurrent()) return;
+      const latest = await getFacePrivacyProfile(user.uid);
+      if (!operation.isCurrent()) return;
+      if (faceAccessState(latest) !== 'ready' || (latest.faceConsentRevision ?? 0) !== revision) {
+        clearCaptures();
+        setEnrollState('idle');
+        return;
+      }
       if (result.sampleCount !== 3 || result.model !== 'Facenet512') {
         throw new RecognitionApiError(
           'invalid_enrollment_response',
@@ -187,41 +267,41 @@ export default function FaceEnrollmentScreen() {
         );
       }
 
-      await markFaceEnrolled(user.uid, true);
+      // The API commits enrollment status only while the same consent revision is valid.
       clearCaptures();
       setEnrollState('success');
       redirectTimer.current = setTimeout(() => {
-        router.replace('/(tabs)/home');
+        if (operation.isCurrent()) router.replace('/(tabs)/home');
       }, 1800);
     } catch (error: any) {
+      if (!operation.isCurrent()) return;
       if (__DEV__) {
         console.warn('Enrollment error:', error?.code || error?.message || error);
       }
       setFailure(scanFeedbackForError(error, 'Enrollment failed'));
       setEnrollState('error');
 
-      if (error?.code === 'firestore/rules-not-deployed') {
-        Alert.alert(
-          'Enrollment Saved, Profile Update Failed',
-          'Your embeddings were saved locally, but Firestore blocked the non-biometric enrollment-status update. Deploy the project Firestore rules before trying again.'
-        );
-      } else if (error instanceof RecognitionApiError && AUTH_ERROR_CODES.has(error.code)) {
+      if (error instanceof RecognitionApiError && AUTH_ERROR_CODES.has(error.code)) {
         Alert.alert('Enrollment Failed', error.message);
       }
+    } finally {
+      operation.finish();
     }
   };
 
   const handleClose = () => {
     if (isBusy) return;
+    camera.stop();
     Alert.alert(
       'Leave Enrollment?',
       'Your unsent captures will be discarded. You can enroll later from your Profile.',
       [
-        { text: 'Stay', style: 'cancel' },
+        { text: 'Stay', style: 'cancel', onPress: () => { if (enrollState === 'idle') camera.start(); } },
         {
           text: 'Leave',
           style: 'destructive',
           onPress: () => {
+            camera.cancel();
             clearCaptures();
             router.replace('/(tabs)/home');
           },
@@ -229,6 +309,8 @@ export default function FaceEnrollmentScreen() {
       ]
     );
   };
+
+  if (privacy.state !== 'ready') return <FacePrivacyGate state={privacy.state} unavailable={privacy.unavailable} retry={privacy.retry} />;
 
   if (!permission) {
     return (
@@ -259,11 +341,16 @@ export default function FaceEnrollmentScreen() {
   return (
     <View style={styles.container}>
       <StatusBar style="light" />
-      <CameraView
+      {camera.active && (enrollState === 'idle' || enrollState === 'capturing') && <CameraView
         ref={cameraRef}
         style={StyleSheet.absoluteFill}
         facing={'front' as CameraType}
-      />
+        onCameraReady={camera.onReady}
+        onMountError={() => {
+          camera.stop();
+          Alert.alert('Camera Unavailable', 'Could not start the camera. Tap Resume Camera to try again.');
+        }}
+      />}
 
       <View style={styles.overlay}>
         <SafeAreaView style={styles.header}>
@@ -368,11 +455,15 @@ export default function FaceEnrollmentScreen() {
                 style={styles.captureButton}
                 onPress={handleCapture}
                 activeOpacity={0.8}
+                disabled={camera.active && !camera.ready}
+                accessibilityRole="button"
+                accessibilityLabel={camera.active ? 'Take enrollment photo' : 'Resume enrollment camera'}
               >
                 <View style={styles.captureButtonInner} />
               </TouchableOpacity>
               <Text style={styles.captureLabel}>
-                {capturedImages[activeStep] ? `Retake ${currentStep.label}` : `Capture ${activeStep + 1} of 3`}
+                {!camera.active ? 'Resume Camera' : !camera.ready ? 'Starting Camera…'
+                  : capturedImages[activeStep] ? `Retake ${currentStep.label}` : `Capture ${activeStep + 1} of 3`}
               </Text>
             </View>
           )}

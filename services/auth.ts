@@ -10,6 +10,9 @@ import {
 import {
   doc,
   getDoc,
+  getDocFromServer,
+  onSnapshot,
+  runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -18,6 +21,7 @@ import { auth, db } from './firebase';
 import { generateStudentId, isSevenDigitStudentId } from './student-id';
 import { fallbackNameFromEmail, getStudentDisplayName } from './profile-name';
 import { isTerminalAuthError } from '../shared/auth-session';
+import { optOutUpdate } from '../shared/face-privacy';
 
 export { fallbackNameFromEmail, getStudentDisplayName } from './profile-name';
 
@@ -40,6 +44,8 @@ export interface UserProfile {
   userType: string;
   optOutFlag: boolean;
   faceEnrolled: boolean;
+  faceConsentRevision?: number;
+  faceDataDeletionStatus?: 'none' | 'pending' | 'deleted';
   createdAt?: any;
 }
 
@@ -72,6 +78,8 @@ function normalizeProfile(uid: string, email: string, data: any): UserProfile {
     userType: data?.userType || data?.role || 'student',
     optOutFlag: Boolean(data?.optOutFlag),
     faceEnrolled: Boolean(data?.faceEnrolled),
+    faceConsentRevision: data?.faceConsentRevision ?? 0,
+    faceDataDeletionStatus: data?.faceDataDeletionStatus ?? 'none',
     createdAt: data?.createdAt,
   };
 }
@@ -155,6 +163,8 @@ async function ensureUserProfileDoc(
     userType: 'student',
     optOutFlag: false,
     faceEnrolled: false,
+    faceConsentRevision: 0,
+    faceDataDeletionStatus: 'none',
     createdAt: serverTimestamp(),
   };
 
@@ -292,37 +302,41 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
   return normalizeProfile(uid, current.email || '', snap.data());
 }
 
-export async function markFaceEnrolled(uid: string, enrolled: boolean): Promise<void> {
+export async function updateOptOut(uid: string, optOut: boolean): Promise<void> {
   const userRef = doc(db, 'users', uid);
+  if (auth.currentUser?.uid !== uid) throw new Error('Sign in again before changing your preference.');
   try {
-    await updateDoc(userRef, { faceEnrolled: enrolled });
+    await runTransaction(db, async transaction => {
+      const snapshot = await transaction.get(userRef);
+      if (!snapshot.exists()) throw new Error('Your profile could not be loaded. Try again.');
+      const changes = optOutUpdate(snapshot.data() as UserProfile, optOut, serverTimestamp());
+      if (Object.keys(changes).length) transaction.update(userRef, changes);
+    });
   } catch (err: any) {
     if (isPermissionDenied(err)) {
       throw new FirestoreRulesNotDeployedError(err?.message);
-    }
-    // Doc may not exist yet — fall back to an upsert so enrollment always succeeds.
-    if (err?.code === 'not-found' || /no document/i.test(String(err?.message))) {
-      await setDoc(userRef, { uid, faceEnrolled: enrolled }, { merge: true });
-      return;
     }
     throw err;
   }
 }
 
-export async function updateOptOut(uid: string, optOut: boolean): Promise<void> {
-  const userRef = doc(db, 'users', uid);
-  try {
-    await updateDoc(userRef, { optOutFlag: optOut });
-  } catch (err: any) {
-    if (isPermissionDenied(err)) {
-      throw new FirestoreRulesNotDeployedError(err?.message);
-    }
-    if (err?.code === 'not-found' || /no document/i.test(String(err?.message))) {
-      await setDoc(userRef, { uid, optOutFlag: optOut }, { merge: true });
+export async function getFacePrivacyProfile(uid: string): Promise<UserProfile> {
+  const current = auth.currentUser;
+  if (!current || current.uid !== uid) throw new Error('Sign in again.');
+  const snapshot = await getDocFromServer(doc(db, 'users', uid));
+  if (!snapshot.exists()) throw new Error('Your face preference could not be verified.');
+  return normalizeProfile(uid, current.email || '', snapshot.data());
+}
+
+export function subscribeToProfile(uid: string, onProfile: (profile: UserProfile) => void, onError: () => void) {
+  return onSnapshot(doc(db, 'users', uid), { includeMetadataChanges: true }, snapshot => {
+    // Camera consent must be authoritative, including after a network interruption.
+    if (!snapshot.exists() || snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites || auth.currentUser?.uid !== uid) {
+      onError();
       return;
     }
-    throw err;
-  }
+    onProfile(normalizeProfile(uid, auth.currentUser.email || '', snapshot.data()));
+  }, onError);
 }
 
 export function subscribeToAuthState(callback: (user: User | null) => void) {

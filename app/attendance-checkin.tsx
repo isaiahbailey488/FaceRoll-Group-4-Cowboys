@@ -14,6 +14,11 @@ import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import Colors from '../constants/Colors';
+import { useFacePrivacy } from '../hooks/useFacePrivacy';
+import { useCaptureCamera } from '../hooks/useCaptureCamera';
+import FacePrivacyGate from '../components/FacePrivacyGate';
+import { getFacePrivacyProfile } from '../services/auth';
+import { faceAccessState } from '../shared/face-privacy';
 import ScanTipsCard from '../components/ScanTipsCard';
 import {
   submitAttendance,
@@ -49,7 +54,9 @@ const PHOTO_REJECTED_CODES = new Set([
 
 export default function AttendanceCheckInScreen() {
   const router = useRouter();
+  const privacy = useFacePrivacy();
   const cameraRef = useRef<CameraView>(null);
+  const redirectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [permission, requestPermission] = useCameraPermissions();
   const [checkInState, setCheckInState] = useState<CheckInState>('idle');
   const [statusMessage, setStatusMessage] = useState('Position your face within the oval');
@@ -62,6 +69,19 @@ export default function AttendanceCheckInScreen() {
   const [failedAttempts, setFailedAttempts] = useState(0);
   const [askedInstructor, setAskedInstructor] = useState(false);
   const [showTips, setShowTips] = useState(true);
+  const camera = useCaptureCamera(privacy.state === 'ready' && permission?.granted === true &&
+    privacy.profile?.faceEnrolled === true && !loadingSession && Boolean(activeSession));
+
+  useEffect(() => {
+    if (!camera.screenActive || privacy.state !== 'ready') {
+      setCheckInState(previous => previous === 'capturing' || previous === 'processing' ? 'idle' : previous);
+      if (redirectTimer.current) clearTimeout(redirectTimer.current);
+    }
+  }, [camera.screenActive, privacy.state]);
+
+  useEffect(() => () => {
+    if (redirectTimer.current) clearTimeout(redirectTimer.current);
+  }, []);
 
   const loadSessionData = useCallback(async () => {
     try {
@@ -79,6 +99,7 @@ export default function AttendanceCheckInScreen() {
         setActiveSessions(sessions);
         setActiveSession(sessions[0]);
         setSelectedCourseId(sessions[0].courseId || '');
+        setCheckInState('idle');
       } else {
         setCheckInState('no_session');
         setStatusMessage('No active class session found.\nAsk your instructor to start a session.');
@@ -98,10 +119,10 @@ export default function AttendanceCheckInScreen() {
   }, [loadSessionData]);
 
   useEffect(() => {
-    if (permission && !permission.granted) {
+    if (camera.screenActive && privacy.state === 'ready' && permission && !permission.granted) {
       requestPermission();
     }
-  }, [permission]);
+  }, [permission, privacy.state, camera.screenActive, requestPermission]);
 
   useEffect(() => {
     switch (checkInState) {
@@ -142,8 +163,8 @@ export default function AttendanceCheckInScreen() {
   };
 
   const handleCheckIn = async () => {
+    if (privacy.state !== 'ready') return;
     if (checkInState !== 'idle' && checkInState !== 'not_recognized' && checkInState !== 'error') return;
-    if (!cameraRef.current) return;
 
     const user = getCurrentUser();
     if (!user) {
@@ -159,7 +180,7 @@ export default function AttendanceCheckInScreen() {
       return;
     }
 
-    if (profile?.optOutFlag) {
+    if (privacy.profile?.optOutFlag) {
       Alert.alert(
         'Facial Recognition Opted Out',
         'You have opted out of facial recognition. Your instructor will mark your attendance manually.'
@@ -167,7 +188,8 @@ export default function AttendanceCheckInScreen() {
       return;
     }
 
-    if (!profile?.faceEnrolled) {
+    if (!privacy.profile?.faceEnrolled) {
+      camera.stop();
       Alert.alert(
         'Face Not Enrolled',
         'You need to enroll your face before checking in. Go to Profile → Enroll Face.',
@@ -179,25 +201,46 @@ export default function AttendanceCheckInScreen() {
       return;
     }
 
+    if (!camera.active) {
+      setCheckInState('idle');
+      camera.start();
+      return;
+    }
+    if (!camera.ready || !cameraRef.current) return;
+    const operation = camera.beginOperation();
+    if (!operation) return;
+    setCheckInState('capturing');
+
     let capturedImage: string | null = null;
     try {
       setAskedInstructor(false);
-      setCheckInState('capturing');
+      const consent = await getFacePrivacyProfile(user.uid);
+      if (!operation.isCurrent()) return;
+      if (faceAccessState(consent) !== 'ready') { camera.stop(); setCheckInState('idle'); return; }
+      if (!cameraRef.current) { camera.stop(); setCheckInState('idle'); return; }
 
       const photo = await cameraRef.current.takePictureAsync({
         base64: true,
         quality: 0.8,
         skipProcessing: false,
       });
+      discardTemporaryCameraFile(photo?.uri);
+      if (!operation.isCurrent()) return;
+      // Unmount immediately; verification and attendance do not need a live camera.
+      camera.stop();
 
       if (!photo?.base64) {
-        discardTemporaryCameraFile(photo?.uri);
         throw new Error('Failed to capture image.');
       }
       capturedImage = photo.base64;
-      discardTemporaryCameraFile(photo.uri);
-
       setCheckInState('processing');
+
+      const latest = await getFacePrivacyProfile(user.uid);
+      if (!operation.isCurrent()) return;
+      if (faceAccessState(latest) !== 'ready' || latest.faceConsentRevision !== consent.faceConsentRevision) {
+        setCheckInState('idle');
+        return;
+      }
 
       const sessionForCourse =
         activeSessions.find((s) => s.courseId === selectedCourseId) || activeSession;
@@ -211,6 +254,13 @@ export default function AttendanceCheckInScreen() {
       }
 
       const result = await recognizeFace(capturedImage);
+      if (!operation.isCurrent()) return;
+      const beforeAttendance = await getFacePrivacyProfile(user.uid);
+      if (!operation.isCurrent()) return;
+      if (faceAccessState(beforeAttendance) !== 'ready' || beforeAttendance.faceConsentRevision !== consent.faceConsentRevision) {
+        setCheckInState('idle');
+        return;
+      }
 
       if (!result.recognized || result.uid !== user.uid) {
         recordFailure(NOT_RECOGNIZED_FEEDBACK, 'not_recognized');
@@ -235,21 +285,20 @@ export default function AttendanceCheckInScreen() {
         method: 'Phone face verification',
         source: 'phone_face_verification',
       });
-
-      if (submitResult.duplicate) {
-        resetFailures();
-        setCheckInState('idle');
-        Alert.alert('Already Checked In', 'You have already checked in for this session.');
-        return;
-      }
+      if (!operation.isCurrent()) return;
 
       resetFailures();
       setCheckInState('success');
-
-      setTimeout(() => {
-        router.back();
+      redirectTimer.current = setTimeout(() => {
+        if (operation.isCurrent()) router.back();
       }, 2500);
+
+      if (submitResult.duplicate) {
+        Alert.alert('Already Checked In', 'You have already checked in for this session.');
+      }
     } catch (error: any) {
+      if (!operation.isCurrent()) return;
+      camera.stop();
       if (__DEV__) {
         console.warn('Check-in error:', error?.code || error?.message || error);
       }
@@ -272,13 +321,17 @@ export default function AttendanceCheckInScreen() {
       }
     } finally {
       capturedImage = null;
+      operation.finish();
     }
   };
 
   const handleClose = () => {
     if (checkInState === 'processing' || checkInState === 'capturing') return;
+    camera.cancel();
     router.back();
   };
+
+  if (privacy.state !== 'ready') return <FacePrivacyGate state={privacy.state} unavailable={privacy.unavailable} retry={privacy.retry} />;
 
   if (!permission) {
     return (
@@ -325,11 +378,17 @@ export default function AttendanceCheckInScreen() {
     <View style={styles.container}>
       <StatusBar style="light" />
 
-      {!isNoSession && (
+      {camera.active && (checkInState === 'idle' || checkInState === 'capturing') && (
         <CameraView
           ref={cameraRef}
           style={StyleSheet.absoluteFill}
           facing={'front' as CameraType}
+          onCameraReady={camera.onReady}
+          onMountError={() => {
+            camera.stop();
+            setFailure({ title: 'Camera unavailable', hint: 'Could not start the camera. Tap Try Again to reopen it.' });
+            setCheckInState('error');
+          }}
         />
       )}
 
@@ -373,6 +432,7 @@ export default function AttendanceCheckInScreen() {
                   <TouchableOpacity
                     key={s.sessionId}
                     style={[styles.courseChip, selected && styles.courseChipSelected]}
+                  disabled={isProcessing || isSuccess}
                     onPress={() => {
                       setSelectedCourseId(s.courseId || '');
                       setActiveSession(s);
@@ -493,14 +553,17 @@ export default function AttendanceCheckInScreen() {
                   ]}
                   onPress={handleCheckIn}
                   activeOpacity={0.8}
-                  disabled={loadingSession}
+                  disabled={loadingSession || (camera.active && !camera.ready)}
+                  accessibilityRole="button"
+                  accessibilityLabel={camera.active ? 'Take check-in photo' : 'Resume check-in camera'}
                 >
                   <View style={styles.captureButtonInner} />
                 </TouchableOpacity>
                 <Text style={styles.checkInLabel}>
                   {checkInState === 'not_recognized' || checkInState === 'error'
                     ? 'Try Again'
-                    : 'Check In'}
+                    : !camera.active && !loadingSession && privacy.profile?.faceEnrolled ? 'Resume Camera'
+                    : camera.active && !camera.ready ? 'Starting Camera…' : 'Check In'}
                 </Text>
               </View>
             )}

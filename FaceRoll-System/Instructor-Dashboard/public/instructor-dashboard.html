@@ -415,23 +415,24 @@
       }
     }
   </style>
+  <link rel="stylesheet" href="./css/dashboard-theme.css?v=20261029-theme-1">
   </head>
-  <body id="i0mho" class="gjs-t-body body-root" data-auth-required="true">
+  <body id="i0mho" class="gjs-t-body body-root instructor-workspace" data-auth-required="true">
     <div class="app-wrapper">
       <!-- Sidebar navigation -->
       <aside class="gjs-t-border sidebar-navigation">
         <div id="izkee" class="sidebar-header sidebar-brand">
-          <div class="sidebar-brand-logo"><img src="./Transparent FaceRoll.png" alt="FaceRoll logo" id="i0pgol" class="logo-image"/></div>
-          <div class="sidebar-brand-text"><span class="sidebar-brand-title">FaceRoll</span></div>
+          <a href="./instructor-dashboard.html" class="sidebar-brand-lockup" aria-label="FaceRoll dashboard"><div class="sidebar-brand-logo"><img src="./Updated%20FaceRoll.png" alt="FaceRoll logo" id="i0pgol" class="logo-image"/></div>
+          <div class="sidebar-brand-text"><span class="sidebar-brand-title">FaceRoll</span></div></a>
         </div>
         <nav id="iqnsp" class="sidebar-menu">
           <ul class="sidebar-menu-list">
-            <li><a href="./instructor-dashboard.html" aria-current="page" class="sidebar-link-active"><img src="https://api.iconify.design/lucide-home.svg?color=%230f172a" alt="" class="sidebar-icon"/><span class="sidebar-link-label">Dashboard</span></a></li>
-            <li><a href="./live-session.html" class="sidebar-link"><img src="https://api.iconify.design/lucide-calendar-check.svg?color=%2364748b" alt="" class="sidebar-icon"/><span class="sidebar-link-label">Live Session</span></a></li>
-            <li><a href="./student-roster.html" class="sidebar-link"><img src="https://api.iconify.design/lucide-users.svg?color=%2364748b" alt="" class="sidebar-icon"/><span class="sidebar-link-label">Students</span></a></li>
-            <li><a href="./reports.html" id="ii1go" class="sidebar-link"><img src="https://api.iconify.design/lucide-bar-chart-3.svg?color=%2364748b" alt="" class="sidebar-icon"/><span class="sidebar-link-label">Reports</span></a></li>
-            <li><a href="./courses.html" class="sidebar-link"><img src="https://api.iconify.design/lucide-book-open.svg?color=%2364748b" alt="" class="sidebar-icon"/><span class="sidebar-link-label">Courses</span></a></li>
-            <li><a href="./settings.html" class="sidebar-link"><img src="https://api.iconify.design/lucide-settings.svg?color=%2364748b" alt="" class="sidebar-icon"/><span class="sidebar-link-label">Settings</span></a></li>
+            <li><a href="./instructor-dashboard.html" aria-current="page" class="sidebar-link-active"><svg class="sidebar-icon" aria-hidden="true" focusable="false"><use href="./icons.svg#home"></use></svg><span class="sidebar-link-label">Dashboard</span></a></li>
+            <li><a href="./live-session.html" class="sidebar-link"><svg class="sidebar-icon" aria-hidden="true" focusable="false"><use href="./icons.svg#calendar-check"></use></svg><span class="sidebar-link-label">Live Session</span></a></li>
+            <li><a href="./student-roster.html" class="sidebar-link"><svg class="sidebar-icon" aria-hidden="true" focusable="false"><use href="./icons.svg#users"></use></svg><span class="sidebar-link-label">Students</span></a></li>
+            <li><a href="./reports.html" id="ii1go" class="sidebar-link"><svg class="sidebar-icon" aria-hidden="true" focusable="false"><use href="./icons.svg#bar-chart"></use></svg><span class="sidebar-link-label">Reports</span></a></li>
+            <li><a href="./courses.html" class="sidebar-link"><svg class="sidebar-icon" aria-hidden="true" focusable="false"><use href="./icons.svg#book-open"></use></svg><span class="sidebar-link-label">Courses</span></a></li>
+            <li><a href="./settings.html" class="sidebar-link"><svg class="sidebar-icon" aria-hidden="true" focusable="false"><use href="./icons.svg#settings"></use></svg><span class="sidebar-link-label">Settings</span></a></li>
           </ul>
         </nav>
         <div class="sidebar-footer">
@@ -462,19 +463,19 @@
           <section class="overview-section">
             <div class="gjs-t-border summary-card">
               <div class="summary-text"><span class="summary-label">Students Today</span><span id="statTotal" class="summary-value">Loading...</span></div>
-              <img src="https://api.iconify.design/lucide-users.svg?color=%231d4ed8" alt="" class="summary-icon"/>
+              <svg class="summary-icon" aria-hidden="true" focusable="false"><use href="./icons.svg#users"></use></svg>
             </div>
             <div id="ibdd1" class="gjs-t-border summary-card">
               <div class="summary-text"><span class="summary-label">Present Today</span><span id="statPresent" class="summary-value">Loading...</span></div>
-              <img src="https://api.iconify.design/lucide-check-circle-2.svg?color=%2316a34a" alt="" class="summary-icon"/>
+              <svg class="summary-icon" aria-hidden="true" focusable="false"><use href="./icons.svg#check-circle"></use></svg>
             </div>
             <div class="gjs-t-border summary-card">
               <div class="summary-text"><span class="summary-label">Late Today</span><span id="statLate" class="summary-value">Loading...</span></div>
-              <img src="https://api.iconify.design/lucide-clock-3.svg?color=%23f59e0b" alt="" class="summary-icon"/>
+              <svg class="summary-icon summary-icon-late" aria-hidden="true" focusable="false"><use href="./icons.svg#clock"></use></svg>
             </div>
             <div class="gjs-t-border summary-card">
               <div class="summary-text"><span class="summary-label">Absent Today</span><span id="statAbsent" class="summary-value">Loading...</span></div>
-              <img src="https://api.iconify.design/lucide-x-circle.svg?color=%23dc2626" alt="" class="summary-icon"/>
+              <svg class="summary-icon summary-icon-absent" aria-hidden="true" focusable="false"><use href="./icons.svg#x-circle"></use></svg>
             </div>
           </section>
           <!-- Attendance records panel -->
@@ -508,7 +509,7 @@
               <div class="filter-field">
                 <label for="searchInput" class="filter-label">Search name, ID, or course</label>
                 <div class="filter-search-wrapper">
-                  <img src="https://api.iconify.design/lucide-search.svg?color=%2364748b" alt="" class="filter-search-icon"/>
+                  <svg class="filter-search-icon" aria-hidden="true" focusable="false"><use href="./icons.svg#search"></use></svg>
                   <input type="text" id="searchInput" placeholder="e.g., Jane or S1021" aria-label="Search text" class="filter-search-input"/>
                 </div>
               </div>
@@ -562,7 +563,7 @@
     <script defer src="./js/sample-data.js"></script>
     <script defer src="./js/firebase-client.js?v=20261005-auth-cycle-1"></script>
     <script defer src="./js/auth-guard.js?v=20261005-auth-1"></script>
-    <script defer src="./js/sidebar-user.js?v=20261005-auth-cycle-1"></script>
+    <script defer src="./js/sidebar-user.js?v=20261029-theme-1"></script>
     <script defer src="./js/instructor-dashboard.js?v=20261005-resilience-1"></script>
   </body>
 </html>

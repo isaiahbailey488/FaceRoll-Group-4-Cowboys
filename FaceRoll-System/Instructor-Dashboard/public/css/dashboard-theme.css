@@ -1,0 +1,857 @@
+/* Instructor workspace theme adapted from uI design/css/design.css. Load after page styles; the persistent workspace class takes precedence over legacy page rules. */
+:root {
+  --fr-bg: #f6f7f9;
+  --fr-surface: #fcfcfd;
+  --fr-text: #0f172a;
+  --fr-muted: #526174;
+  --fr-border: #cbd5e1;
+  --fr-border-soft: #edf0f2;
+  --fr-primary: #2e7d42;
+  --fr-primary-hover: #246334;
+  --fr-ring: rgba(46, 125, 66, 0.22);
+  --design-accent-soft: #edf5ef;
+  --design-accent-text: #2e7d42;
+  --design-button-bg: #2c5282;
+  --design-button-hover: #24446b;
+  --design-table-header: #f9fafb;
+  --design-row-hover: #f5f8f6;
+  --design-panel-shadow: 0 2px 8px rgba(15, 23, 42, 0.025);
+  --design-present-bg: #edf5ef;
+  --design-present-text: #2e7d42;
+  --design-present-border: #bad7c2;
+  --design-late-bg: #f5f0df;
+  --design-late-text: #855b23;
+  --design-late-border: #d8cba3;
+  --design-absent-bg: #f4e7e7;
+  --design-absent-text: #8b3a3a;
+  --design-absent-border: #d9b8b8;
+}
+
+body.body-root.instructor-workspace,
+body.instructor-workspace .app-wrapper,
+body.instructor-workspace .main-column,
+body.instructor-workspace .main-content,
+body.instructor-workspace .footer {
+  background-color: var(--fr-bg) !important;
+  color: var(--fr-text) !important;
+}
+
+body.instructor-workspace .overview-section,
+body.instructor-workspace .attendance-panel {
+  background-color: var(--fr-surface) !important;
+  border-color: var(--fr-border-soft) !important;
+}
+
+body.instructor-workspace .sidebar-navigation {
+  background-color: var(--fr-bg) !important;
+  border-radius: 0 !important;
+  border-right: 0 !important;
+}
+
+body.instructor-workspace .top-header {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 2rem 2rem 0.75rem !important;
+}
+
+body.instructor-workspace .header-title-group {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  padding-bottom: 0 !important;
+}
+
+body.instructor-workspace .main-content {
+  padding-top: 1.25rem !important;
+  gap: 1.5rem !important;
+}
+
+body.instructor-workspace .overview-section,
+body.instructor-workspace .attendance-panel {
+  border: 1px solid var(--fr-border-soft) !important;
+  border-radius: 14px !important;
+  box-shadow: var(--design-panel-shadow) !important;
+}
+
+body.instructor-workspace .overview-section {
+  gap: 0 !important;
+  overflow: hidden;
+}
+
+body.instructor-workspace .summary-card {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 1rem 1.2rem !important;
+}
+
+body.instructor-workspace .summary-card + .summary-card {
+  border-left: 1px solid var(--fr-border-soft) !important;
+}
+
+body.instructor-workspace .summary-card:hover {
+  outline: none !important;
+}
+
+body.instructor-workspace #statPresent {
+  color: var(--fr-primary) !important;
+}
+
+body.instructor-workspace .header-title-group .header-title-unified,
+body.instructor-workspace .sidebar-brand-title {
+  color: var(--fr-primary) !important;
+}
+
+body.instructor-workspace .sidebar-brand,
+body.instructor-workspace .sidebar-footer,
+body.instructor-workspace .footer,
+body.instructor-workspace .table-scroll {
+  border-color: var(--fr-border-soft) !important;
+}
+
+body.instructor-workspace .sidebar-footer {
+  background-color: var(--fr-bg) !important;
+}
+
+body.instructor-workspace .sidebar-brand {
+  border-bottom: 0 !important;
+}
+
+body.instructor-workspace .sidebar-brand-lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  flex: 0 0 auto;
+  text-decoration: none;
+}
+
+body.instructor-workspace .sidebar-brand-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.035em;
+  white-space: nowrap;
+}
+
+body.instructor-workspace .sidebar-brand-logo {
+  width: 96px;
+  height: 80px;
+}
+
+body.instructor-workspace .sidebar-brand-logo img {
+  width: 96px !important;
+  max-width: 96px !important;
+  /* Compensate for the image's transparent margins and align the visible symbol. */
+  transform: translateY(6px) scale(2.6);
+}
+
+body.instructor-workspace .table-scroll {
+  border: 0 !important;
+  border-radius: 0 !important;
+}
+
+body.instructor-workspace .profile-name,
+body.instructor-workspace .summary-value,
+body.instructor-workspace .sidebar-link-label,
+body.instructor-workspace .attendance-table td {
+  color: var(--fr-text) !important;
+}
+
+body.instructor-workspace .profile-role,
+body.instructor-workspace .summary-label,
+body.instructor-workspace .filter-label,
+body.instructor-workspace .footer-content,
+body.instructor-workspace .table-footer-meta,
+body.instructor-workspace #firestoreStatus {
+  color: var(--fr-muted) !important;
+}
+
+body.instructor-workspace .sidebar-link-active {
+  background-color: var(--design-accent-soft) !important;
+  color: var(--fr-primary) !important;
+  border-left-color: var(--fr-primary) !important;
+}
+
+body.instructor-workspace .sidebar-link-active .sidebar-link-label {
+  color: var(--fr-primary) !important;
+}
+
+body.instructor-workspace .sidebar-link:hover {
+  background-color: var(--design-accent-soft) !important;
+}
+
+body.instructor-workspace .filter-apply-button,
+body.instructor-workspace .filter-clear-button,
+body.instructor-workspace .pagination-prev,
+body.instructor-workspace .pagination-next {
+  background-color: var(--design-button-bg) !important;
+  border-color: var(--design-button-bg) !important;
+  color: #ffffff !important;
+}
+
+body.instructor-workspace .filter-apply-button:hover,
+body.instructor-workspace .filter-clear-button:hover,
+body.instructor-workspace .pagination-prev:hover,
+body.instructor-workspace .pagination-next:hover {
+  background-color: var(--design-button-hover) !important;
+  border-color: var(--design-button-hover) !important;
+  color: #ffffff !important;
+}
+
+body.instructor-workspace .filter-search-wrapper,
+body.instructor-workspace .filter-input-date-from,
+body.instructor-workspace .filter-input-date-to,
+body.instructor-workspace .filter-select-status {
+  background-color: var(--fr-surface) !important;
+  color: var(--fr-text) !important;
+  border-color: var(--fr-border) !important;
+}
+
+body.instructor-workspace .filter-search-input {
+  color: var(--fr-text) !important;
+}
+
+body.instructor-workspace button:focus-visible,
+body.instructor-workspace a:focus-visible {
+  outline: 3px solid var(--fr-primary) !important;
+  outline-offset: 3px;
+  box-shadow: none !important;
+}
+
+body.instructor-workspace input:focus,
+body.instructor-workspace select:focus,
+body.instructor-workspace .filter-search-wrapper:focus-within {
+  border-color: var(--fr-primary) !important;
+  outline-color: var(--fr-ring) !important;
+  box-shadow: 0 0 0 2px var(--fr-ring) !important;
+}
+
+body.instructor-workspace .filter-search-input:focus {
+  box-shadow: none !important;
+}
+
+body.instructor-workspace .table-head,
+body.instructor-workspace .attendance-table > thead > tr > th {
+  background-color: var(--design-table-header) !important;
+  color: var(--design-accent-text) !important;
+}
+
+body.instructor-workspace .attendance-table > thead > tr > th {
+  border-top: 1px solid var(--fr-border-soft);
+  border-bottom: 1px solid var(--fr-border-soft) !important;
+}
+
+body.instructor-workspace .attendance-table > tbody > tr > td {
+  background-color: var(--fr-surface) !important;
+  border-bottom: 1px solid var(--fr-border-soft) !important;
+  transition: background-color 120ms ease;
+}
+
+body.instructor-workspace .attendance-table > tbody > tr:hover > td {
+  background-color: var(--design-row-hover) !important;
+}
+
+body.instructor-workspace .status-badge.status-present {
+  background-color: var(--design-present-bg) !important;
+  color: var(--design-present-text) !important;
+  border-color: var(--design-present-border) !important;
+}
+
+body.instructor-workspace .status-badge.status-late {
+  background-color: var(--design-late-bg) !important;
+  color: var(--design-late-text) !important;
+  border-color: var(--design-late-border) !important;
+}
+
+body.instructor-workspace .status-badge.status-absent {
+  background-color: var(--design-absent-bg) !important;
+  color: var(--design-absent-text) !important;
+  border-color: var(--design-absent-border) !important;
+}
+
+body.instructor-workspace .pagination-prev:disabled,
+body.instructor-workspace .pagination-next:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+@media (max-width: 992px) {
+  body.instructor-workspace .summary-card:nth-child(3) {
+    border-left: 0 !important;
+  }
+
+  body.instructor-workspace .summary-card:nth-child(n+3) {
+    border-top: 1px solid var(--fr-border-soft) !important;
+  }
+}
+
+@media (max-width: 480px) {
+  body.instructor-workspace .sidebar-brand {
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  body.instructor-workspace .summary-card + .summary-card {
+    border-left: 0 !important;
+    border-top: 1px solid var(--fr-border-soft) !important;
+  }
+}
+
+@media (min-width: 481px) and (max-width: 992px) {
+  body.instructor-workspace .sidebar-brand-logo {
+    width: 56px;
+    height: 56px;
+  }
+
+  body.instructor-workspace .sidebar-brand-logo img {
+    width: 56px !important;
+    max-width: 56px !important;
+    transform: translateY(4px) scale(2.6);
+  }
+}
+
+/* Workspace adaptations: keep legacy layout rules from overriding the theme. */
+body.instructor-workspace .sidebar-navigation {
+  width: 15rem;
+  flex: 0 0 15rem;
+  padding: 0;
+}
+
+body.instructor-workspace .sidebar-brand-lockup {
+  min-width: 0;
+}
+
+body.instructor-workspace .sidebar-brand-title {
+  font-size: 1.25rem;
+  line-height: 1;
+  letter-spacing: -0.035em;
+}
+
+body.instructor-workspace .sidebar-icon,
+body.instructor-workspace .summary-icon,
+body.instructor-workspace .profile-avatar,
+body.instructor-workspace .header-avatar {
+  display: block !important;
+  flex-shrink: 0;
+}
+
+body.instructor-workspace .sidebar-icon,
+body.instructor-workspace .summary-icon,
+body.instructor-workspace .filter-search-icon,
+body.instructor-workspace .btn-icon,
+body.instructor-workspace .button-icon,
+body.instructor-workspace .notice-icon {
+  display: block !important;
+  width: 1.25rem;
+  height: 1.25rem;
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+body.instructor-workspace .sidebar-icon,
+body.instructor-workspace .filter-search-icon {
+  color: var(--fr-muted);
+}
+
+body.instructor-workspace .sidebar-link-active .sidebar-icon,
+body.instructor-workspace .sidebar-link:hover .sidebar-icon,
+body.instructor-workspace .summary-icon {
+  color: var(--fr-primary);
+}
+
+body.instructor-workspace .summary-icon-late {
+  color: var(--design-late-text);
+}
+
+body.instructor-workspace .summary-icon-absent {
+  color: var(--design-absent-text);
+}
+
+body.instructor-workspace .sidebar-menu {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 18px 0.5rem 1rem;
+}
+
+body.instructor-workspace .sidebar-link-active,
+body.instructor-workspace .sidebar-link:hover {
+  outline: none;
+}
+
+body.instructor-workspace .main-content {
+  align-items: stretch;
+  justify-content: flex-start;
+  padding: 1.25rem 2rem 3rem !important;
+}
+
+body.instructor-workspace .main-column > .main-content:first-child {
+  padding-top: 2rem !important;
+}
+
+body.instructor-workspace .attendance-panel-title-group {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+body.instructor-workspace .attendance-panel-title,
+body.instructor-workspace .settings-page-header h1,
+body.instructor-workspace .course-page-header h1 {
+  color: var(--fr-primary) !important;
+  font-size: 1.65rem !important;
+  line-height: 1.3;
+  font-weight: 600;
+}
+
+body.instructor-workspace .attendance-panel-header {
+  gap: 1rem;
+  border-color: var(--fr-border-soft);
+}
+
+body.instructor-workspace .settings-page-header p,
+body.instructor-workspace .course-page-header p {
+  color: var(--fr-muted);
+}
+
+body.instructor-workspace .settings-card,
+body.instructor-workspace #instructor-settings,
+body.instructor-workspace #inviteStudentsDialog {
+  background: var(--fr-surface);
+  border-color: var(--fr-border-soft);
+  border-radius: 14px !important;
+  box-shadow: var(--design-panel-shadow);
+}
+
+body.instructor-workspace #manageCoursesPanel,
+body.instructor-workspace #inviteStudentsDialog {
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.24);
+}
+
+body.instructor-workspace .settings-card-header,
+body.instructor-workspace .settings-card-footer,
+body.instructor-workspace .profile-enrollment-item,
+body.instructor-workspace #attendance-window-input {
+  border-color: var(--fr-border-soft);
+}
+
+body.instructor-workspace .settings-card-footer,
+body.instructor-workspace .course-picker-card > .settings-card-body,
+body.instructor-workspace .control-section,
+body.instructor-workspace .verification-toggle-row,
+body.instructor-workspace .profile-enrollment-section,
+body.instructor-workspace #instructor-settings .toggle,
+body.instructor-workspace #settings-status {
+  background: var(--fr-bg);
+  border-color: var(--fr-border-soft);
+}
+
+body.instructor-workspace .profile-enrollment-item,
+body.instructor-workspace .coordinate-list div,
+body.instructor-workspace #instructor-settings .input-wrap {
+  background: var(--fr-surface);
+  border-color: var(--fr-border);
+}
+
+body.instructor-workspace .course-page-eyebrow,
+body.instructor-workspace .radius-slider-heading output,
+body.instructor-workspace .map-placeholder-icon,
+body.instructor-workspace .student-action-link {
+  color: var(--fr-primary);
+}
+
+body.instructor-workspace .student-action-link:hover {
+  color: var(--fr-primary-hover);
+}
+
+body.instructor-workspace .privacy-notice,
+body.instructor-workspace .profile-enrollment-button:not(.profile-enrollment-remove) {
+  background: var(--design-accent-soft);
+  color: var(--fr-primary);
+  border-color: var(--design-present-border);
+}
+
+body.instructor-workspace .radius-slider {
+  accent-color: var(--fr-primary);
+}
+
+body.instructor-workspace .toggle-button[aria-checked="true"],
+body.instructor-workspace #instructor-settings .toggle-button[aria-checked="true"] {
+  background: var(--fr-primary);
+}
+
+body.instructor-workspace #instructor-settings .toggle-button {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  padding: 0;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 999px;
+  background: #94a3b8;
+}
+
+body.instructor-workspace #instructor-settings .toggle-button .knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #ffffff;
+  transition: transform 150ms ease;
+}
+
+body.instructor-workspace #instructor-settings .toggle-button[aria-checked="true"] .knob {
+  transform: translateX(20px);
+}
+
+/* Include ID-based legacy session buttons so they cannot restore the old blue. */
+body.instructor-workspace .primary-button,
+body.instructor-workspace .btn-primary,
+body.instructor-workspace .save-btn,
+body.instructor-workspace .export-button,
+body.instructor-workspace .roster-invite-button,
+body.instructor-workspace #inviteStudentsDialog .primary-button,
+body#imsyg1.instructor-workspace .session-controls #iq6lcg,
+body#idhra3g.instructor-workspace .session-controls .gjs-t-button {
+  background: var(--design-button-bg) !important;
+  color: #ffffff !important;
+  border: 1px solid var(--design-button-bg) !important;
+  box-shadow: none !important;
+}
+
+body.instructor-workspace .primary-button:hover:not(:disabled),
+body.instructor-workspace .btn-primary:hover:not(:disabled),
+body.instructor-workspace .save-btn:hover:not(:disabled),
+body.instructor-workspace .export-button:hover:not(:disabled),
+body.instructor-workspace .roster-invite-button:hover:not(:disabled),
+body.instructor-workspace #inviteStudentsDialog .primary-button:hover:not(:disabled),
+body#imsyg1.instructor-workspace .session-controls #iq6lcg:hover:not(:disabled),
+body#idhra3g.instructor-workspace .session-controls .gjs-t-button:hover:not(:disabled) {
+  background: var(--design-button-hover) !important;
+  border-color: var(--design-button-hover) !important;
+  box-shadow: none !important;
+}
+
+body.instructor-workspace .secondary-button:hover:not(:disabled),
+body.instructor-workspace .search-result-button:hover {
+  background: var(--design-accent-soft);
+  color: var(--fr-primary);
+  border-color: var(--design-present-border);
+}
+
+body.instructor-workspace button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+body.instructor-workspace textarea:focus,
+body.instructor-workspace #instructor-settings .input-wrap:focus-within {
+  outline-color: var(--fr-ring);
+  border-color: var(--fr-primary);
+  box-shadow: 0 0 0 2px var(--fr-ring);
+}
+
+/* Keep the session action alongside its inputs instead of a separate row. */
+body#imsyg1.instructor-workspace .live-session-setup {
+  grid-template-columns: minmax(0, 1.3fr) minmax(10.5rem, 1.1fr) minmax(0, 1fr) auto !important;
+  gap: 1rem !important;
+  padding: 1rem 1.5rem 0.75rem !important;
+}
+
+body#imsyg1.instructor-workspace .live-session-setup .filter-field {
+  grid-column: auto !important;
+  min-width: 0;
+}
+
+body#imsyg1.instructor-workspace .live-session-setup input,
+body#imsyg1.instructor-workspace .live-session-setup select {
+  min-width: 0;
+  min-height: 2.75rem;
+}
+
+body#imsyg1.instructor-workspace .live-session-setup .session-controls {
+  margin: 0;
+  padding: 0;
+  align-self: end;
+}
+
+body#imsyg1.instructor-workspace .live-session-setup #iq6lcg {
+  min-height: 2.75rem;
+  white-space: nowrap;
+}
+
+body#imsyg1.instructor-workspace #liveSessionStatus {
+  display: flex;
+  align-items: center;
+  min-height: 2.75rem;
+}
+
+body#imsyg1.instructor-workspace #i-session-summary {
+  margin: 0 1.5rem 0.75rem;
+}
+
+@media (max-width: 1100px) {
+  body#imsyg1.instructor-workspace .live-session-setup {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.75rem !important;
+  }
+}
+
+@media (max-width: 640px) {
+  body#imsyg1.instructor-workspace .live-session-setup {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  body#imsyg1.instructor-workspace .live-session-setup #iq6lcg {
+    width: 100%;
+  }
+
+  body#imsyg1.instructor-workspace #liveSessionStatus {
+    min-height: auto;
+  }
+}
+
+/* The dashboard has four metrics; live sessions have three. */
+body.instructor-workspace #i-session-summary {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0 !important;
+  padding: 0 !important;
+  margin: 1rem 1.5rem;
+  width: auto;
+}
+
+body.instructor-workspace #i-session-summary .summary-card {
+  grid-column: auto !important;
+}
+
+body#idhra3g.instructor-workspace .overview-section {
+  gap: 0 !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  margin: 1rem 1.5rem;
+  width: auto !important;
+}
+
+body#idhra3g.instructor-workspace .overview-section + .overview-section {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+}
+
+body#idhra3g.instructor-workspace .overview-section .summary-card {
+  grid-column: auto !important;
+}
+
+body#iw11pz.instructor-workspace .overview-section {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 1rem 1.5rem;
+  width: auto;
+}
+
+body#iw11pz.instructor-workspace .overview-section .summary-card {
+  grid-column: auto;
+}
+
+body.instructor-workspace #i-session-summary .summary-card + .summary-card,
+body#iw11pz.instructor-workspace .overview-section .summary-card + .summary-card {
+  border-left: 1px solid var(--fr-border-soft) !important;
+  border-top: 0 !important;
+}
+
+body#idhra3g.instructor-workspace .overview-section + .overview-section .summary-card {
+  padding: 1rem 1.2rem !important;
+}
+
+body#idhra3g.instructor-workspace .overview-section + .overview-section .summary-card + .summary-card {
+  border-left: 1px solid var(--fr-border-soft) !important;
+}
+
+body#idhra3g.instructor-workspace .summary-value {
+  font-size: 1.35rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+/* The legacy stylesheet removes badge borders in some table containers. */
+body.instructor-workspace .status-badge {
+  display: inline-flex !important;
+  align-items: center;
+  border: 1px solid transparent !important;
+  border-radius: 999px !important;
+  padding: 0.2rem 0.625rem !important;
+  font-size: 0.75rem;
+  font-weight: 500 !important;
+  line-height: 1rem;
+  box-shadow: none !important;
+}
+
+@media (max-width: 1200px) {
+  body#i0mho.instructor-workspace .filter-bar {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 992px) {
+  body.instructor-workspace .sidebar-navigation {
+    width: 5rem;
+    flex-basis: 5rem;
+  }
+
+  body.instructor-workspace .sidebar-brand {
+    justify-content: center;
+    padding: 18px 12px;
+  }
+
+  body.instructor-workspace .sidebar-brand-text {
+    display: none;
+  }
+
+  body.instructor-workspace .main-content,
+  body.instructor-workspace .main-column > .main-content:first-child {
+    padding: 1.25rem !important;
+  }
+
+  body.instructor-workspace .top-header {
+    padding: 1.5rem 1.25rem 0 !important;
+  }
+
+  body#i0mho.instructor-workspace .filter-bar {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  body#idhra3g.instructor-workspace .overview-section,
+  body#idhra3g.instructor-workspace .overview-section + .overview-section {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  body#idhra3g.instructor-workspace .overview-section + .overview-section .summary-card:nth-child(3) {
+    border-left: 0 !important;
+  }
+
+  body#idhra3g.instructor-workspace .overview-section + .overview-section .summary-card:nth-child(n+3) {
+    border-top: 1px solid var(--fr-border-soft) !important;
+  }
+
+  body.instructor-workspace .faceroll-account-menu {
+    right: auto;
+    width: min(18rem, calc(100vw - 2rem));
+  }
+}
+
+@media (max-width: 640px) {
+  body.instructor-workspace .app-wrapper {
+    display: block;
+  }
+
+  body.instructor-workspace .sidebar-navigation {
+    position: static;
+    width: 100%;
+    height: auto;
+    border-bottom: 1px solid var(--fr-border-soft);
+  }
+
+  body.instructor-workspace .sidebar-brand {
+    justify-content: flex-start;
+    padding: 0 1rem;
+  }
+
+  body.instructor-workspace .sidebar-brand-text,
+  body.instructor-workspace .sidebar-link-label,
+  body.instructor-workspace .profile-text-group {
+    display: block;
+  }
+
+  body.instructor-workspace .sidebar-brand-logo {
+    width: 72px;
+    height: 64px;
+  }
+
+  body.instructor-workspace .sidebar-brand-logo img {
+    width: 72px !important;
+    max-width: 72px !important;
+    transform: translateY(4px) scale(2.6);
+  }
+
+  body.instructor-workspace .sidebar-menu,
+  body.instructor-workspace #iqnsp {
+    overflow-x: auto;
+    padding: 0.5rem;
+  }
+
+  body.instructor-workspace .sidebar-menu-list {
+    flex-direction: row;
+    width: max-content;
+  }
+
+  body.instructor-workspace .sidebar-link,
+  body.instructor-workspace .sidebar-link-active {
+    white-space: nowrap;
+  }
+
+  body.instructor-workspace .sidebar-footer {
+    display: block;
+    padding: 0.65rem 1rem;
+  }
+
+  body.instructor-workspace .profile-mini {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: fit-content;
+    max-width: 100%;
+  }
+
+  body.instructor-workspace .profile-text-group {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  body.instructor-workspace .main-content,
+  body.instructor-workspace .main-column > .main-content:first-child {
+    margin: 0 !important;
+    padding: 1rem !important;
+  }
+
+  body.instructor-workspace .top-header {
+    padding: 1.25rem 1rem 0 !important;
+  }
+
+  body.instructor-workspace .attendance-panel-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  body.instructor-workspace .roster-invite-button {
+    margin-left: 0;
+  }
+
+  body.instructor-workspace .filter-bar,
+  body#i0mho.instructor-workspace .filter-bar {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  body.instructor-workspace .filter-bar .filter-field,
+  body.instructor-workspace .filter-controls {
+    grid-column: auto !important;
+  }
+
+  body.instructor-workspace #i-session-summary,
+  body#iw11pz.instructor-workspace .overview-section,
+  body#idhra3g.instructor-workspace .overview-section,
+  body#idhra3g.instructor-workspace .overview-section + .overview-section {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  body.instructor-workspace #i-session-summary .summary-card + .summary-card,
+  body#iw11pz.instructor-workspace .overview-section .summary-card + .summary-card,
+  body#idhra3g.instructor-workspace .overview-section .summary-card + .summary-card {
+    border-left: 0 !important;
+    border-top: 1px solid var(--fr-border-soft) !important;
+  }
+}

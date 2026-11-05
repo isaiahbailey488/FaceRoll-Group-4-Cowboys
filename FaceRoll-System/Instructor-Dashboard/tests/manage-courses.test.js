@@ -32,7 +32,7 @@ test('signed-out creation is blocked and duplicate IDs cannot replace ownership'
   }
 });
 
-test('course management lists only owned courses and opens invitations for the selected course', async () => {
+test('course management keeps deletion on Courses after invitations move to Students', async () => {
   class Element {
     constructor() { this.children=[]; this.textContent=''; }
     addEventListener(_event, handler) { this.click=handler; }
@@ -63,11 +63,54 @@ test('course management lists only owned courses and opens invitations for the s
   await new Promise(resolve=>setImmediate(resolve));
 
   assert.equal(list.children.length,1);
-  const inviteButton=list.children[0].children[1];
-  assert.equal(inviteButton.textContent,'Invite Students');
-  inviteButton.click();
-  assert.equal(panel.closed,true);
-  assert.equal(events[0].type,'faceroll:invite-course');
+  const deleteButton=list.children[0].children[1];
+  assert.equal(deleteButton.textContent,'Delete Course');
+  deleteButton.click();
+  assert.equal(panel.closed,undefined);
+  assert.equal(events[0].type,'faceroll:delete-course');
   assert.equal(events[0].detail.courseId,'OWNED');
   assert.equal(events[0].detail.courseName,'Owned Course');
+});
+
+test('Courses deletion confirms the chosen class and refreshes management after authenticated deletion', async () => {
+  const { initializeCourseDeletion } = await import('../public/js/course-deletion.mjs');
+  const status = {}, trigger = {}, events = [], requests = [], confirmations = [];
+  let handler;
+  initializeCourseDeletion({ getElementById: () => status }, {
+    addEventListener: (_name, fn) => { handler = fn; },
+    confirm: message => { confirmations.push(message); return true; },
+    CustomEvent: class { constructor(type) { this.type = type; } },
+    dispatchEvent: event => events.push(event),
+    FaceRollConfig: { RECOGNITION_API_URL: 'https://classroom.example' },
+    FaceRollFirebase: { getCurrentAuthUser: async () => ({ getIdToken: async () => 'owner-token' }) },
+  }, async (url, options) => {
+    requests.push({ url, ...options });
+    return { ok: true, json: async () => ({ success: true, courseId: 'OWNED' }) };
+  });
+  await handler({ detail: { courseId: 'OWNED', courseName: 'Owned Course', trigger } });
+  assert.match(confirmations[0], /Owned Course/);
+  assert.equal(requests[0].method, 'DELETE');
+  assert.equal(requests[0].headers.Authorization, 'Bearer owner-token');
+  assert.equal(events[0].type, 'faceroll:courses-updated');
+  assert.equal(trigger.disabled, false);
+  assert.match(status.textContent, /Deleted Owned Course/);
+});
+
+test('cancelled or failed course deletion preserves the management window and allows retry', async () => {
+  const { initializeCourseDeletion } = await import('../public/js/course-deletion.mjs');
+  const status = {}, trigger = {};
+  let handler, confirm = false, requests = 0;
+  initializeCourseDeletion({ getElementById: () => status }, {
+    addEventListener: (_name, fn) => { handler = fn; }, confirm: () => confirm,
+    FaceRollConfig: { RECOGNITION_API_URL: 'https://classroom.example' },
+    FaceRollFirebase: { getCurrentAuthUser: async () => ({ getIdToken: async () => 'owner-token' }) },
+  }, async () => { requests++; throw new Error('Connection lost'); });
+  const event = { detail: { courseId: 'OWNED', trigger } };
+  await handler(event);
+  assert.equal(requests, 0);
+  confirm = true;
+  await handler(event);
+  assert.equal(requests, 1);
+  assert.equal(trigger.disabled, false);
+  assert.match(status.textContent, /Connection lost/);
 });

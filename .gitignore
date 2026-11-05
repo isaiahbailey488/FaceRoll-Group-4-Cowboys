@@ -71,6 +71,8 @@ FaceRoll-System/recognition/**/embeddings/*.json
 FaceRoll-System/recognition/**/students/*/metadata.json
 faceroll-embedding.key
 embedding-storage.key
+**/.face-privacy-state*
+**/.face-privacy-policy*
 
 # Recognition captures and event logs
 FaceRoll-System/recognition/**/shared/*.jpg

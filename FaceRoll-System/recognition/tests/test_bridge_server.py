@@ -80,6 +80,7 @@ class DockerCommandTests(unittest.TestCase):
         self.assertIn("DEEPFACE_HOME=/model-cache", command)
         self.assertIn("FACEROLL_ENROLLMENT_DIR=/data/enrollments", command)
         self.assertIn("FACEROLL_ROSTER_FILE=/app/shared/course-roster.json", command)
+        self.assertIn("FACEROLL_FACE_POLICY_FILE=/data/enrollments/.face-privacy-policy", command)
         self.assertIn(
             "FACEROLL_EMBEDDING_KEY_FILE=/run/secrets/faceroll-embedding.key",
             command,

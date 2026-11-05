@@ -18,12 +18,12 @@
   let profileUnsubscribe = null;
   let profileSubscriptionGeneration = 0;
   const sidebarItems = [
-    { href: './instructor-dashboard.html', label: 'Dashboard', icon: 'lucide-home' },
-    { href: './live-session.html', label: 'Live Session', icon: 'lucide-calendar-check' },
-    { href: './student-roster.html', label: 'Students', icon: 'lucide-users' },
-    { href: './reports.html', label: 'Reports', icon: 'lucide-bar-chart-3' },
-    { href: './courses.html', label: 'Courses', icon: 'lucide-book-open' },
-    { href: './settings.html', label: 'Settings', icon: 'lucide-settings' },
+    { href: './instructor-dashboard.html', label: 'Dashboard', icon: 'home' },
+    { href: './live-session.html', label: 'Live Session', icon: 'calendar-check' },
+    { href: './student-roster.html', label: 'Students', icon: 'users' },
+    { href: './reports.html', label: 'Reports', icon: 'bar-chart' },
+    { href: './courses.html', label: 'Courses', icon: 'book-open' },
+    { href: './settings.html', label: 'Settings', icon: 'settings' },
   ];
 
   function normalizePageName(value) {
@@ -47,13 +47,12 @@
         currentPage === itemPage ||
         (currentPage === 'student-profile.html' && itemPage === 'student-roster.html');
       const linkClass = isActive ? 'sidebar-link-active' : 'sidebar-link';
-      const iconColor = isActive ? '%230f172a' : '%2364748b';
       const ariaCurrent = isActive ? ' aria-current="page"' : '';
 
       return [
         '<li>',
         '<a href="', item.href, '" class="', linkClass, '"', ariaCurrent, '>',
-        '<img src="https://api.iconify.design/', item.icon, '.svg?color=', iconColor, '" alt="" class="sidebar-icon"/>',
+        '<svg class="sidebar-icon" aria-hidden="true" focusable="false"><use href="./icons.svg#', item.icon, '"></use></svg>',
         '<span class="sidebar-link-label">', item.label, '</span>',
         '</a>',
         '</li>',
@@ -208,14 +207,14 @@
     style.textContent = [
       '.sidebar-footer{position:relative;}',
       '.sidebar-footer .profile-mini{cursor:pointer;}',
-      '.sidebar-footer .profile-mini:focus{outline:2px solid rgba(37,99,235,0.25);outline-offset:3px;}',
-      '.faceroll-account-menu{position:absolute;left:12px;right:12px;bottom:calc(100% + 10px);z-index:50;background:#ffffff;border:1px solid #dbe4f0;border-radius:8px;box-shadow:0 18px 40px rgba(15,23,42,0.16);padding:0.65rem;display:none;}',
+      '.sidebar-footer .profile-mini:focus-visible{outline:2px solid var(--fr-primary);outline-offset:3px;}',
+      '.faceroll-account-menu{position:absolute;left:12px;right:12px;bottom:calc(100% + 10px);z-index:50;background:var(--fr-surface);border:1px solid var(--fr-border-soft);border-radius:14px;box-shadow:0 18px 40px rgba(15,23,42,0.16);padding:0.65rem;display:none;}',
       '.faceroll-account-menu.is-open{display:block;}',
-      '.faceroll-account-name{font-weight:700;color:#0f172a;font-size:0.9rem;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
-      '.faceroll-account-email{color:#64748b;font-size:0.78rem;line-height:1.2;margin-top:0.2rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
-      '.faceroll-account-role{color:#475569;font-size:0.78rem;line-height:1.2;margin-top:0.35rem;}',
-      '.faceroll-account-divider{height:1px;background:#e2e8f0;margin:0.65rem 0;}',
-      '.faceroll-account-action{width:100%;display:flex;align-items:center;justify-content:flex-start;border:0;background:#ffffff;color:#b91c1c;border-radius:6px;padding:0.55rem 0.6rem;font-weight:600;font-size:0.875rem;cursor:pointer;}',
+      '.faceroll-account-name{font-weight:700;color:var(--fr-text);font-size:0.9rem;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+      '.faceroll-account-email{color:var(--fr-muted);font-size:0.78rem;line-height:1.2;margin-top:0.2rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+      '.faceroll-account-role{color:var(--fr-muted);font-size:0.78rem;line-height:1.2;margin-top:0.35rem;}',
+      '.faceroll-account-divider{height:1px;background:var(--fr-border-soft);margin:0.65rem 0;}',
+      '.faceroll-account-action{width:100%;display:flex;align-items:center;justify-content:flex-start;border:0;background:var(--fr-surface);color:#b91c1c;border-radius:6px;padding:0.55rem 0.6rem;font-weight:600;font-size:0.875rem;cursor:pointer;}',
       '.faceroll-account-action:hover,.faceroll-account-action:focus{background:#fef2f2;outline:none;}',
       '.faceroll-account-action:disabled{opacity:0.65;cursor:wait;}',
     ].join('');

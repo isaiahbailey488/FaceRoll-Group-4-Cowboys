@@ -15,6 +15,7 @@ const {
   ensureDemoCertificate,
   ensureEmbeddingKey,
   createDemoEnvironment,
+  dashboardOrigins,
   detectLanAddress,
   isPrivateLanAddress,
   parseEnvironmentFile,
@@ -28,6 +29,15 @@ test('demo selects LAN normally and Expo tunnel only when requested', function (
     expoStartArguments(['--expo-tunnel']),
     ['expo', 'start', '--tunnel', '--clear']
   );
+});
+
+test('invitation API trusts the actual dashboard port on loopback and its selected network', () => {
+  const origins = dashboardOrigins('192.168.1.71', 5002, 'https://dashboard.example,http://localhost:5002').split(',');
+  assert.deepEqual(origins, ['https://dashboard.example', 'http://localhost:5002',
+    'http://127.0.0.1:5002', 'http://192.168.1.71:5002']);
+  assert.ok(!origins.includes('http://192.168.1.71:5001'));
+  assert.ok(!origins.includes('http://192.168.1.72:5002'));
+  assert.ok(dashboardOrigins('100.100.1.2', 5003).split(',').includes('http://100.100.1.2:5003'));
 });
 
 test('network prompt defaults local, accepts Tailscale, and flags bypass prompting', async () => {

@@ -97,10 +97,63 @@ service cloud.firestore {
         && hasNoBiometricPayload();
     }
 
+
+    function hasValidFacePrivacy() {
+      return request.resource.data.get('optOutFlag', false) is bool
+        && request.resource.data.get('faceEnrolled', false) is bool
+        && request.resource.data.get('faceConsentRevision', 0) is int
+        && request.resource.data.get('faceConsentRevision', 0) >= 0
+        && request.resource.data.get('faceDataDeletionStatus', 'none') in ['none', 'pending', 'deleted'];
+    }
+
+    function validInitialFacePrivacy() {
+      return hasValidFacePrivacy()
+        && request.resource.data.get('optOutFlag', false) == false
+        && request.resource.data.get('faceEnrolled', false) == false
+        && request.resource.data.get('faceConsentRevision', 0) == 0
+        && request.resource.data.get('faceDataDeletionStatus', 'none') == 'none'
+        && !request.resource.data.keys().hasAny(['faceEnrollmentServers', 'faceDeletionCompletedAt', 'faceDeletionRequestedAt']);
+    }
+
+    function validFacePrivacyUpdate() {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      let oldOptOut = resource.data.get('optOutFlag', false);
+      let newOptOut = request.resource.data.get('optOutFlag', false);
+      let revision = resource.data.get('faceConsentRevision', 0);
+      let protectedFields = ['faceConsentRevision', 'faceDataDeletionStatus', 'faceDeletionRequestedAt', 'faceDeletionCompletedAt'];
+      return hasValidFacePrivacy()
+        && !changed.hasAny(['faceEnrollmentServers', 'faceDeletionCompletedAt'])
+        && (!changed.hasAny(['faceEnrolled']) || request.resource.data.get('faceEnrolled', false) == false)
+        && (
+          (oldOptOut == newOptOut
+            && !changed.hasAny(protectedFields)
+            && (!newOptOut || request.resource.data.get('faceEnrolled', false) == false)
+            && (request.resource.data.get('faceDataDeletionStatus', 'none') != 'pending'
+              || request.resource.data.get('faceEnrolled', false) == false))
+          || (oldOptOut != newOptOut
+            && request.resource.data.get('faceConsentRevision', 0) == revision + 1
+            && request.resource.data.get('faceEnrolled', false) == false
+            && (
+              (newOptOut == true
+                && request.resource.data.get('faceDataDeletionStatus', 'none') == 'pending'
+                && request.resource.data.get('faceDeletionRequestedAt', null) == request.time)
+              || (newOptOut == false
+                && resource.data.get('faceDataDeletionStatus', 'none') == 'deleted'
+                && !changed.hasAny(['faceDataDeletionStatus', 'faceDeletionRequestedAt']))
+            ))
+        );
+    }
+
+    function permitsFacialAttendance(uid) {
+      let profile = get(/databases/$(database)/documents/users/$(uid)).data;
+      return profile.get('optOutFlag', false) == false
+        && profile.get('faceDataDeletionStatus', 'none') != 'pending'
+        && (profile.get('faceConsentRevision', 0) == 0 || profile.get('faceEnrolled', false) == true);
+    }
     match /users/{uid} {
       allow read: if isOwner(uid) || isInstructorOrAdmin();
-      allow create: if isOwner(uid) && hasNoBiometricPayload() && hasValidStudentId();
-      allow update: if hasNoBiometricPayload() && hasValidStudentId()
+      allow create: if isOwner(uid) && hasNoBiometricPayload() && hasValidStudentId() && validInitialFacePrivacy();
+      allow update: if hasNoBiometricPayload() && hasValidStudentId() && validFacePrivacyUpdate()
         && (
           isInstructorOrAdmin()
           || (
@@ -155,8 +208,11 @@ service cloud.firestore {
         && (isInstructorOrAdmin() || resource.data.uid == request.auth.uid);
       allow create: if isValidAttendanceRecord(recordId)
         && (
-          isInstructorOrAdmin()
-          || (isSignedIn() && request.resource.data.uid == request.auth.uid)
+          (isInstructorOrAdmin()
+            && (!(request.resource.data.get('source', '') in ['phone_face_verification', 'classroom_camera'])
+              || permitsFacialAttendance(request.resource.data.uid)))
+          || (isSignedIn() && request.resource.data.uid == request.auth.uid
+            && permitsFacialAttendance(request.auth.uid))
         );
       allow update: if isInstructorOrAdmin() && hasNoBiometricPayload();
       allow delete: if isInstructorOrAdmin();

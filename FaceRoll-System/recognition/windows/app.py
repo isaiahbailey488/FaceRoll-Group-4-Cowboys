@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import time
@@ -61,15 +62,35 @@ def configured_allowed_uids() -> frozenset[str] | None:
             session_id, course_id = configured_session_context()
             if payload.get("sessionId") != session_id or payload.get("courseId") != course_id:
                 raise ValueError("Roster does not match the active session.")
-            return frozenset(uids)
+            return apply_face_policy(frozenset(uids))
         except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
             print(f"INVALID COURSE ROSTER: {error}", flush=True)
             return frozenset()
 
     raw = os.getenv("FACEROLL_ALLOWED_UIDS")
     if raw is None:
-        return None
-    return frozenset(uid.strip() for uid in raw.split(",") if uid.strip())
+        return apply_face_policy(None)
+    return apply_face_policy(frozenset(uid.strip() for uid in raw.split(",") if uid.strip()))
+
+
+def apply_face_policy(allowed_uids):
+    """The host API renews this consent lease; offline workers fail closed."""
+    configured = os.getenv('FACEROLL_FACE_POLICY_FILE') or str(configured_enrollment_directory() / '.face-privacy-policy')
+    path = Path(configured)
+    try:
+        if path.is_symlink() or not path.is_file() or path.stat().st_size > MAX_ROSTER_FILE_BYTES:
+            return frozenset()
+        policy = json.loads(path.read_text(encoding='utf-8'))
+        if not isinstance(policy, dict):
+            return frozenset()
+        if type(policy.get('validUntil')) not in (int, float) or not math.isfinite(policy['validUntil']) or policy['validUntil'] <= time.time():
+            return frozenset()
+        uids = policy.get('allowedUids')
+        if not isinstance(uids, list) or len(uids) > MAX_ROSTER_UIDS or any(not isinstance(uid, str) or not SAFE_FIREBASE_UID.fullmatch(uid) for uid in uids):
+            return frozenset()
+        return frozenset(uids) if allowed_uids is None else allowed_uids.intersection(uids)
+    except (OSError, UnicodeError, ValueError, TypeError):
+        return frozenset()
 
 
 def configured_session_context() -> tuple[str | None, str | None]:
@@ -157,6 +178,9 @@ def process_classroom_image(
     emitted = 0
     for face in batch.faces:
         result = face.identification
+        current_allowed = configured_allowed_uids()
+        if current_allowed is not None and result.uid not in current_allowed:
+            continue
         if not result.recognized or not result.uid:
             distance = "none" if result.distance is None else f"{result.distance:.4f}"
             print(

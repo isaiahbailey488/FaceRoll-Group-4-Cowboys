@@ -70,18 +70,17 @@
         id.textContent = courseId;
         details.append(name, id);
 
-        const inviteButton = document.createElement('button');
-        inviteButton.type = 'button';
-        inviteButton.className = 'secondary-button';
-        inviteButton.textContent = 'Invite Students';
-        inviteButton.addEventListener('click', () => {
-          panel.close();
-          window.dispatchEvent(new CustomEvent('faceroll:invite-course', {
-            detail: { courseId, courseName },
+        const deleteButton = document.createElement('button');
+        deleteButton.type = 'button';
+        deleteButton.className = 'secondary-button danger-button';
+        deleteButton.textContent = 'Delete Course';
+        deleteButton.addEventListener('click', () => {
+          window.dispatchEvent(new CustomEvent('faceroll:delete-course', {
+            detail: { courseId, courseName, trigger: deleteButton },
           }));
         });
 
-        row.append(details, inviteButton);
+        row.append(details, deleteButton);
           listEl.appendChild(row);
         });
       };
