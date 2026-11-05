@@ -136,6 +136,33 @@ The special Android emulator address `10.0.2.2` routes to the development comput
 
 Physical devices must use an HTTPS API address trusted by the device. FaceRoll intentionally rejects plain LAN HTTP because recognition requests contain a Firebase token and temporary face photographs.
 
+### Mobile Visual Theme
+
+The mobile app uses the approved instructor-dashboard palette: blue
+buttons (`#2C5282`), green headings (`#2E7D42`), off-white cards (`#FCFCFD`),
+and a light-gray background (`#F6F7F9`). Recent Activity displays a green check
+for Present, an amber L for Late, and a red X for Absent, with a visible legend
+and screen-reader status labels. The shared palette in `constants/Colors.ts`
+also styles sign-in, registration, Profile & Settings, Help & FAQ, course joining,
+facial-privacy gates, camera permission prompts, and scanning tips. The updated
+logo is shared by Home, sign-in, and registration.
+
+Camera previews retain dark backgrounds and white capture guides, with lighter
+green/red feedback for contrast. Their primary actions use the same blue as the
+rest of the app. Native splash/adaptive-icon backgrounds use the off-white surface;
+these native configuration changes require a new app build (Expo Go does not
+rebuild the native launch screen).
+
+Run `node --test shared/mobile-theme.test.js` to verify palette consistency,
+screen styles, attendance indicators, and text contrast.
+
+Run `npm start`, connect the phone and computer to the same Wi-Fi, and scan
+the Expo QR code with Expo Go (Android) or the Camera app (iOS, then open in
+Expo Go). Sign in normally to review the screens using real account data. Check-In,
+Join a Course, Profile & Settings, and pull-to-refresh retain their existing behavior.
+Attendance records require Firebase access; camera verification also requires
+the recognition API configuration described below.
+
 ### Run the Mobile Recognition API
 
 In another terminal, create and activate the shared recognition environment:

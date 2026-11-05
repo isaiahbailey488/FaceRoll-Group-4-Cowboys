@@ -92,6 +92,7 @@ export default function RegisterScreen() {
         ) : null}
 
         <View style={styles.form}>
+          <Text style={styles.formTitle}>Create your account</Text>
           <View style={styles.nameRow}>
             <View style={styles.nameField}>
               <Text style={styles.label}>First Name</Text>
@@ -188,13 +189,16 @@ export default function RegisterScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.white,
+    backgroundColor: Colors.offWhite,
   },
   scrollContent: {
     flexGrow: 1,
-    paddingHorizontal: 32,
+    paddingHorizontal: 20,
     paddingTop: 60,
     paddingBottom: 40,
+    maxWidth: 600,
+    width: '100%',
+    alignSelf: 'center',
   },
   logoSection: {
     alignItems: 'center',
@@ -216,6 +220,18 @@ const styles = StyleSheet.create({
   },
   form: {
     width: '100%',
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 24,
+  },
+  formTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: Colors.green,
+    marginBottom: 20,
   },
   nameRow: {
     flexDirection: 'row',
@@ -249,7 +265,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 8,
-    marginBottom: 28,
+    marginBottom: 0,
   },
   buttonDisabled: {
     opacity: 0.6,

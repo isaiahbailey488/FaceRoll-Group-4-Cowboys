@@ -140,7 +140,7 @@ export default function HelpScreen() {
               <Ionicons
                 name={section.icon}
                 size={16}
-                color={Colors.textSecondary}
+                color={Colors.green}
                 style={styles.sectionIcon}
               />
               <Text style={styles.sectionTitle}>{section.title}</Text>
@@ -207,6 +207,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 20,
     paddingBottom: 40,
+    maxWidth: 600,
+    width: '100%',
+    alignSelf: 'center',
   },
 
   titleRow: {
@@ -215,37 +218,31 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.white,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: Colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 3,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: Colors.divider,
   },
   pageTitle: {
     fontSize: 24,
     fontWeight: '700',
-    color: Colors.textPrimary,
+    color: Colors.green,
     letterSpacing: -0.5,
   },
 
   section: {
-    backgroundColor: Colors.white,
-    borderRadius: 14,
+    backgroundColor: Colors.surface,
+    borderRadius: 16,
     paddingVertical: 8,
     paddingHorizontal: 16,
     marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: Colors.divider,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -259,11 +256,9 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   sectionTitle: {
-    fontSize: 12,
+    fontSize: 16,
     fontWeight: '700',
-    color: Colors.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
+    color: Colors.green,
   },
   item: {
     borderBottomWidth: 1,
@@ -293,21 +288,18 @@ const styles = StyleSheet.create({
   },
 
   contactCard: {
-    backgroundColor: Colors.white,
-    borderRadius: 14,
+    backgroundColor: Colors.surface,
+    borderRadius: 16,
     padding: 20,
     alignItems: 'center',
     marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: Colors.divider,
   },
   contactTitle: {
     fontSize: 17,
     fontWeight: '700',
-    color: Colors.textPrimary,
+    color: Colors.green,
     marginTop: 8,
     marginBottom: 6,
   },

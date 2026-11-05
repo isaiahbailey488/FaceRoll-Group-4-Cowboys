@@ -11,7 +11,7 @@ interface FaceRollLogoProps {
 export default function FaceRollLogo({
   size = 80,
   showText = true,
-  textColor = Colors.navy,
+  textColor = Colors.green,
 }: FaceRollLogoProps) {
   return (
     <View style={styles.container}>
@@ -37,6 +37,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 1,
     marginTop: 6,
-    color: Colors.navy,
+    color: Colors.green,
   },
 });

@@ -85,6 +85,7 @@ export default function LoginScreen() {
         ) : null}
 
         <View style={styles.form}>
+          <Text style={styles.formTitle}>Welcome back</Text>
           <Text style={styles.label}>Email</Text>
           <TextInput
             style={styles.input}
@@ -153,13 +154,16 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.white,
+    backgroundColor: Colors.offWhite,
   },
   scrollContent: {
     flexGrow: 1,
-    paddingHorizontal: 32,
+    paddingHorizontal: 20,
     paddingTop: 80,
     paddingBottom: 40,
+    maxWidth: 600,
+    width: '100%',
+    alignSelf: 'center',
   },
 
   logoSection: {
@@ -184,6 +188,18 @@ const styles = StyleSheet.create({
 
   form: {
     width: '100%',
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 24,
+  },
+  formTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: Colors.green,
+    marginBottom: 20,
   },
   label: {
     fontSize: 13,
@@ -220,7 +236,7 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 28,
+    marginBottom: 0,
   },
   loginButtonDisabled: {
     opacity: 0.6,

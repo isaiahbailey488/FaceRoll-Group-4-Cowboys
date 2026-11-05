@@ -1,6 +1,7 @@
 import React from 'react';
 import { ActivityIndicator, SafeAreaView, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import Colors from '../constants/Colors';
 import { LOCATION_CHECK_IN_PENDING } from '../shared/face-privacy';
 
@@ -10,6 +11,7 @@ export default function FacePrivacyGate({ state, unavailable, retry }: {
   const router = useRouter();
   const loading = state === 'loading' && !unavailable;
   return <SafeAreaView style={styles.container}>
+    <StatusBar style="dark" />
     {loading && <ActivityIndicator size="large" color={Colors.navy} />}
     <Text style={styles.title}>{loading ? 'Checking your preference…' : unavailable ? 'Unable to verify your preference' : 'Facial recognition is off'}</Text>
     <Text style={styles.body}>{unavailable ? 'Check your connection before using the camera.' : state === 'deletion_pending'
@@ -22,8 +24,8 @@ export default function FacePrivacyGate({ state, unavailable, retry }: {
 
 const styles = StyleSheet.create({
   container: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.offWhite, padding: 28, gap: 18 },
-  title: { fontSize: 22, fontWeight: '700', textAlign: 'center', color: Colors.navy },
-  body: { fontSize: 16, textAlign: 'center', color: Colors.textSecondary },
-  button: { backgroundColor: Colors.navy, padding: 14, borderRadius: 10 },
+  title: { fontSize: 22, fontWeight: '700', textAlign: 'center', color: Colors.green, maxWidth: 540 },
+  body: { fontSize: 16, textAlign: 'center', color: Colors.textSecondary, maxWidth: 540, lineHeight: 24 },
+  button: { backgroundColor: Colors.navy, padding: 14, borderRadius: 10, minHeight: 48 },
   label: { color: Colors.white, fontWeight: '600' },
 });

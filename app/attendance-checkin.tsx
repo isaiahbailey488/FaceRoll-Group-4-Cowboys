@@ -328,7 +328,8 @@ export default function AttendanceCheckInScreen() {
   if (!permission) {
     return (
       <View style={styles.permissionContainer}>
-        <ActivityIndicator color={Colors.white} size="large" />
+        <StatusBar style="dark" />
+        <ActivityIndicator color={Colors.navy} size="large" />
       </View>
     );
   }
@@ -336,7 +337,8 @@ export default function AttendanceCheckInScreen() {
   if (!permission.granted) {
     return (
       <SafeAreaView style={styles.permissionContainer}>
-        <Ionicons name="camera-outline" size={60} color={Colors.white} />
+        <StatusBar style="dark" />
+        <Ionicons name="camera-outline" size={60} color={Colors.navy} />
         <Text style={styles.permissionTitle}>Camera Access Required</Text>
         <Text style={styles.permissionText}>
           FaceRoll needs camera access to verify your identity for attendance check-in.
@@ -511,7 +513,7 @@ export default function AttendanceCheckInScreen() {
               </View>
             ) : isSuccess ? (
               <View style={styles.successContainer}>
-                <Ionicons name="checkmark-circle" size={64} color={Colors.green} />
+                <Ionicons name="checkmark-circle" size={64} color={Colors.cameraSuccess} />
                 <Text style={styles.successText}>Attendance Recorded!</Text>
               </View>
             ) : showRecoveryOptions ? (
@@ -521,7 +523,7 @@ export default function AttendanceCheckInScreen() {
                   onPress={() => router.push('/face-enrollment')}
                   activeOpacity={0.85}
                 >
-                  <Ionicons name="camera-outline" size={18} color={Colors.navy} style={{ marginRight: 8 }} />
+                  <Ionicons name="camera-outline" size={18} color={Colors.white} style={{ marginRight: 8 }} />
                   <Text style={styles.recoveryPrimaryText}>Re-enroll face</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -588,13 +590,13 @@ const styles = StyleSheet.create({
 
   permissionContainer: {
     flex: 1,
-    backgroundColor: Colors.cameraBackground,
+    backgroundColor: Colors.offWhite,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 32,
   },
   permissionTitle: {
-    color: Colors.white,
+    color: Colors.green,
     fontSize: 20,
     fontWeight: '700',
     marginTop: 20,
@@ -602,28 +604,26 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   permissionText: {
-    color: Colors.cameraGuide,
+    color: Colors.textSecondary,
     fontSize: 14,
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: 28,
-    opacity: 0.8,
   },
   permissionButton: {
-    backgroundColor: Colors.white,
+    backgroundColor: Colors.navy,
     borderRadius: 10,
     paddingVertical: 14,
     paddingHorizontal: 32,
   },
   permissionButtonText: {
-    color: Colors.navy,
+    color: Colors.white,
     fontSize: 15,
     fontWeight: '700',
   },
   skipText: {
-    color: Colors.cameraGuide,
+    color: Colors.textLink,
     fontSize: 14,
-    opacity: 0.7,
     textDecorationLine: 'underline',
   },
 
@@ -655,10 +655,10 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   closeButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(0,0,0,0.35)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -687,8 +687,8 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.3)',
   },
   courseChipSelected: {
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    borderColor: Colors.white,
+    backgroundColor: Colors.navy,
+    borderColor: Colors.navy,
   },
   courseChipText: {
     color: Colors.white,
@@ -696,7 +696,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   courseChipTextSelected: {
-    color: Colors.navy,
+    color: Colors.white,
   },
 
   guideArea: {
@@ -720,11 +720,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   ovalGuideSuccess: {
-    borderColor: Colors.green,
+    borderColor: Colors.cameraSuccess,
     borderWidth: 3,
   },
   ovalGuideError: {
-    borderColor: '#FF6B6B',
+    borderColor: Colors.cameraError,
   },
   bracket: {
     position: 'absolute',
@@ -776,11 +776,11 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   statusTextSuccess: {
-    color: Colors.green,
+    color: Colors.cameraSuccess,
     fontWeight: '700',
   },
   statusTextError: {
-    color: '#FF6B6B',
+    color: Colors.cameraError,
   },
   feedbackBlock: {
     marginTop: 24,
@@ -818,12 +818,12 @@ const styles = StyleSheet.create({
     marginBottom: 28,
   },
   retryButton: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: Colors.navy,
     borderRadius: 10,
     paddingVertical: 12,
     paddingHorizontal: 32,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
+    borderColor: Colors.navy,
   },
   retryButtonText: {
     color: Colors.white,
@@ -850,7 +850,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   successText: {
-    color: Colors.green,
+    color: Colors.cameraSuccess,
     fontSize: 16,
     fontWeight: '700',
     marginTop: 10,
@@ -870,7 +870,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   captureButtonRetry: {
-    borderColor: '#FF6B6B',
+    borderColor: Colors.cameraError,
   },
   recoveryActions: {
     width: '100%',
@@ -880,7 +880,7 @@ const styles = StyleSheet.create({
   recoveryPrimaryButton: {
     width: '100%',
     maxWidth: 340,
-    backgroundColor: Colors.white,
+    backgroundColor: Colors.navy,
     borderRadius: 12,
     paddingVertical: 12,
     flexDirection: 'row',
@@ -889,7 +889,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   recoveryPrimaryText: {
-    color: Colors.navy,
+    color: Colors.white,
     fontSize: 15,
     fontWeight: '700',
   },

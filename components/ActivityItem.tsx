@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import Colors from '../constants/Colors';
+import Colors, { HomeColors } from '../constants/Colors';
 
 interface ActivityItemProps {
   courseName: string;
@@ -12,16 +12,31 @@ export default function ActivityItem({ courseName, date, status }: ActivityItemP
   const isPresent = status === 'present';
   const isLate = status === 'late';
 
+  const isAbsent = status === 'absent';
   const pillColor = isPresent
-    ? Colors.toggleActive
+    ? HomeColors.green
     : isLate
-    ? Colors.late
-    : Colors.toggleInactive;
+    ? HomeColors.late
+    : isAbsent
+    ? HomeColors.absent
+    : HomeColors.muted;
+  const pillBackground = isPresent
+    ? HomeColors.presentBackground
+    : isLate
+    ? HomeColors.lateBackground
+    : isAbsent
+    ? HomeColors.absentBackground
+    : HomeColors.background;
 
-  const pillLabel = isPresent ? '✓' : isLate ? 'L' : '✗';
+  const pillLabel = isPresent ? '✓' : isLate ? 'L' : isAbsent ? '✗' : '?';
+  const statusLabel = isPresent ? 'Present' : isLate ? 'Late' : isAbsent ? 'Absent' : status;
 
   return (
-    <View style={styles.container}>
+    <View
+      style={styles.container}
+      accessible
+      accessibilityLabel={`${courseName}, ${date}, ${statusLabel}`}
+    >
       <View style={styles.info}>
         <Text style={styles.courseName} numberOfLines={1}>
           {courseName}
@@ -29,8 +44,8 @@ export default function ActivityItem({ courseName, date, status }: ActivityItemP
         <Text style={styles.date}>{date}</Text>
       </View>
 
-      <View style={[styles.pill, { backgroundColor: pillColor }]}>
-        <Text style={styles.pillText}>{pillLabel}</Text>
+      <View style={[styles.pill, { backgroundColor: pillBackground, borderColor: pillColor }]}>
+        <Text style={[styles.pillText, { color: pillColor }]}>{pillLabel}</Text>
       </View>
     </View>
   );
@@ -41,16 +56,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: Colors.white,
+    backgroundColor: HomeColors.background,
     borderRadius: 10,
     paddingVertical: 14,
     paddingHorizontal: 16,
     marginBottom: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: HomeColors.border,
   },
   info: {
     flex: 1,
@@ -64,17 +76,17 @@ const styles = StyleSheet.create({
   },
   date: {
     fontSize: 12,
-    color: Colors.textSecondary,
+    color: HomeColors.muted,
   },
   pill: {
     width: 36,
     height: 36,
     borderRadius: 18,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   pillText: {
-    color: Colors.white,
     fontSize: 14,
     fontWeight: '700',
   },
