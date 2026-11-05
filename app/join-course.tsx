@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, Linking, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useFocusEffect, useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import Colors from '../constants/Colors';
 import { auth } from '../services/firebase';
 import { configuredApiUrl } from '../services/recognition';
@@ -34,10 +35,11 @@ export default function JoinCourseScreen() {
   );
   return (
     <SafeAreaView style={styles.page}>
+      <StatusBar style="dark" />
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>Join a course</Text>
         <Text style={styles.subtitle}>Scan the invitation shown by your instructor.</Text>
-        {state.stage === 'scanning' && (!permission ? <ActivityIndicator /> : !permission.granted ? (
+        {state.stage === 'scanning' && (!permission ? <ActivityIndicator color={Colors.navy} /> : !permission.granted ? (
           <View>
             <Text style={styles.subtitle}>Camera access is needed to scan the course QR code.</Text>
             {button(permission.canAskAgain ? 'Allow camera' : 'Open settings', () => {
@@ -76,11 +78,11 @@ export default function JoinCourseScreen() {
 
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: Colors.offWhite },
-  content: { padding: 24, gap: 16 },
-  title: { fontSize: 24, fontWeight: '700', color: Colors.navy },
+  content: { padding: 20, gap: 16, maxWidth: 600, width: '100%', alignSelf: 'center' },
+  title: { fontSize: 24, fontWeight: '700', color: Colors.green },
   subtitle: { fontSize: 16, color: Colors.textSecondary, marginVertical: 12, lineHeight: 24 },
   camera: { width: '100%', aspectRatio: 1, borderRadius: 16, overflow: 'hidden' },
-  card: { padding: 20, borderRadius: 16, backgroundColor: Colors.white },
+  card: { padding: 20, borderRadius: 16, backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.divider },
   button: { backgroundColor: Colors.navy, padding: 16, borderRadius: 12, marginVertical: 6, alignItems: 'center' },
   buttonText: { color: Colors.white, fontSize: 16, fontWeight: '600' },
   error: { color: Colors.error, fontSize: 16, marginVertical: 16 },

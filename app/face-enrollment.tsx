@@ -315,7 +315,8 @@ export default function FaceEnrollmentScreen() {
   if (!permission) {
     return (
       <View style={styles.permissionContainer}>
-        <ActivityIndicator color={Colors.white} size="large" />
+        <StatusBar style="dark" />
+        <ActivityIndicator color={Colors.navy} size="large" />
       </View>
     );
   }
@@ -323,7 +324,8 @@ export default function FaceEnrollmentScreen() {
   if (!permission.granted) {
     return (
       <SafeAreaView style={styles.permissionContainer}>
-        <Ionicons name="camera-outline" size={60} color={Colors.white} />
+        <StatusBar style="dark" />
+        <Ionicons name="camera-outline" size={60} color={Colors.navy} />
         <Text style={styles.permissionTitle}>Camera Access Required</Text>
         <Text style={styles.permissionText}>
           FaceRoll needs camera access to enroll your face for attendance recognition.
@@ -393,7 +395,7 @@ export default function FaceEnrollmentScreen() {
                 <Ionicons
                   name={captured ? 'checkmark-circle' : 'ellipse-outline'}
                   size={16}
-                  color={captured ? Colors.green : Colors.white}
+                  color={captured ? Colors.cameraSuccess : Colors.white}
                 />
                 <Text style={styles.progressText}>{step.label}</Text>
               </TouchableOpacity>
@@ -437,7 +439,7 @@ export default function FaceEnrollmentScreen() {
             </View>
           ) : isSuccess ? (
             <View style={styles.successContainer}>
-              <Ionicons name="checkmark-circle" size={64} color={Colors.green} />
+              <Ionicons name="checkmark-circle" size={64} color={Colors.cameraSuccess} />
               <Text style={styles.successText}>Redirecting to Home...</Text>
             </View>
           ) : isReview ? (
@@ -485,13 +487,13 @@ const styles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'transparent' },
   permissionContainer: {
     flex: 1,
-    backgroundColor: Colors.cameraBackground,
+    backgroundColor: Colors.offWhite,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 32,
   },
   permissionTitle: {
-    color: Colors.white,
+    color: Colors.green,
     fontSize: 20,
     fontWeight: '700',
     marginTop: 20,
@@ -499,25 +501,23 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   permissionText: {
-    color: Colors.cameraGuide,
+    color: Colors.textSecondary,
     fontSize: 14,
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: 28,
-    opacity: 0.8,
   },
   permissionButton: {
-    backgroundColor: Colors.white,
+    backgroundColor: Colors.navy,
     borderRadius: 10,
     paddingVertical: 14,
     paddingHorizontal: 32,
   },
-  permissionButtonText: { color: Colors.navy, fontSize: 15, fontWeight: '700' },
+  permissionButtonText: { color: Colors.white, fontSize: 15, fontWeight: '700' },
   skipButton: { marginTop: 16 },
   skipText: {
-    color: Colors.cameraGuide,
+    color: Colors.textLink,
     fontSize: 14,
-    opacity: 0.7,
     textDecorationLine: 'underline',
   },
   header: {
@@ -531,9 +531,9 @@ const styles = StyleSheet.create({
   screenLabel: { color: Colors.white, fontSize: 13, fontWeight: '600', opacity: 0.9 },
   headerActions: { flexDirection: 'row', gap: 8 },
   closeButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: 'rgba(0,0,0,0.35)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -556,7 +556,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 7,
   },
-  progressStepCaptured: { borderColor: Colors.green },
+  progressStepCaptured: { borderColor: Colors.cameraSuccess },
   progressStepSelected: { borderColor: Colors.white, borderWidth: 2 },
   progressText: { color: Colors.white, fontSize: 11, fontWeight: '600' },
   guideArea: { flex: 1, alignItems: 'center', justifyContent: 'center' },
@@ -575,7 +575,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.cameraGuide,
     backgroundColor: 'transparent',
   },
-  ovalGuideSuccess: { borderColor: Colors.green, borderWidth: 3 },
+  ovalGuideSuccess: { borderColor: Colors.cameraSuccess, borderWidth: 3 },
   bracket: { position: 'absolute', borderColor: Colors.cameraGuide },
   bracketTopLeft: {
     top: 0,
@@ -625,8 +625,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     opacity: 0.9,
   },
-  statusTextSuccess: { color: Colors.green, fontWeight: '700' },
-  statusTextError: { color: '#FF8A8A' },
+  statusTextSuccess: { color: Colors.cameraSuccess, fontWeight: '700' },
+  statusTextError: { color: Colors.cameraError },
   bottomArea: {
     paddingBottom: 48,
     alignItems: 'center',
@@ -661,7 +661,7 @@ const styles = StyleSheet.create({
   submitButton: {
     width: '100%',
     maxWidth: 340,
-    backgroundColor: Colors.green,
+    backgroundColor: Colors.navy,
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: 'center',

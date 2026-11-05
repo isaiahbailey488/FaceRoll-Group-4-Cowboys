@@ -1,66 +1,73 @@
 const Colors = {
   // Primary brand colors
-  navy: '#0A2342',
-  navyLight: '#1B4F8A',
-  green: '#6DBE45',
+  navy: '#2C5282',
+  navyLight: '#2C5282',
+  green: '#2E7D42',
 
   // Button colors
-  buttonDark: '#111827',
+  buttonDark: '#2C5282',
   buttonText: '#FFFFFF',
 
   // Background colors
   white: '#FFFFFF',
-  offWhite: '#F8F9FA',
+  surface: '#FCFCFD',
+  offWhite: '#F6F7F9',
   cameraBackground: '#000000',
 
   // Text colors
   textPrimary: '#111827',
-  textSecondary: '#6B7280',
-  textLink: '#1B4F8A',
+  textSecondary: '#52647A',
+  textLink: '#2C5282',
 
   // Input / Form colors
-  inputBackground: '#FFFFFF',
+  inputBackground: '#FCFCFD',
   inputBorder: '#D1D5DB',
-  inputBorderFocus: '#0A2342',
+  inputBorderFocus: '#2C5282',
   inputText: '#111827',
   inputPlaceholder: '#9CA3AF',
 
   // Status colors
-  present: '#6DBE45',
-  late: '#F59E0B',
-  absent: '#EF4444',
+  present: '#2E7D42',
+  presentBackground: '#EDF5EF',
+  late: '#946200',
+  lateBackground: '#FFF6DE',
+  absent: '#B42318',
+  absentBackground: '#FDEDEC',
 
   // Camera UI colors
   cameraGuide: '#FFFFFF',
   cameraButton: '#FFFFFF',
   cameraButtonInner: '#000000',
   cameraOverlay: 'rgba(0,0,0,0.4)',
+  // Lighter feedback colors stay readable on the dark camera preview.
+  cameraSuccess: '#8FD6A0',
+  cameraError: '#FF8A8A',
 
   // Toggle / Activity item
-  toggleActive: '#111827',
+  toggleActive: '#2C5282',
   toggleInactive: '#D1D5DB',
 
   // Divider
   divider: '#E5E7EB',
 
   // Error
-  error: '#EF4444',
+  error: '#B42318',
   errorBackground: '#FEF2F2',
 };
 
-// Keep the home-screen design proposal scoped until the wider redesign is approved.
+// Semantic aliases keep the approved Home design on the shared mobile palette.
 export const HomeColors = {
-  button: '#2C5282',
-  green: '#2E7D42',
-  surface: '#FCFCFD',
-  background: '#F6F7F9',
-  border: '#E5E7EB',
-  muted: '#52647A',
-  presentBackground: '#EDF5EF',
-  late: '#946200',
-  lateBackground: '#FFF6DE',
-  absent: '#B42318',
-  absentBackground: '#FDEDEC',
+  button: Colors.buttonDark,
+  green: Colors.green,
+  surface: Colors.surface,
+  background: Colors.offWhite,
+  border: Colors.divider,
+  muted: Colors.textSecondary,
+  presentBackground: Colors.presentBackground,
+  late: Colors.late,
+  lateBackground: Colors.lateBackground,
+  absent: Colors.absent,
+  absentBackground: Colors.absentBackground,
 };
 
 export default Colors;
