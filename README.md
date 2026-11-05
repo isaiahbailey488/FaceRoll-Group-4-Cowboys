@@ -136,6 +136,22 @@ The special Android emulator address `10.0.2.2` routes to the development comput
 
 Physical devices must use an HTTPS API address trusted by the device. FaceRoll intentionally rejects plain LAN HTTP because recognition requests contain a Firebase token and temporary face photographs.
 
+### Mobile Home Design Review
+
+The signed-in Home screen uses the proposed instructor-dashboard palette: blue
+buttons (`#2C5282`), green headings (`#2E7D42`), off-white cards (`#FCFCFD`),
+and a light-gray background (`#F6F7F9`). Recent Activity displays a green check
+for Present, an amber L for Late, and a red X for Absent, with a visible legend
+and screen-reader status labels. This proposal is scoped to Home and its activity
+items; other screens retain their existing theme pending approval.
+
+Run `npm start`, connect the phone and computer to the same Wi-Fi, and scan
+the Expo QR code with Expo Go (Android) or the Camera app (iOS, then open in
+Expo Go). Sign in normally to review Home using real account data. Check-In,
+Join a Course, Profile & Settings, and pull-to-refresh retain their existing behavior.
+Attendance records require Firebase access; camera verification also requires
+the recognition API configuration described below.
+
 ### Run the Mobile Recognition API
 
 In another terminal, create and activate the shared recognition environment:

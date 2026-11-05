@@ -48,4 +48,19 @@ const Colors = {
   errorBackground: '#FEF2F2',
 };
 
+// Keep the home-screen design proposal scoped until the wider redesign is approved.
+export const HomeColors = {
+  button: '#2C5282',
+  green: '#2E7D42',
+  surface: '#FCFCFD',
+  background: '#F6F7F9',
+  border: '#E5E7EB',
+  muted: '#52647A',
+  presentBackground: '#EDF5EF',
+  late: '#946200',
+  lateBackground: '#FFF6DE',
+  absent: '#B42318',
+  absentBackground: '#FDEDEC',
+};
+
 export default Colors;
