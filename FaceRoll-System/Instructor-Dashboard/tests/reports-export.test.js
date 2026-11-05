@@ -6,7 +6,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, '../public/js/student-screens.js'), 'utf8');
 
-async function harness(fail = false) {
+async function harness(fail = false, fixture) {
   const elements = {};
   const filenames = [];
   function element() {
@@ -15,16 +15,16 @@ async function harness(fail = false) {
       addEventListener(event, fn) { this[event] = fn; } };
   }
   const downloads = [];
-  const data = {
+  const data = fixture || {
     users: [{ id: 'u1', studentId: 'S12345', displayName: 'Zoë, "Smith"' }],
     courses: [{ id: 'c1', name: '=Example, Course' }],
     sessions: [{ id: 's1', courseId: 'c1', startTime: '2026-09-17T23:30:00' }],
     attendance: [{ uid: 'u1', sessionId: 's1', status: 'Late' }],
   };
   vm.runInNewContext(source, {
-    window: { FaceRollFirebase: { async readInstructorSnapshot() {
+    window: { FaceRollAttendanceHistory: require('../public/js/attendance-history'), FaceRollFirebase: { async readInstructorSnapshot() {
       if (fail) throw new Error('offline');
-      return { ...data, instructor: { uid: 'teacher' }, enrollments: [] };
+      return { ...data, instructor: { uid: 'teacher' }, enrollments: data.enrollments || [] };
     } }, setTimeout() {} },
     document: { readyState: 'complete', body: Object.assign(element(), { id: 'iw11pz' }),
       getElementById(id) { return elements[id] ||= element(); }, createElement: element },
@@ -47,6 +47,24 @@ test('CSV exports readable filtered totals, Unicode, escaped cells and safe form
   const csv = await downloads[0].text();
   assert.equal(csv.split('\r\n')[0], '"Student Name","Student ID","Course","Total Sessions","Attended","Absent","Late","Attendance Rate"');
   assert.match(csv, /"Zoë, ""Smith""","S12345","'=Example, Course","1","1","0","1","100%"\r\n/);
+});
+
+test('historical missing check-ins reduce percentages and status filters preserve the denominator', async () => {
+  const { elements: e, downloads } = await harness(false, {
+    users: [{ id: 'u1', name: 'Student One', studentId: '1234567' }, { id: 'u2', name: 'Student Two', studentId: '2345678' }],
+    courses: [{ id: 'c1', name: 'Course' }],
+    sessions: [1, 2, 3].map(day => ({ id: 's' + day, courseId: 'c1', status: 'closed', startTime: `2026-09-0${day}T10:00:00` })),
+    enrollments: ['u1', 'u2'].map(uid => ({ id: 'member-' + uid, uid, courseId: 'c1', status: 'active', createdAt: '2026-09-01T00:00:00' })),
+    attendance: [{ id: 's1_u1', uid: 'u1', sessionId: 's1', courseId: 'c1', status: 'present' }],
+  });
+  assert.equal(e['ikkzfr'].textContent, '17%');
+  assert.equal(e['injzav'].textContent, '2');
+  e.reportsStatusFilter.value = 'present'; e.reportsStatusFilter.change();
+  e['iaq1jh-2'].onclick();
+  const csv = await downloads[0].text();
+  assert.match(csv, /"Student One","1234567","Course","3","1","2","0","33%"/);
+  assert.doesNotMatch(csv, /Student Two/);
+  assert.equal(e['ikkzfr'].textContent, '33%');
 });
 
 test('empty filters clear the previous download handler and recover when cleared', async () => {

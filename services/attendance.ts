@@ -9,6 +9,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { activeCourseIds, membershipId } from '../shared/session-access';
+import { checkInDecision } from '../shared/session-policy';
 
 export interface AttendanceRecord {
   id: string;
@@ -27,6 +28,12 @@ export interface Session {
   courseName: string;
   startTime: string;
   gracePeriodMinutes: number;
+  policyVersion?: number;
+  startedAtMs?: number;
+  attendanceWindowMinutes?: number;
+  allowLate?: boolean;
+  defaultAttendance?: 'present' | 'late' | 'absent';
+  checkInClosesAtMs?: number | null;
   status: 'active' | 'closed';
 }
 
@@ -129,7 +136,6 @@ export async function getActiveSessionForUser(uid: string): Promise<{ sessionId:
 }
 
 export async function getActiveSessions(uid: string): Promise<Session[]> {
-  const MAX_SESSION_HOURS = 3;
   if (!uid) return [];
   const [snap, enrollmentSnap] = await Promise.all([
     getDocs(query(collection(db, 'sessions'))),
@@ -141,19 +147,14 @@ export async function getActiveSessions(uid: string): Promise<Session[]> {
   );
 
   const now = Date.now();
-  const maxAgeMs = MAX_SESSION_HOURS * 60 * 60 * 1000;
 
   const rawActive = snap.docs
     .map((d) => {
       const data = d.data() as any;
       const startIso = toIsoString(data.startTime);
-      const startMs = new Date(startIso).getTime();
       const explicitStatus = String(data.status || '').toLowerCase();
-      const hasEndTime = Boolean(data.endTime);
-
-      const isClosed = explicitStatus === 'closed' || hasEndTime;
-      const withinWindow = now - startMs <= maxAgeMs && now - startMs >= -60 * 1000;
-      const isActive = !isClosed && withinWindow;
+      const decision = checkInDecision({ ...data,
+        status: explicitStatus || 'active' }, now);
 
       return {
         id: data.id || d.id,
@@ -162,7 +163,13 @@ export async function getActiveSessions(uid: string): Promise<Session[]> {
         courseName: '',
         startTime: startIso,
         gracePeriodMinutes: Number(data.gracePeriodMinutes ?? 10),
-        status: isActive ? 'active' : 'closed',
+        policyVersion: data.policyVersion,
+        startedAtMs: data.startedAtMs,
+        attendanceWindowMinutes: data.attendanceWindowMinutes,
+        allowLate: data.allowLate,
+        defaultAttendance: data.defaultAttendance,
+        checkInClosesAtMs: data.checkInClosesAtMs,
+        status: decision.allowed ? 'active' : 'closed',
       } as Session;
     })
     .filter((s) => s.status === 'active' && allowedCourses.has(s.courseId))
@@ -191,7 +198,6 @@ export async function submitAttendance(
   method = 'face recognition',
   _confidence = 0.95
 ): Promise<{ success: boolean; id: string; duplicate?: boolean }> {
-  const nowIso = new Date().toISOString();
 
   const payload =
     typeof uidOrInput === 'string'
@@ -221,17 +227,32 @@ export async function submitAttendance(
     const existing = await transaction.get(attendanceRef);
     const sessionSnapshot = await transaction.get(sessionRef);
     const membershipSnapshot = await transaction.get(membershipRef);
-    if (existing.exists()) return false;
+    if (existing.exists()) {
+      if (existing.data()?.source === 'session_default') {
+        throw Object.assign(new Error('Your instructor has finalized this session. Ask them if your attendance needs to be changed.'),
+          { code: 'attendance_session_closed' });
+      }
+      return false;
+    }
     const session = sessionSnapshot.data() as any;
     const membership = membershipSnapshot.data() as any;
-    if (!sessionSnapshot.exists() || session?.status === 'closed' || session?.endTime ||
+    if (!sessionSnapshot.exists() || session?.status !== 'active' || session?.endTime ||
         session?.courseId !== payload.courseId) {
-      throw new Error('This attendance session is no longer available.');
+      throw Object.assign(new Error('This attendance session is no longer available.'), { code: 'attendance_session_closed' });
     }
     if (!membershipSnapshot.exists() || membership?.uid !== payload.uid ||
         membership?.courseId !== payload.courseId || membership?.status !== 'active') {
       throw new Error('You are not enrolled in this course.');
     }
+
+    const now = Date.now();
+    const decision = checkInDecision(session, now);
+    if (!decision.allowed) {
+      const error = new Error(decision.message) as Error & { code: string };
+      error.code = decision.code || 'attendance_session_closed';
+      throw error;
+    }
+    const nowIso = new Date(now).toISOString();
 
     transaction.set(attendanceRef, {
       id: attendanceDocId,
@@ -240,7 +261,7 @@ export async function submitAttendance(
       sessionId: payload.sessionId,
       courseId: payload.courseId,
       membershipId: membershipDocId,
-      status: payload.status,
+      status: decision.status,
       method: payload.method,
       source: payload.source,
       time: nowIso,

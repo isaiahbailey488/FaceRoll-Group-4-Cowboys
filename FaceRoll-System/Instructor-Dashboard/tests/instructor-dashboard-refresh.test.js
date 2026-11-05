@@ -72,7 +72,7 @@ test('a nonempty initial listener snapshot repairs an empty one-time dashboard r
 
   vm.runInNewContext(source, {
     window: {
-      FaceRollFirebase: firebaseApi,
+      FaceRollAttendanceHistory: require('../public/js/attendance-history'), FaceRollFirebase: firebaseApi,
       setTimeout,
       clearTimeout,
       addEventListener() {},

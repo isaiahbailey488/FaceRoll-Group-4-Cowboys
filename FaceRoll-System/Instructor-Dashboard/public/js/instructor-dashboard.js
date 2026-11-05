@@ -426,6 +426,7 @@
   }
 
   function getCanonicalAttendanceKey(row) {
+    if (row.sessionId) return [row.uid || row.studentId, row.sessionId].join('||');
     // Deduplicate the same student within the same course/date.
     const cleanedName = normalizeRecognitionName(row.studentName);
     const courseName = String(row.courseName || '').trim().toLowerCase();
@@ -479,6 +480,8 @@
 
         return {
           attendanceId: attendance.id,
+          uid: String(attendance.uid || attendance.userId || ''),
+          sessionId: String(sessionId || ''),
           studentName: studentName,
           studentId: studentId,
           dateValue: getAttendanceDate(attendance, session),
@@ -765,7 +768,8 @@
     const users = data.users;
     const courses = data.courses;
     const sessions = data.sessions;
-    const attendance = data.attendance;
+    if (!window.FaceRollAttendanceHistory) throw new Error('Attendance history did not load. Reload the page.');
+    const attendance = window.FaceRollAttendanceHistory.completeAttendance(data);
 
     const nextRows = buildAttendanceRows(attendance, users, courses, sessions);
     if (!nextRows.length) {
@@ -870,7 +874,6 @@
     stopRealtimeRefresh();
     const generation = realtimeGeneration;
     const courseIds = data.courses.map(function (course) { return course.courseId || course.id; });
-    const sessionIds = data.sessions.map(function (session) { return session.sessionId || session.id; });
     let pendingInitialSnapshots = 4;
     let initialSnapshotMismatch = false;
     const settleInitialSnapshot = function (mismatch) {
@@ -909,7 +912,7 @@
           onChange, scheduleRealtimeReload);
       }, data.sessions),
       subscribeAfterInitial(function (onChange) {
-        return window.FaceRollFirebase.subscribeQueryChunks('attendance', 'sessionId', sessionIds,
+        return window.FaceRollFirebase.subscribeQueryChunks('attendance', 'courseId', courseIds,
           onChange, scheduleRealtimeReload);
       }, data.attendance),
       subscribeAfterInitial(function (onChange) {
@@ -955,7 +958,7 @@
         : null;
       if (cachedData) {
         const cachedRows = buildAttendanceRows(
-          cachedData.attendance || [],
+          window.FaceRollAttendanceHistory ? window.FaceRollAttendanceHistory.completeAttendance(cachedData) : [],
           cachedData.users || [],
           cachedData.courses || [],
           cachedData.sessions || []

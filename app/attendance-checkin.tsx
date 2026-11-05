@@ -267,21 +267,10 @@ export default function AttendanceCheckInScreen() {
         return;
       }
 
-      const sessionStart = typeof sessionForCourse.startTime === 'string'
-        ? new Date(sessionForCourse.startTime)
-        : (sessionForCourse.startTime as any).toDate?.() ?? new Date();
-
-      const gracePeriodMs = (sessionForCourse.gracePeriodMinutes ?? 10) * 60 * 1000;
-      const now = new Date();
-      const attendanceStatus = now.getTime() - sessionStart.getTime() > gracePeriodMs
-        ? 'late'
-        : 'present';
-
       const submitResult = await submitAttendance({
         uid: user.uid,
         sessionId: sessionForCourse.sessionId,
         courseId: sessionForCourse.courseId,
-        status: attendanceStatus,
         method: 'Phone face verification',
         source: 'phone_face_verification',
       });
@@ -303,7 +292,10 @@ export default function AttendanceCheckInScreen() {
         console.warn('Check-in error:', error?.code || error?.message || error);
       }
       const feedback = scanFeedbackForError(error, 'Check-in failed');
-      if (error instanceof RecognitionApiError && error.code === 'not_enrolled') {
+      if (String(error?.code || '').startsWith('attendance_')) {
+        setFailure({ title: 'Check-in closed', hint: error.message });
+        setCheckInState('error');
+      } else if (error instanceof RecognitionApiError && error.code === 'not_enrolled') {
         setFailure(feedback);
         setCheckInState('error');
         Alert.alert('Face Not Enrolled', error.message, [

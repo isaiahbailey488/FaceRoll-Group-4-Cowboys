@@ -164,12 +164,13 @@
       courses: ['id', 'courseId', 'courseName', 'name', 'title', 'code', 'instructorId',
         'location', 'createdAt', 'updatedAt'],
       sessions: ['id', 'sessionId', 'courseId', 'startTime', 'endTime', 'date', 'createdAt',
-        'status', 'gracePeriodMinutes'],
+        'status', 'gracePeriodMinutes', 'policyVersion', 'startedAtMs', 'checkInClosesAtMs',
+        'attendanceWindowMinutes', 'allowLate', 'defaultAttendance', 'defaultsApplied'],
       attendance: ['id', 'sessionId', 'courseId', 'uid', 'userId', 'studentId', 'email',
-        'status', 'time', 'createdAt', 'method', 'studentName', 'displayName',
+        'status', 'time', 'createdAt', 'method', 'source', 'studentName', 'displayName',
         'recognitionLabel', 'recognitionConfidence', 'recognitionDistance'],
       enrollments: ['id', 'courseId', 'course_id', 'uid', 'userId', 'studentUid', 'status',
-        'createdAt', 'updatedAt'],
+        'createdAt', 'updatedAt', 'joinedAt', 'leftAt', 'attendancePeriods'],
     };
     const fields = fieldsByPart[part];
     return (Array.isArray(rows) ? rows : []).map(function (row) {
@@ -530,6 +531,8 @@
       markFirestoreAvailable(snapshot);
       return snapshot;
     } catch (error) {
+      // Authorization failures must never be replaced with previously cached data.
+      if (String(error && error.code || '').endsWith('permission-denied')) throw error;
       markFirestoreUnavailable(error);
       try {
         return await reference.get({ source: 'cache' });
@@ -586,14 +589,20 @@
     });
   }
 
-  async function readDocument(collectionName, documentId) {
+  async function readDocument(collectionName, documentId, accessContext) {
     const firebase = await waitForFirebaseServices();
     const db = firebase.firestore();
     const cacheKey = buildDataCacheKey(firebase, 'document', collectionName, { documentId: documentId });
     return runSharedRead(cacheKey, async function () {
-      const snapshot = await getSnapshotWithCacheFallback(
-        db.collection(collectionName).doc(documentId), 'Loading ' + collectionName + ' profile'
-      );
+      const reference = db.collection(collectionName).doc(documentId);
+      let snapshot;
+      try {
+        snapshot = await getSnapshotWithCacheFallback(reference, 'Loading ' + collectionName + ' profile');
+      } catch (error) {
+        if (collectionName !== 'users' || !String(error && error.code || '').endsWith('permission-denied')) throw error;
+        await prepareStudentAccess(firebase, documentId, accessContext);
+        snapshot = await getSnapshotWithCacheFallback(reference, 'Loading authorized student profile');
+      }
       if (!snapshot.exists) return null;
       return { id: snapshot.id, ...snapshot.data() };
     });
@@ -648,8 +657,9 @@
     const normalized = uniqueStrings(values);
     if (!normalized.length) return [];
     const chunks = [];
-    for (let index = 0; index < normalized.length; index += 30) {
-      chunks.push(normalized.slice(index, index + 30));
+    const chunkSize = field === 'courseId' ? 8 : 30;
+    for (let index = 0; index < normalized.length; index += chunkSize) {
+      chunks.push(normalized.slice(index, index + chunkSize));
     }
     const results = await Promise.all(chunks.map(function (chunk) {
       return readQueryDocs(collectionName, {
@@ -662,12 +672,50 @@
     return Array.from(byId.values());
   }
 
-  async function readDocuments(collectionName, documentIds) {
+  async function prepareStudentAccess(firebase, studentUid, context) {
+    const user = firebase.auth().currentUser;
+    if (!user || user.uid === studentUid) throw new Error('Student profile access is unavailable.');
+    const settings = context || {};
+    let memberships = settings.enrollments;
+    let attendance = settings.attendance;
+    if (!Array.isArray(memberships) && !Array.isArray(attendance)) {
+      const courses = await readQueryDocs('courses', {
+        filters: [{ field: 'instructorId', operator: '==', value: user.uid }],
+      });
+      const courseIds = courses.map(function (course) { return course.courseId || course.id; });
+      memberships = await readQueryChunks('enrollments', 'courseId', courseIds);
+      if (!memberships.some(function (row) { return row.uid === studentUid; })) {
+        attendance = await readQueryChunks('attendance', 'courseId', courseIds);
+      }
+    }
+    const membership = (memberships || []).find(function (row) { return row.uid === studentUid && row.id && row.courseId; });
+    const record = (attendance || []).find(function (row) { return row.uid === studentUid && row.id && row.courseId; });
+    if (!membership && !record) {
+      const error = new Error('This student is not associated with one of your courses.');
+      error.code = 'permission-denied';
+      throw error;
+    }
+    const access = membership
+      ? { uid: studentUid, courseId: membership.courseId, membershipId: membership.id }
+      : { uid: studentUid, courseId: record.courseId, attendanceId: record.id };
+    // Firestore independently checks both course ownership and this evidence.
+    await firebase.firestore().collection('instructorStudentAccess').doc(user.uid)
+      .collection('students').doc(studentUid).set(access);
+  }
+
+  async function readDocuments(collectionName, documentIds, accessContext) {
     const normalized = uniqueStrings(documentIds);
     if (!normalized.length) return [];
     const firebase = await waitForFirebaseServices();
     const cacheKey = buildDataCacheKey(firebase, 'documents', collectionName, { documentIds: normalized.slice().sort() });
     return runSharedRead(cacheKey, async function () {
+    if (collectionName === 'users') {
+      // Each profile checks a different membership. Individual gets stay within
+      // Firestore's authorization lookup budget even for a large class roster.
+      return (await Promise.all(normalized.map(function (documentId) {
+        return readDocument(collectionName, documentId, accessContext);
+      }))).filter(Boolean);
+    }
     const fieldPath = firebase.firestore && firebase.firestore.FieldPath;
     if (!fieldPath || typeof fieldPath.documentId !== 'function') {
       const rows = await Promise.all(normalized.map(function (documentId) {
@@ -798,7 +846,7 @@
         enrollments.map(function (entry) { return entry.uid || entry.userId; })
           .concat(attendance.map(function (entry) { return entry.uid || entry.userId; }))
       );
-      const users = settings.includeUsers === false ? [] : await readDocuments('users', userIds);
+      const users = settings.includeUsers === false ? [] : await readDocuments('users', userIds, { enrollments: enrollments, attendance: attendance });
       const snapshot = { instructor: instructor, users: users, courses: courses, sessions: sessions,
         attendance: attendance, enrollments: enrollments };
       const previous = readCachedInstructorSnapshot(instructor.uid) || {};
@@ -973,8 +1021,9 @@
       return function () {};
     }
     const chunks = [];
-    for (let index = 0; index < normalized.length; index += 30) {
-      chunks.push(normalized.slice(index, index + 30));
+    const chunkSize = field === 'courseId' ? 8 : 30;
+    for (let index = 0; index < normalized.length; index += chunkSize) {
+      chunks.push(normalized.slice(index, index + chunkSize));
     }
     const latest = new Map();
     const ready = new Set();

@@ -340,7 +340,7 @@ test('cached instructor snapshots are scoped to the signed-in instructor', funct
 
 test('reads referenced documents in a batched document ID query', async function () {
   const harness = loadQueryHarness({ withDocumentIdFieldPath: true });
-  const rows = await harness.api.readDocuments('users', ['student-a', 'student-b']);
+  const rows = await harness.api.readDocuments('courses', ['student-a', 'student-b']);
 
   assert.equal(rows.length, 1);
   assert.equal(rows[0].id, 'course-a');

@@ -1,4 +1,5 @@
 'use strict';
+const { checkInDecision } = require('./session-policy');
 
 function membershipId(courseId, uid) {
   const course = String(courseId || '');
@@ -18,12 +19,9 @@ function activeCourseIds(enrollments, uid) {
 
 function accessibleActiveSessions(sessions, enrollments, uid, now = Date.now()) {
   const courses = activeCourseIds(enrollments, uid);
-  const maxAge = 3 * 60 * 60 * 1000;
   return (sessions || []).filter(session => {
-    const start = new Date(session.startTime).getTime();
     return courses.has(String(session.courseId || '')) &&
-      String(session.status || 'active').toLowerCase() !== 'closed' && !session.endTime &&
-      Number.isFinite(start) && now - start <= maxAge && now - start >= -60000;
+      checkInDecision({ ...session, status: session.status || 'active' }, now).allowed;
   });
 }
 

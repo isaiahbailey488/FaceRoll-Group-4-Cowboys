@@ -27,9 +27,10 @@ test('Live Session displays only zone status and treats missing results as unche
     users: statuses.map((_, i) => ({ uid: 'u' + i, displayName: ['Alice', 'Bob', 'Carol', 'Diana', 'Erin'][i] })),
   };
   vm.runInNewContext(source, {
-    window: { addEventListener() {}, FaceRollCourseRoster: require('../public/js/course-roster-sync.js'), FaceRollFirebase: {
+    window: { addEventListener() {}, FaceRollSessionPolicy: require('../public/js/session-policy.js'), FaceRollCourseRoster: require('../public/js/course-roster-sync.js'), FaceRollFirebase: {
       waitForAuthUser: async () => ({ uid: 'teacher' }),
       readDocuments: async name => data[name] || [],
+      readDocument: async () => null,
       subscribeQueryDocs: async (name, options, callback) => {
         callback(name === 'attendance' ? statuses.map((locationStatus, i) => ({ uid: 'u' + i, sessionId, courseId: 'course1', status: 'present', locationStatus, latitude: 33.123456789, longitude: -97.987654321, time: new Date().toISOString() })) : data[name] || []);
         return () => {};
@@ -41,10 +42,13 @@ test('Live Session displays only zone status and treats missing results as unche
     } },
     document: { readyState: 'complete', body: { id: 'imsyg1' },
       getElementById(id) { return elements[id] ||= element(); }, createElement: element },
-    fetch: async () => ({ ok: true, json: async () => ({ ok: true, events: [] }) }),
+    fetch: async url => ({ ok: true, json: async () => url.endsWith('/start-session')
+      ? { ok: true, status: { sessionId, courseId: 'course1', captureRunning: true, recognizerRunning: true } }
+      : { ok: true, events: [] } }),
+    AbortSignal,
     setInterval() { return 1; }, clearInterval() {}, console,
   });
-  await new Promise(resolve => setImmediate(resolve));
+  for (let i = 0; i < 4; i++) await new Promise(resolve => setImmediate(resolve));
   elements.liveSessionCourseSelect.value = 'course1';
   elements.iq6lcg.click();
   for (let i = 0; i < 3; i++) await new Promise(resolve => setImmediate(resolve));

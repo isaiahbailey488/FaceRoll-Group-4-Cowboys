@@ -145,6 +145,27 @@ def mutate_invitation(uid, client, transact, course_id, action, *, expiration='2
     return transact(operation)
 
 
+def attendance_periods(membership, stamp, active):
+    """Keep enrollment gaps so later reports cannot mark unenrolled days absent."""
+    periods = [dict(period) for period in (membership or {}).get('attendancePeriods', [])]
+    if not periods and membership:
+        start = membership.get('createdAt')
+        if membership.get('status') == 'active':
+            # With no history, updatedAt is the latest known restoration.
+            start = membership.get('updatedAt') or start
+            end = None
+        else:
+            end = membership.get('updatedAt')
+        if start and (end is not None or membership.get('status') == 'active'):
+            periods.append({'start': start, 'end': end})
+    if active:
+        if not periods or periods[-1].get('end') is not None:
+            periods.append({'start': stamp, 'end': None})
+    elif periods and periods[-1].get('end') is None:
+        periods[-1]['end'] = stamp
+    return periods
+
+
 def redeem_invitation(uid, client, transact, token, *, join=False, clock=None):
     if not isinstance(token, str) or not re.fullmatch(r'[a-f0-9]{64}', token):
         raise InvitationError(400, 'invalid_invitation_token')
@@ -204,10 +225,12 @@ def redeem_invitation(uid, client, transact, token, *, join=False, clock=None):
                     raise InvitationError(404, 'invitation_unavailable')
                 stamp = instant.isoformat(timespec='milliseconds').replace('+00:00', 'Z')
                 if existing:
-                    tx.update(ref, {'status': 'active', 'updatedAt': stamp})
+                    tx.update(ref, {'status': 'active', 'updatedAt': stamp,
+                                    'attendancePeriods': attendance_periods(existing, stamp, True)})
                 else:
                     tx.create(ref, dict(schemaVersion=1, courseId=course_id, uid=uid,
-                                        status='active', createdAt=stamp, updatedAt=stamp))
+                                        status='active', createdAt=stamp, updatedAt=stamp,
+                                        attendancePeriods=attendance_periods(None, stamp, True)))
             result.update(membershipId=enrollment_id, status='active')
         return result
 
@@ -294,7 +317,8 @@ def mutate_membership(uid, client, transact, course_id, student_uid, action, *, 
         target_status = 'removed' if action == 'remove' else 'active'
         changed = membership['status'] != target_status
         if changed:
-            tx.update(membership_ref, {'status': target_status, 'updatedAt': stamp})
+            tx.update(membership_ref, {'status': target_status, 'updatedAt': stamp,
+                                       'attendancePeriods': attendance_periods(membership, stamp, target_status == 'active')})
         return {
             'success': True,
             'courseId': course_id,

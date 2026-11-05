@@ -415,17 +415,17 @@
                   <label for="default-attendance">Default Attendance</label>
                   <div class="input-wrap">
                     <select name="defaultAttendance" id="default-attendance" class="field-select">
-                      <option value="absent">Absent</option>
+                      <option value="absent" selected>Absent</option>
                       <option value="late">Late</option>
-                      <option value="present" selected>Present</option>
+                      <option value="present">Present</option>
                     </select>
                   </div>
-                  <div class="help">Select the default attendance status for new sessions.</div>
+                  <div class="help">Applied when the session ends to enrolled students who have no attendance record. Existing records are kept.</div>
                 </div>
                 <div class="form-group">
                   <label for="grace-period">Grace Period</label>
                   <div class="input-wrap">
-                    <input type="number" name="gracePeriod" min="0" max="120" placeholder="e.g., 10" id="grace-period"/>
+                    <input type="number" name="gracePeriod" min="0" max="120" step="1" value="10" id="grace-period"/>
                     <span class="suffix">min</span>
                   </div>
                   <div class="help">Minutes after start time students can still be marked present.</div>
@@ -435,10 +435,10 @@
                 <div class="form-group">
                   <label for="attendance-window">Attendance Window</label>
                   <div class="input-wrap">
-                    <input type="number" name="attendanceWindow" min="0" max="240" placeholder="e.g., 30" id="attendance-window"/>
+                    <input type="number" name="attendanceWindow" min="0" max="240" step="1" value="30" id="attendance-window"/>
                     <span class="suffix">min</span>
                   </div>
-                  <div class="help">This controls how long students are allowed to check in after class starts.</div>
+                  <div class="help">Minutes after the session starts that check-ins remain open. Use 0 for no time limit until the session ends.</div>
                 </div>
               </section>
               <div class="form-group">
@@ -446,7 +446,7 @@
                   <button type="button" role="switch" aria-checked="false" id="allow-late-toggle" class="toggle-button"><span class="knob"></span></button>
                   <span class="toggle-label">Allow Late Attendance</span>
                 </div>
-                <div class="help">When enabled, students can be marked late after the grace period.</div>
+                <div class="help">When enabled, check-ins after the grace period are marked late, within the attendance window. When disabled, check-ins close after the grace period. Changes apply to newly started sessions.</div>
               </div>
               <div id="settings-status" class="info">Loading your settings...</div>
             </div>
@@ -471,6 +471,7 @@
     <script defer src="./js/firebase-client.js?v=20261005-auth-cycle-1"></script>
     <script defer src="./js/auth-guard.js?v=20261005-auth-1"></script>
     <script defer src="./js/sidebar-user.js?v=20261029-theme-1"></script>
+    <script src="./js/session-policy.js?v=20261029-policy-1"></script>
     <script>
 (function() {
   const toggleBtn = document.getElementById('allow-late-toggle');
@@ -503,23 +504,12 @@
 
   function waitForAuth() {
     return new Promise(function(resolve, reject) {
-      const startedAt = Date.now();
-      const TIMEOUT_MS = 10000;
-
+      const deadline = Date.now() + 10000;
       (function check() {
-        if (window.firebase && typeof window.firebase.auth === 'function' && window.firebase.apps && window.firebase.apps.length) {
-          const auth = window.firebase.auth();
-          const unsub = auth.onAuthStateChanged(function(user) {
-            unsub();
-            resolve(user);
-          });
-          return;
-        }
-        if (Date.now() - startedAt >= TIMEOUT_MS) {
-          reject(new Error('Firebase Auth did not initialize.'));
-          return;
-        }
-        setTimeout(check, 100);
+        if (window.FaceRollFirebase) {
+          Promise.resolve(window.FaceRollFirebase.waitForAuthUser()).then(resolve, reject);
+        } else if (Date.now() >= deadline) reject(new Error('Firebase Auth did not initialize.'));
+        else setTimeout(check, 100);
       })();
     });
   }
@@ -586,13 +576,17 @@
       }
     }
 
-    const payload = {
-      defaultAttendance: String(defaultAttendanceEl.value || 'present').toLowerCase(),
-      gracePeriodMinutes: Number.parseInt(gracePeriodEl.value, 10) || 0,
-      attendanceWindowMinutes: Number.parseInt(attendanceWindowEl.value, 10) || 0,
-      allowLate: getAllowLate(),
-      updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
-    };
+    let payload;
+    try {
+      if (!gracePeriodEl.value.trim() || !attendanceWindowEl.value.trim()) throw new Error('Enter both the grace period and attendance window.');
+      payload = window.FaceRollSessionPolicy.normalizeSettings({
+        defaultAttendance: defaultAttendanceEl.value,
+        gracePeriodMinutes: Number(gracePeriodEl.value),
+        attendanceWindowMinutes: Number(attendanceWindowEl.value),
+        allowLate: getAllowLate(),
+      });
+      payload.updatedAt = window.firebase.firestore.FieldValue.serverTimestamp();
+    } catch (error) { setStatus(error.message, 'error'); return; }
 
     saveBtn.disabled = true;
     setStatus('Saving...', 'info');

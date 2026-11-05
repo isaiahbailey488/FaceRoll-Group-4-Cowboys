@@ -35,7 +35,7 @@ test('profile has one renderer and first save persists the selected attendance r
     sessions: [], enrollments: [], attendance: [{ id: 'a1', uid: 'u1', courseId: 'c1', status: 'present', time: '2026-09-17' }] };
   const writes = [];
   const window = { location: { search: '?studentId=u1' }, setTimeout() {}, FaceRollCourseRoster: courseRoster,
-    FaceRollFirebase: {
+    FaceRollAttendanceHistory: require('../public/js/attendance-history'), FaceRollFirebase: {
       async readInstructorSnapshot() { return { ...data, instructor: { uid: 'teacher' } }; },
       async waitForAuthUser() { return { uid: 'teacher' }; },
       async writeDocument(collection, id, update) {

@@ -24,6 +24,64 @@ service cloud.firestore {
           in ['instructor', 'admin', 'administrator'];
     }
 
+    function isAdmin() {
+      return isSignedIn()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'administrator'];
+    }
+
+    function ownsCourse(courseId) {
+      return isInstructorOrAdmin() && courseId is string
+        && get(/databases/$(database)/documents/courses/$(courseId)).data.instructorId == request.auth.uid;
+    }
+
+    function managesCourse(courseId) {
+      return isAdmin() || ownsCourse(courseId);
+    }
+
+    function validStudentAccess(access, uid) {
+      return access.keys().hasOnly(['uid', 'courseId', 'membershipId', 'attendanceId'])
+        && access.uid == uid && ownsCourse(access.courseId)
+        && ((access.get('membershipId', '') != ''
+            && get(/databases/$(database)/documents/enrollments/$(access.membershipId)).data.uid == uid
+            && get(/databases/$(database)/documents/enrollments/$(access.membershipId)).data.courseId == access.courseId)
+          || (access.get('attendanceId', '') != ''
+            && get(/databases/$(database)/documents/attendance/$(access.attendanceId)).data.uid == uid
+            && get(/databases/$(database)/documents/attendance/$(access.attendanceId)).data.courseId == access.courseId));
+    }
+
+    function canReadStudent(uid) {
+      return isInstructorOrAdmin()
+        && exists(/databases/$(database)/documents/instructorStudentAccess/$(request.auth.uid)/students/$(uid))
+        && validStudentAccess(get(/databases/$(database)/documents/instructorStudentAccess/$(request.auth.uid)/students/$(uid)).data, uid);
+    }
+
+    // These links never grant authority on their own: every profile read also
+    // rechecks ownership and the referenced membership or attendance record.
+    match /instructorStudentAccess/{instructorUid}/students/{uid} {
+      allow get: if isOwner(instructorUid) || isAdmin();
+      allow list: if isAdmin();
+      allow create, update: if isOwner(instructorUid) && validStudentAccess(request.resource.data, uid);
+      allow delete: if isOwner(instructorUid) || isAdmin();
+    }
+
+    function isValidInstructorOverride(recordId) {
+      let row = request.resource.data;
+      return managesCourse(row.courseId)
+        && row.source == 'instructor_override'
+        && row.status in ['present', 'late', 'absent']
+        && row.uid is string && row.sessionId is string
+        && recordId == row.sessionId + '_' + row.uid
+        && get(/databases/$(database)/documents/sessions/$(row.sessionId)).data.courseId == row.courseId
+        && !(get(/databases/$(database)/documents/sessions/$(row.sessionId)).data.get('status', '') in ['starting', 'start_failed', 'cancelled'])
+        && ((row.get('membershipId', '') != ''
+            && get(/databases/$(database)/documents/enrollments/$(row.membershipId)).data.uid == row.uid
+            && get(/databases/$(database)/documents/enrollments/$(row.membershipId)).data.courseId == row.courseId)
+          || (row.get('attendanceEvidenceId', '') != ''
+            && get(/databases/$(database)/documents/attendance/$(row.attendanceEvidenceId)).data.uid == row.uid
+            && get(/databases/$(database)/documents/attendance/$(row.attendanceEvidenceId)).data.courseId == row.courseId))
+        && hasNoBiometricPayload();
+    }
+
     function hasValidCourseLocation() {
       return !request.resource.data.keys().hasAny(['location'])
         || (
@@ -77,6 +135,28 @@ service cloud.firestore {
         );
     }
 
+    function withinAttendancePolicy(session) {
+      return session.get('policyVersion', 0) != 1
+        || (session.startedAtMs is int
+          && session.gracePeriodMinutes is int
+          && request.time.toMillis() >= session.startedAtMs
+          && (session.checkInClosesAtMs == null
+            || request.time.toMillis() <= session.checkInClosesAtMs)
+          && request.resource.data.status ==
+            (request.time.toMillis() - session.startedAtMs > session.gracePeriodMinutes * 60000
+              ? 'late' : 'present'));
+    }
+
+    function sessionAcceptsAttendance(session) {
+      return (session.status == 'active' && !session.keys().hasAny(['endTime'])
+          && (managesCourse(session.courseId) || withinAttendancePolicy(session)))
+        || (managesCourse(session.courseId)
+          && request.resource.data.get('source', '') == 'session_default'
+          && session.status in ['closing', 'closed']
+          && request.resource.data.status == session.get('defaultAttendance', 'absent')
+          && managesCourse(session.courseId));
+    }
+
     function isValidAttendanceRecord(recordId) {
       return request.resource.data.uid is string
         && request.resource.data.sessionId is string
@@ -86,8 +166,7 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/sessions/$(request.resource.data.sessionId))
         && get(/databases/$(database)/documents/sessions/$(request.resource.data.sessionId)).data.courseId
           == request.resource.data.courseId
-        && get(/databases/$(database)/documents/sessions/$(request.resource.data.sessionId)).data.status == 'active'
-        && !get(/databases/$(database)/documents/sessions/$(request.resource.data.sessionId)).data.keys().hasAny(['endTime'])
+        && sessionAcceptsAttendance(get(/databases/$(database)/documents/sessions/$(request.resource.data.sessionId)).data)
         && exists(/databases/$(database)/documents/enrollments/$(request.resource.data.membershipId))
         && get(/databases/$(database)/documents/enrollments/$(request.resource.data.membershipId)).data.uid
           == request.resource.data.uid
@@ -151,11 +230,12 @@ service cloud.firestore {
         && (profile.get('faceConsentRevision', 0) == 0 || profile.get('faceEnrolled', false) == true);
     }
     match /users/{uid} {
-      allow read: if isOwner(uid) || isInstructorOrAdmin();
+      allow get: if isOwner(uid) || isAdmin() || canReadStudent(uid);
+      allow list: if isAdmin();
       allow create: if isOwner(uid) && hasNoBiometricPayload() && hasValidStudentId() && validInitialFacePrivacy();
       allow update: if hasNoBiometricPayload() && hasValidStudentId() && validFacePrivacyUpdate()
         && (
-          isInstructorOrAdmin()
+          isAdmin()
           || (
             isOwner(uid)
             && request.resource.data.role == resource.data.role
@@ -164,17 +244,16 @@ service cloud.firestore {
             && request.resource.data.studentId == resource.data.studentId
           )
         );
-      allow delete: if isInstructorOrAdmin();
+      allow delete: if isAdmin();
     }
 
     match /courses/{courseId} {
-      allow read: if isSignedIn();
+      allow read: if isSignedIn() && (!isInstructorOrAdmin() || isAdmin() || resource.data.instructorId == request.auth.uid);
       allow create: if isInstructorOrAdmin()
         && request.resource.data.instructorId == request.auth.uid
         && hasValidCourseLocation()
         && hasNoBiometricPayload();
-      allow update: if isInstructorOrAdmin()
-        && resource.data.instructorId == request.auth.uid
+      allow update: if managesCourse(courseId)
         && request.resource.data.instructorId == resource.data.instructorId
         && hasValidCourseLocation()
         && hasNoBiometricPayload();
@@ -184,7 +263,7 @@ service cloud.firestore {
     }
 
     match /sessions/{sessionId} {
-      allow read: if isSignedIn();
+      allow read: if isSignedIn() && (!isInstructorOrAdmin() || managesCourse(resource.data.courseId));
       allow create: if isInstructorOrAdmin()
         && exists(/databases/$(database)/documents/courses/$(request.resource.data.courseId))
         && get(/databases/$(database)/documents/courses/$(request.resource.data.courseId)).data.instructorId == request.auth.uid
@@ -200,22 +279,23 @@ service cloud.firestore {
     }
 
     match /attendance/{recordId} {
-      // Reading a missing deterministic record is required by the create-only
-      // attendance transaction. Existing records remain owner/instructor only.
       allow get: if isSignedIn()
-        && (resource == null || resource.data.uid == request.auth.uid || isInstructorOrAdmin());
+        && (resource == null || resource.data.uid == request.auth.uid || managesCourse(resource.data.courseId));
       allow list: if isSignedIn()
-        && (isInstructorOrAdmin() || resource.data.uid == request.auth.uid);
-      allow create: if isValidAttendanceRecord(recordId)
-        && (
-          (isInstructorOrAdmin()
-            && (!(request.resource.data.get('source', '') in ['phone_face_verification', 'classroom_camera'])
-              || permitsFacialAttendance(request.resource.data.uid)))
-          || (isSignedIn() && request.resource.data.uid == request.auth.uid
-            && permitsFacialAttendance(request.auth.uid))
-        );
-      allow update: if isInstructorOrAdmin() && hasNoBiometricPayload();
-      allow delete: if isInstructorOrAdmin();
+        && (resource.data.uid == request.auth.uid || managesCourse(resource.data.courseId));
+      allow create: if (isValidInstructorOverride(recordId)
+        || (isValidAttendanceRecord(recordId)
+          && ((managesCourse(request.resource.data.courseId)
+              && (!(request.resource.data.get('source', '') in ['phone_face_verification', 'classroom_camera'])
+                || permitsFacialAttendance(request.resource.data.uid)))
+            || (isSignedIn() && request.resource.data.uid == request.auth.uid
+              && permitsFacialAttendance(request.auth.uid)))));
+      allow update: if managesCourse(resource.data.courseId) && hasNoBiometricPayload()
+        && request.resource.data.courseId == resource.data.courseId
+        && request.resource.data.sessionId == resource.data.sessionId
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.status in ['present', 'late', 'absent'];
+      allow delete: if managesCourse(resource.data.courseId);
     }
 
     match /facialEmbeddings/{uid} {
@@ -224,12 +304,13 @@ service cloud.firestore {
     }
 
     match /enrollments/{enrollmentId} {
-      allow get: if isSignedIn()
-        && (resource.data.uid == request.auth.uid || isInstructorOrAdmin());
-      allow list: if isSignedIn()
-        && (resource.data.uid == request.auth.uid || isInstructorOrAdmin());
-      allow create, update: if isInstructorOrAdmin() && hasNoBiometricPayload();
-      allow delete: if isInstructorOrAdmin();
+      allow read: if isSignedIn()
+        && (resource.data.uid == request.auth.uid || managesCourse(resource.data.courseId));
+      allow create: if managesCourse(request.resource.data.courseId) && hasNoBiometricPayload();
+      allow update: if managesCourse(resource.data.courseId) && hasNoBiometricPayload()
+        && request.resource.data.courseId == resource.data.courseId
+        && request.resource.data.uid == resource.data.uid;
+      allow delete: if managesCourse(resource.data.courseId);
     }
 
     match /instructor_settings/{uid} {

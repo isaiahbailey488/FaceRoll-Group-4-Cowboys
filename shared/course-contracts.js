@@ -40,10 +40,22 @@ function membershipId(courseId, uid) {
 }
 
 function validateMembership(value) {
-  object(value, ['schemaVersion', 'courseId', 'uid', 'status', 'createdAt', 'updatedAt']);
+  const hasPeriods = value && Object.prototype.hasOwnProperty.call(value, 'attendancePeriods');
+  object(value, ['schemaVersion', 'courseId', 'uid', 'status', 'createdAt', 'updatedAt', ...(hasPeriods ? ['attendancePeriods'] : [])]);
   membershipId(value.courseId, value.uid);
   if (!MEMBERSHIP_STATUSES.includes(value.status)) fail('status');
   chronology(value);
+  if (hasPeriods) {
+    if (!Array.isArray(value.attendancePeriods)) fail('attendancePeriods');
+    let lastEnd = -Infinity;
+    value.attendancePeriods.forEach((period, index) => {
+      if (!period || Object.keys(period).length !== 2 || !Object.prototype.hasOwnProperty.call(period, 'start') || !Object.prototype.hasOwnProperty.call(period, 'end')) fail('attendancePeriods');
+      const start = timestamp(period.start, 'attendancePeriods.start');
+      const end = period.end === null ? Infinity : timestamp(period.end, 'attendancePeriods.end');
+      if (start < lastEnd || end < start || (end === Infinity && (index !== value.attendancePeriods.length - 1 || value.status !== 'active'))) fail('attendancePeriods');
+      lastEnd = end;
+    });
+  }
   return { ...value };
 }
 

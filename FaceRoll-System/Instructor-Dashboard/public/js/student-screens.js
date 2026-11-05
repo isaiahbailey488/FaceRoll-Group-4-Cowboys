@@ -4,6 +4,11 @@
   const firebaseApi = window.FaceRollFirebase || null;
   const sampleDataApi = window.FaceRollSampleData || null;
 
+  function completedAttendance(snapshot) {
+    if (!window.FaceRollAttendanceHistory) throw new Error('Attendance history did not load. Reload the page.');
+    return window.FaceRollAttendanceHistory.completeAttendance(snapshot);
+  }
+
   function bindLatest(element, eventName, key, handler) {
     if (!element) return;
     const handlerKey = '__facerollHandler_' + key;
@@ -61,6 +66,10 @@
 
   async function upgradeLegacyStudentIds(users) {
     if (!firebaseApi || typeof firebaseApi.ensureSevenDigitStudentId !== 'function') return;
+    if (typeof firebaseApi.getCurrentAuthUser !== 'function') return;
+    const authUser = await firebaseApi.getCurrentAuthUser();
+    const profile = authUser && await firebaseApi.readDocument('users', authUser.uid);
+    if (!profile || !['admin', 'administrator'].includes(profile.role)) return;
 
     await Promise.all(users.map(async function (user) {
       const role = String(getFirstDefined(user, ['role', 'userType']) || '').toLowerCase();
@@ -93,7 +102,7 @@
 
   function formatDateDisplay(value) {
     const d = toDate(value);
-    return d ? d.toISOString().slice(0, 10) : 'N/A';
+    return d ? [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-') : 'N/A';
   }
 
   function formatTimeDisplay(value) {
@@ -261,6 +270,7 @@
       const entryKey = entry.entryKey || buildHistoryEntryKey(entry);
       const overrideStatus = normalizeStatus(overridesByEntryKey[entryKey]);
       return {
+        ...entry,
         documentId: entry.documentId || '',
         date: entry.date,
         course: entry.course,
@@ -278,7 +288,7 @@
     const absent = history.filter(function (entry) { return entry.status === 'Absent'; }).length;
     return {
       attendanceRate: totalSessions ? Math.round(((present + late) / totalSessions) * 100) : 0,
-      sessionsAttended: present,
+      sessionsAttended: present + late,
       lateArrivals: late,
       totalAbsences: absent,
     };
@@ -331,6 +341,7 @@
       row.dataset.entryKey = entry.entryKey;
       row.dataset.documentId = entry.documentId || '';
       applyStatusBadge(row.children[2].firstElementChild, entry.status);
+      if (entry.inferred) row.children[2].firstElementChild.title = 'No recorded check-in for this completed session';
       row.children[4].firstElementChild.value = 'No Change';
       historyBody.appendChild(row);
     });
@@ -351,7 +362,7 @@
       ? await firebaseApi.readInstructorSnapshotSWR({})
       : await firebaseApi.readInstructorSnapshot();
     const users = results.users, courses = results.courses, sessions = results.sessions,
-      attendance = results.attendance, memberships = results.enrollments,
+      attendance = completedAttendance(results), memberships = results.enrollments,
       instructor = results.instructor;
     if (!instructor) throw new Error('Sign in to view student enrollment details.');
 
@@ -402,16 +413,23 @@
       const session = sessionMap.get(sessionId) || null;
       const courseId = String(getFirstDefined(entry, ['courseId']) || getFirstDefined(session, ['courseId']) || '');
       const course = courseMap.get(courseId) || null;
-      const entryDate = getFirstDefined(entry, ['time', 'createdAt', 'date']) || getFirstDefined(session, ['startTime', 'date', 'createdAt']);
+      const entryDate = getFirstDefined(session, ['startTime', 'date', 'createdAt']) || getFirstDefined(entry, ['time', 'createdAt', 'date']);
       const status = normalizeStatus(getFirstDefined(entry, ['status'])) || 'Present';
       const recordedTimeValue = getFirstDefined(entry, ['time', 'createdAt']);
 
       return {
         documentId: entry.id,
+        inferred: entry.inferred === true,
+        overrideDocument: entry.inferred ? {
+          id: entry.id, uid: entry.uid, userId: entry.uid, sessionId: sessionId, courseId: courseId,
+          membershipId: entry.membershipId || '', attendanceEvidenceId: entry.attendanceEvidenceId || '',
+          source: 'instructor_override', method: 'Instructor override', time: entry.time,
+          createdAt: new Date().toISOString(),
+        } : null,
         date: formatDateDisplay(entryDate),
         course: String(getFirstDefined(course, ['courseName', 'name', 'title', 'code']) || courseId || 'Unknown Course'),
         status: status,
-        recordedTime: status === 'Absent' ? 'N/A' : formatTimeDisplay(recordedTimeValue || entryDate),
+        recordedTime: status === 'Absent' ? 'N/A' : entry.source === 'instructor_override' ? 'Instructor override' : formatTimeDisplay(recordedTimeValue || entryDate),
         entryKey: String(entry.id || buildHistoryEntryKey({
           date: formatDateDisplay(entryDate),
           course: courseId || 'Unknown Course',
@@ -443,7 +461,7 @@
         email: getUserEmail(studentUser, fallbackStudent),
         courses: derivedCourses.length ? derivedCourses : (fallbackStudent ? fallbackStudent.courses : ['No courses found']),
       },
-      history: applyOverridesToHistory(studentId, history),
+      history: history,
       enrollments: enrollmentRows,
     };
   }
@@ -614,7 +632,7 @@
       users = snapshot.users;
       courses = snapshot.courses;
       sessions = snapshot.sessions;
-      attendance = snapshot.attendance;
+      attendance = completedAttendance(snapshot);
       memberships = snapshot.enrollments;
       instructor = snapshot.instructor;
       if (!instructor) throw new Error('Sign in to manage your course roster.');
@@ -742,6 +760,8 @@
     const recognizedElement = document.getElementById('i2ojcf');
     const lateElement = document.getElementById('imevvg');
     if (!tbody) return;
+    const policyApi = window.FaceRollSessionPolicy;
+    if (!policyApi) { tbody.textContent = 'Reload the page to load attendance settings.'; return; }
 
     let sessionStatusValue = document.getElementById('liveSessionStatus');
     if (!sessionStatusValue) {
@@ -770,7 +790,14 @@
     let activeSessionDocId = null;
     let activeCourseId = '';
     let activeCourseName = '';
-    let activeGracePeriodMinutes = 10;
+    let activeSessionRecord = null;
+    let ownedCourses = new Map();
+    let sessionActionBusy = false;
+    let disposed = false;
+    let sessionUnsubscribe = null;
+    let sessionGeneration = 0;
+    let bridgePollPromise = null;
+    let dateRefreshTimer = null;
 
     function setSessionStatus(t) { if (sessionStatusValue) sessionStatusValue.textContent = t; }
     function setStartButtonState(started, busy) {
@@ -779,6 +806,8 @@
       startButton.disabled = Boolean(busy);
       startButton.style.opacity = busy ? '0.75' : '1';
       startButton.style.cursor = busy ? 'wait' : 'pointer';
+      if (courseSelect) courseSelect.disabled = started || busy;
+      if (sessionDateInput) sessionDateInput.readOnly = true;
     }
     function renderEmpty() {
       tbody.innerHTML = '<tr><td colspan="5">No check-ins yet for this session.</td></tr>';
@@ -816,12 +845,20 @@
       }
     }
 
-    function resetIdle() {
+    function stopSessionListener() {
+      sessionGeneration += 1;
+      if (typeof sessionUnsubscribe === 'function') sessionUnsubscribe();
+      sessionUnsubscribe = null;
+    }
+
+    function resetIdle(options) {
+      const keepAttendance = options && options.keepAttendance;
+      stopSessionListener();
       sessionStartedAt = null;
       activeSessionDocId = null;
+      activeSessionRecord = null;
       activeCourseId = '';
       activeCourseName = '';
-      activeGracePeriodMinutes = 10;
       bridgeEventCursor = 0;
       activeRosterSignature = '';
       activeRosterUids = new Set();
@@ -832,15 +869,16 @@
       writtenBridgeEvents.clear();
       setSessionStatus('Not Started');
       stopTimer(); stopPoller(); stopRosterListener(); stopBridgePoller();
-      if (durationElement) durationElement.textContent = '00:00';
+      if (!keepAttendance && durationElement) durationElement.textContent = '00:00';
+      if (sessionDateInput) sessionDateInput.value = policyApi.localDate();
       setStartButtonState(false, false);
-      renderEmpty();
+      if (!keepAttendance) renderEmpty();
     }
 
     function renderLiveRows(rows) {
       if (!rows.length) { renderEmpty(); return; }
-      const recognized = rows.filter(function (r) { return r.status !== 'Absent'; }).length;
-      const late = rows.filter(function (r) { return r.status === 'Late'; }).length;
+      const recognized = rows.filter(function (r) { return r.source !== 'session_default' && r.status !== 'Absent'; }).length;
+      const late = rows.filter(function (r) { return r.source !== 'session_default' && r.status === 'Late'; }).length;
       if (recognizedElement) recognizedElement.textContent = String(recognized);
       if (lateElement) lateElement.textContent = String(late);
       tbody.innerHTML = '';
@@ -850,6 +888,7 @@
         row.children[0].textContent = e.studentName;
         row.children[1].textContent = e.course;
         row.children[2].firstElementChild.textContent = e.status;
+        if (e.source === 'session_default') row.children[2].firstElementChild.title = 'Applied from the session default';
         const cls = getStatusClass(e.status);
         if (cls) row.children[2].firstElementChild.classList.add(cls);
         row.children[3].textContent = e.recordedTime;
@@ -873,7 +912,10 @@
           filters: [{ field: 'instructorId', operator: '==', value: user.uid }],
         };
         const renderCourses = function (courses) {
-          const previousCourseId = courseSelect.value;
+          ownedCourses = new Map(courses.map(function (course) {
+            return [String(course.courseId || course.id), course];
+          }));
+          const previousCourseId = activeCourseId || courseSelect.value;
           courseSelect.innerHTML = '';
           if (!courses.length) {
             courseSelect.innerHTML = '<option value="">No courses found</option>';
@@ -891,14 +933,11 @@
             return String(getFirstDefined(course, ['courseId']) || course.id || '') === previousCourseId;
           })) courseSelect.value = previousCourseId;
         };
-        if (typeof firebaseApi.readQueryDocsSWR === 'function') {
-          await firebaseApi.readQueryDocsSWR('courses', queryOptions, renderCourses);
-        } else {
-          renderCourses(await firebaseApi.readQueryDocs('courses', queryOptions));
-        }
+        renderCourses(await firebaseApi.readQueryDocs('courses', queryOptions));
       } catch (e) {
         console.error('Failed to load courses:', e);
         courseSelect.innerHTML = '<option value="">Unable to load courses</option>';
+        throw e;
       }
     }
 
@@ -916,7 +955,7 @@
 
     async function facialRosterUids(enrollments, courseId) {
       const uids = window.FaceRollCourseRoster.activeRosterUids(enrollments, courseId);
-      const users = uids.length ? await firebaseApi.readDocuments('users', uids) : [];
+      const users = uids.length ? await firebaseApi.readDocuments('users', uids, { enrollments: enrollments }) : [];
       return window.FaceRollCourseRoster.facialRosterUids(enrollments, courseId,
         users.map(user => liveConsentProfiles.has(user.id) ? liveConsentProfiles.get(user.id) : user).filter(Boolean));
     }
@@ -933,7 +972,7 @@
         const allowedUids = Array.isArray(enrollmentRows)
           ? await facialRosterUids(enrollmentRows, courseId)
           : await loadCourseRosterUids(courseId);
-        if (sessionId !== activeSessionDocId || courseId !== activeCourseId) return;
+        if (disposed || sessionId !== activeSessionDocId || courseId !== activeCourseId) return;
         activeRosterUids = new Set(allowedUids);
         const signature = window.FaceRollCourseRoster.rosterSignature(allowedUids);
         if (signature === activeRosterSignature) return;
@@ -972,11 +1011,12 @@
       try {
         const att = Array.isArray(attendanceRows) ? attendanceRows :
           await firebaseApi.readQueryDocs('attendance', {
-            filters: [{ field: 'sessionId', operator: '==', value: activeSessionDocId }],
+            filters: [{ field: 'sessionId', operator: '==', value: activeSessionDocId },
+              { field: 'courseId', operator: '==', value: activeCourseId }],
           });
         const users = await firebaseApi.readDocuments('users', att.map(function (row) {
           return getFirstDefined(row, ['uid', 'userId']);
-        }));
+        }), { attendance: att });
         const courses = activeCourseId ? [{ id: activeCourseId, courseId: activeCourseId,
           courseName: activeCourseName }] : [];
         const userMap = new Map();
@@ -1004,6 +1044,7 @@
             const row = {
               studentName: displayName,
               locationStatus: d.locationStatus,
+              source: d.source,
               course: courseMap.get(cid) || activeCourseName || 'Unknown Course',
               status: normalizeStatus(getFirstDefined(d, ['status']) || 'present') || 'Present',
               recordedTime: formatTimeDisplay(getFirstDefined(d, ['time', 'createdAt'])),
@@ -1015,7 +1056,7 @@
           });
         const rows = Array.from(rowMap.values())
           .sort(function (a, b) { return String(a.recordedTime).localeCompare(String(b.recordedTime)); });
-        if (generation === liveRowsGeneration && sessionId === activeSessionDocId) {
+        if (!disposed && generation === liveRowsGeneration && sessionId === activeSessionDocId) {
           renderLiveRows(rows);
         }
       } catch (e) { console.error('Live refresh failed:', e); }
@@ -1026,14 +1067,15 @@
       const sessionId = activeSessionDocId;
       try {
         const unsubscribe = await firebaseApi.subscribeQueryDocs('attendance', {
-          filters: [{ field: 'sessionId', operator: '==', value: sessionId }],
+          filters: [{ field: 'sessionId', operator: '==', value: sessionId },
+            { field: 'courseId', operator: '==', value: activeCourseId }],
         }, function (rows) {
-          if (sessionId === activeSessionDocId) fetchRows(rows);
+          if (!disposed && sessionId === activeSessionDocId) fetchRows(rows);
         }, function (error) {
           console.error('Live attendance subscription failed:', error);
           setSessionStatus('Attendance connection interrupted');
         });
-        if (sessionId === activeSessionDocId) liveAttendanceUnsubscribe = unsubscribe;
+        if (!disposed && sessionId === activeSessionDocId) liveAttendanceUnsubscribe = unsubscribe;
         else if (typeof unsubscribe === 'function') unsubscribe();
       } catch (error) {
         console.error('Unable to start live attendance subscription:', error);
@@ -1052,7 +1094,7 @@
             { field: 'status', operator: '==', value: 'active' },
           ],
         }, function (rows) {
-          if (sessionId === activeSessionDocId && courseId === activeCourseId) {
+          if (!disposed && sessionId === activeSessionDocId && courseId === activeCourseId) {
             currentRosterRows = rows;
             const generation = consentListenerGeneration;
             const uids = new Set(window.FaceRollCourseRoster.activeRosterUids(rows, courseId));
@@ -1085,7 +1127,7 @@
         }, function (error) {
           console.error('Course roster subscription failed:', error);
         });
-        if (sessionId === activeSessionDocId && courseId === activeCourseId) rosterUnsubscribe = unsubscribe;
+        if (!disposed && sessionId === activeSessionDocId && courseId === activeCourseId) rosterUnsubscribe = unsubscribe;
         else if (typeof unsubscribe === 'function') unsubscribe();
       } catch (error) {
         console.error('Unable to start course roster subscription:', error);
@@ -1116,6 +1158,7 @@
       // Convert one bridge recognition event into one Firestore attendance record.
       if (!firebaseApi || !activeSessionDocId || !activeCourseId || !event) return false;
       if (event.eventType && event.eventType !== 'match') return false;
+      const targetSessionId = activeSessionDocId;
       const eventSessionId = String(getFirstDefined(event, ['sessionId']) || '');
       const eventCourseId = String(getFirstDefined(event, ['courseId']) || '');
       if (eventSessionId && eventSessionId !== String(activeSessionDocId)) return false;
@@ -1131,6 +1174,7 @@
         return false;
       }
       const users = await firebaseApi.readDocuments('users', [authoritativeUid]);
+      if (disposed || activeSessionDocId !== targetSessionId) return false;
       const userLookup = buildUserLookup(users);
       const user = userLookup.get(normalizeLookupKey(authoritativeUid)) || null;
       if (!user) {
@@ -1147,10 +1191,8 @@
       const studentName = getUserDisplayName(user);
 
       const eventTime = toDate(getFirstDefined(event, ['timestamp', 'time', 'createdAt'])) || new Date();
-      const sessionStart = sessionStartedAt || Date.now();
-      const isLate = Number.isFinite(activeGracePeriodMinutes)
-        ? eventTime.getTime() - sessionStart > activeGracePeriodMinutes * 60 * 1000
-        : false;
+      const decision = policyApi.checkInDecision(activeSessionRecord, eventTime);
+      if (!decision.allowed) return false;
       const attendanceId = activeSessionDocId + '_' + uid;
 
       const attendanceDoc = {
@@ -1163,7 +1205,7 @@
         sessionId: activeSessionDocId,
         courseId: activeCourseId,
         membershipId: window.FaceRollCourseRoster.membershipId(activeCourseId, uid),
-        status: isLate ? 'late' : 'present',
+        status: decision.status,
         time: eventTime.toISOString(),
         createdAt: eventTime.toISOString(),
         source: 'classroom_camera',
@@ -1187,12 +1229,23 @@
       return created;
     }
 
-    async function pollBridgeEvents() {
+    function pollBridgeEvents() {
+      if (bridgePollPromise) return bridgePollPromise;
+      const operation = pollBridgeEventsOnce();
+      bridgePollPromise = operation;
+      return operation.finally(function () {
+        if (bridgePollPromise === operation) bridgePollPromise = null;
+      });
+    }
+
+    async function pollBridgeEventsOnce() {
       // Cursor prevents the same bridge event from being processed twice.
       if (!activeSessionDocId || bridgePollInFlight) return;
       bridgePollInFlight = true;
+      const targetSessionId = activeSessionDocId;
       try {
         const payload = await requestBridge('/events?cursor=' + encodeURIComponent(String(bridgeEventCursor)));
+        if (disposed || activeSessionDocId !== targetSessionId) return;
         const events = Array.isArray(payload.events) ? payload.events : [];
         const processed = await window.FaceRollCourseRoster.processBridgeEvents(
           events,
@@ -1204,6 +1257,7 @@
           : Number(payload.nextCursor || bridgeEventCursor || 0);
       } catch (e) {
         console.error('Bridge event poll failed:', e);
+        throw e;
       } finally {
         bridgePollInFlight = false;
       }
@@ -1211,23 +1265,119 @@
 
     function startBridgePoller() {
       stopBridgePoller();
-      pollBridgeEvents();
-      bridgePollHandle = setInterval(pollBridgeEvents, 2000);
+      const poll = function () { pollBridgeEvents().catch(function () {}); };
+      poll();
+      bridgePollHandle = setInterval(poll, 2000);
     }
 
-    async function readGrace() {
+    async function readAttendanceSettings() {
+      const user = await firebaseApi.waitForAuthUser();
+      if (!user) throw new Error('Sign in to start a session.');
+      const settings = await firebaseApi.readDocument('instructor_settings', user.uid);
+      return policyApi.normalizeSettings(settings);
+    }
+
+    async function readOwnedSessions() {
+      const courseIds = Array.from(ownedCourses.keys());
+      const rows = [];
+      for (let index = 0; index < courseIds.length; index += 8) {
+        rows.push.apply(rows, await firebaseApi.readQueryDocs('sessions', {
+          filters: [{ field: 'courseId', operator: 'in', value: courseIds.slice(index, index + 8) }],
+        }));
+      }
+      return rows.filter(function (session) {
+        return ownedCourses.has(session.courseId) && ['active', 'starting', 'closing'].includes(session.status);
+      }).sort(function (left, right) {
+        return policyApi.toMillis(right.startTime) - policyApi.toMillis(left.startTime);
+      });
+    }
+
+    async function readBridgeStatus() {
       try {
-        if (!firebaseApi) return 10;
-        const cu = await firebaseApi.waitForAuthUser();
-        const uid = cu && cu.uid;
-        if (!uid) return 10;
-        const settings = typeof firebaseApi.readDocumentSWR === 'function'
-          ? await firebaseApi.readDocumentSWR('instructor_settings', uid)
-          : await firebaseApi.readDocument('instructor_settings', uid);
-        if (!settings) return 10;
-        const v = Number.parseInt(settings.gracePeriodMinutes, 10);
-        return Number.isFinite(v) && v >= 0 ? v : 10;
-      } catch (e) { return 10; }
+        const payload = await requestBridge('/status', { signal: AbortSignal.timeout(5000) });
+        return payload.status || null;
+      } catch (error) { return null; }
+    }
+
+    function bridgeIsRunning(status) {
+      return Boolean(status && (status.captureRunning || status.recognizerRunning));
+    }
+
+    async function attachSession(session, bridgeStatus) {
+      stopSessionListener();
+      stopTimer(); stopPoller(); stopRosterListener(); stopBridgePoller();
+      activeSessionRecord = session;
+      activeSessionDocId = session.id || session.sessionId;
+      activeCourseId = session.courseId;
+      const course = ownedCourses.get(activeCourseId) || {};
+      activeCourseName = String(course.courseName || course.name || activeCourseId);
+      sessionStartedAt = policyApi.toMillis(session.startTime);
+      policyApi.settingsForSession(session);
+      bridgeEventCursor = 0;
+      writtenBridgeEvents.clear();
+      if (courseSelect) courseSelect.value = activeCourseId;
+      if (sessionDateInput) sessionDateInput.value = session.date || policyApi.localDate(sessionStartedAt);
+      setStartButtonState(true, false);
+      updateDuration(sessionStartedAt);
+      if (session.status === 'closing') {
+        setSessionStatus('Finishing attendance — select Finish Session to retry');
+        startButton.textContent = 'Finish Session';
+        await fetchRows();
+      } else {
+        const bridgeMatches = bridgeIsRunning(bridgeStatus) && bridgeStatus.sessionId === activeSessionDocId
+          && bridgeStatus.captureRunning && bridgeStatus.recognizerRunning;
+        setSessionStatus(bridgeMatches ? 'Started' : 'Session active; classroom camera is disconnected');
+        const roster = await loadCourseRosterUids(activeCourseId);
+        if (disposed || activeSessionDocId !== (session.id || session.sessionId)) return;
+        activeRosterUids = new Set(roster);
+        activeRosterSignature = window.FaceRollCourseRoster.rosterSignature(Array.from(activeRosterUids));
+        beginTimer(sessionStartedAt);
+        startPoller();
+        if (bridgeMatches) { startRosterListener(); startBridgePoller(); }
+      }
+      const generation = sessionGeneration;
+      if (typeof firebaseApi.subscribeDocument === 'function') {
+        const unsubscribe = await firebaseApi.subscribeDocument('sessions', activeSessionDocId, function (updated, info) {
+          if (disposed || generation !== sessionGeneration || sessionActionBusy || (info && info.fromCache)) return;
+          if (!updated || updated.status === 'closed' || updated.status === 'start_failed') {
+            fetchRows().finally(function () {
+              if (generation !== sessionGeneration) return;
+              resetIdle({ keepAttendance: true });
+              setSessionStatus('Session ended');
+            });
+          } else if (updated.status === 'closing') {
+            activeSessionRecord = updated;
+            stopTimer(); stopBridgePoller(); stopRosterListener();
+            setSessionStatus('Finishing attendance');
+            startButton.textContent = 'Finish Session';
+          }
+        }, function () { setSessionStatus('Session connection interrupted; reload to reconnect'); });
+        if (!disposed && generation === sessionGeneration) sessionUnsubscribe = unsubscribe;
+        else if (typeof unsubscribe === 'function') unsubscribe();
+      }
+    }
+
+    async function restoreSession() {
+      const values = await Promise.all([readOwnedSessions(), readBridgeStatus()]);
+      const sessions = values[0], bridgeStatus = values[1];
+      if (disposed) return false;
+      let existing = sessions.find(function (session) {
+        return (session.id || session.sessionId) === (bridgeStatus && bridgeStatus.sessionId);
+      }) || sessions[0];
+      if (bridgeIsRunning(bridgeStatus) && (!existing || (existing.id || existing.sessionId) !== bridgeStatus.sessionId)) {
+        throw new Error('Another session is using the classroom camera. End it before starting a new session.');
+      }
+      if (!existing) return false;
+      if (existing.status === 'starting') {
+        if (!bridgeIsRunning(bridgeStatus)) throw new Error('A session is still starting. Wait for the camera, then reload Live Session.');
+        const startedAt = bridgeStatus.sessionStartedAt > 0 ? bridgeStatus.sessionStartedAt * 1000
+          : existing.startedAtMs || policyApi.toMillis(existing.startTime);
+        const resumed = Object.assign({}, existing, policyApi.snapshot(policyApi.settingsForSession(existing), startedAt), { status: 'active' });
+        await firebaseApi.writeDocument('sessions', existing.id || existing.sessionId, resumed);
+        existing = resumed;
+      }
+      await attachSession(existing, bridgeStatus);
+      return true;
     }
 
     async function handleStart() {
@@ -1235,44 +1385,43 @@
       if (!firebaseApi) { setSessionStatus('Firestore unavailable'); return; }
       const selectedId = courseSelect ? String(courseSelect.value || '').trim() : '';
       if (!selectedId) { setSessionStatus('Select a course first'); return; }
-      const selectedLabel = courseSelect && courseSelect.selectedOptions[0]
-        ? String(courseSelect.selectedOptions[0].textContent || selectedId) : selectedId;
       setStartButtonState(false, true);
       let pendingSessionDocId = null;
+      let bridgeStarted = false;
       try {
+        if (await restoreSession()) return;
         const now = new Date();
         const sid = 'session_' + now.getTime();
-        const grace = await readGrace();
+        const settings = await readAttendanceSettings();
         const allowedUids = await loadCourseRosterUids(selectedId);
         pendingSessionDocId = sid;
         await firebaseApi.writeDocument('sessions', sid, {
-          id: sid, sessionId: sid, courseId: selectedId,
-          startTime: now.toISOString(), gracePeriodMinutes: grace, status: 'active',
+          ...policyApi.snapshot(settings, now),
+          id: sid, sessionId: sid, courseId: selectedId, status: 'starting',
         });
         const bridgeSession = { sessionId: sid, courseId: selectedId };
         bridgeSession.allowedUids = allowedUids;
-        await requestBridge('/start-session', {
+        const started = await requestBridge('/start-session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(bridgeSession),
         });
-        sessionStartedAt = now.getTime();
-        activeSessionDocId = sid;
-        activeCourseId = selectedId;
-        activeCourseName = selectedLabel;
-        activeGracePeriodMinutes = grace;
-        activeRosterSignature = window.FaceRollCourseRoster.rosterSignature(allowedUids);
-        activeRosterUids = new Set(allowedUids);
-        setSessionStatus('Started');
-        setStartButtonState(true, false);
-        beginTimer(sessionStartedAt);
-        startPoller();
-        startRosterListener();
-        startBridgePoller();
+        if (!started.status || started.status.sessionId !== sid || started.status.courseId !== selectedId) {
+          throw new Error('The classroom camera is running a different session. Reload Live Session to reconnect.');
+        }
+        bridgeStarted = true;
+        const startedAt = started.status.sessionStartedAt > 0 ? started.status.sessionStartedAt * 1000 : Date.now();
+        const active = Object.assign({}, policyApi.snapshot(settings, startedAt), {
+          id: sid, sessionId: sid, courseId: selectedId, status: 'active',
+        });
+        await firebaseApi.writeDocument('sessions', sid, active);
+        if (!disposed) await attachSession(active, started.status);
       } catch (e) {
         console.error('Start failed:', e);
         try {
-          await requestBridge('/stop-session', { method: 'POST' });
+          if (bridgeStarted) {
+            await requestBridge('/stop-session', { method: 'POST' });
+          }
         } catch (stopError) {
           console.error('Bridge cleanup after failed start failed:', stopError);
         }
@@ -1285,7 +1434,8 @@
             console.error('Failed to mark session start failure:', writeError);
           }
         }
-        setSessionStatus('Start failed');
+        if (pendingSessionDocId && activeSessionDocId === pendingSessionDocId) resetIdle();
+        setSessionStatus('Start failed: ' + e.message);
         setStartButtonState(false, false);
       }
     }
@@ -1293,31 +1443,95 @@
     async function handleStop() {
       setStartButtonState(true, true);
       try {
-        await requestBridge('/stop-session', { method: 'POST' });
-      } catch (e) {
-        console.error('Bridge stop failed:', e);
-      }
-      try {
-        if (firebaseApi && activeSessionDocId) {
-          await firebaseApi.writeDocument('sessions', activeSessionDocId, {
-            status: 'closed', endTime: new Date().toISOString(),
-          });
+        const sessionId = activeSessionDocId;
+        const record = await firebaseApi.readDocument('sessions', sessionId);
+        if (!record) throw new Error('The session could not be found.');
+        if (record.status === 'closed' && record.defaultsApplied) {
+          await fetchRows();
+          resetIdle({ keepAttendance: true });
+          setSessionStatus('Session ended');
+          return;
         }
-      } catch (e) { console.error('Stop failed:', e); }
-      resetIdle();
+        const bridgeStatus = await readBridgeStatus();
+        if (!bridgeStatus && record.status !== 'closing') {
+          throw new Error('Cannot reach the classroom camera. Reconnect the bridge before ending the session');
+        }
+        if (bridgeIsRunning(bridgeStatus) && bridgeStatus.sessionId === sessionId) {
+          await requestBridge('/stop-session', { method: 'POST' });
+        }
+        if (bridgeStatus && record.status === 'active') {
+          stopBridgePoller();
+          await pollBridgeEvents();
+        }
+        const endTime = record.endTime || new Date().toISOString();
+        await firebaseApi.writeDocument('sessions', sessionId, { status: 'closing', endTime: endTime });
+        activeSessionRecord = Object.assign({}, record, { status: 'closing', endTime: endTime });
+        stopBridgePoller(); stopTimer();
+        const settings = policyApi.settingsForSession(record);
+        const memberships = await firebaseApi.readQueryDocs('enrollments', {
+          filters: [{ field: 'courseId', operator: '==', value: activeCourseId },
+            { field: 'status', operator: '==', value: 'active' }],
+        });
+        const uids = window.FaceRollCourseRoster.activeRosterUids(memberships, activeCourseId);
+        for (let index = 0; index < uids.length; index += 20) {
+          await Promise.all(uids.slice(index, index + 20).map(function (uid) {
+            const id = sessionId + '_' + uid;
+            return firebaseApi.createDocumentIfAbsent('attendance', id, {
+              id: id, uid: uid, userId: uid, sessionId: sessionId, courseId: activeCourseId,
+              membershipId: window.FaceRollCourseRoster.membershipId(activeCourseId, uid),
+              status: settings.defaultAttendance, source: 'session_default',
+              method: 'Session default', time: endTime, createdAt: endTime,
+            });
+          }));
+        }
+        await firebaseApi.writeDocument('sessions', sessionId, { status: 'closed', defaultsApplied: true });
+        await fetchRows();
+        resetIdle({ keepAttendance: true });
+        setSessionStatus('Session ended');
+      } catch (e) {
+        console.error('Stop failed:', e);
+        setSessionStatus('Unable to finish session: ' + e.message + '. Select Finish Session to retry.');
+        setStartButtonState(true, false);
+        startButton.textContent = 'Finish Session';
+      }
     }
 
-    if (sessionDateInput && !sessionDateInput.value) {
-      sessionDateInput.value = new Date().toISOString().slice(0, 10);
+    async function initialize() {
+      disposed = false;
+      resetIdle();
+      setStartButtonState(false, true);
+      setSessionStatus('Checking for an active session…');
+      if (dateRefreshTimer) clearInterval(dateRefreshTimer);
+      dateRefreshTimer = setInterval(function () {
+        if (!activeSessionDocId && sessionDateInput) sessionDateInput.value = policyApi.localDate();
+      }, 60000);
+      try {
+        await loadCourses();
+        if (!await restoreSession()) resetIdle();
+      } catch (error) {
+        setSessionStatus(error.message + ' Reload Live Session to retry.');
+        setStartButtonState(false, true);
+      }
     }
-    resetIdle();
-    loadCourses();
-    window.addEventListener('faceroll:courses-updated', loadCourses);
+
+    initialize();
+    window.addEventListener('faceroll:courses-updated', function () { loadCourses().catch(console.error); });
+    window.addEventListener('pagehide', function () {
+      disposed = true;
+      if (dateRefreshTimer) clearInterval(dateRefreshTimer);
+      dateRefreshTimer = null;
+      stopSessionListener(); stopTimer(); stopPoller(); stopRosterListener(); stopBridgePoller();
+    });
+    window.addEventListener('pageshow', function (event) { if (event.persisted) initialize(); });
 
     if (startButton) {
-      startButton.addEventListener('click', function () {
-        if (sessionStartedAt !== null) handleStop();
-        else handleStart();
+      startButton.addEventListener('click', async function () {
+        if (sessionActionBusy || startButton.disabled || disposed) return;
+        sessionActionBusy = true;
+        try {
+          if (activeSessionDocId !== null) await handleStop();
+          else await handleStart();
+        } finally { sessionActionBusy = false; }
       });
     }
   }
@@ -1363,12 +1577,12 @@
     let users = [], courses = [], sessions = [], attendance = [];
     try {
       const results = !backgroundRefresh && typeof firebaseApi.readInstructorSnapshotSWR === 'function'
-        ? await firebaseApi.readInstructorSnapshotSWR({ includeEnrollments: false })
-        : await firebaseApi.readInstructorSnapshot({ includeEnrollments: false });
+        ? await firebaseApi.readInstructorSnapshotSWR({})
+        : await firebaseApi.readInstructorSnapshot({});
       users = results.users;
       courses = results.courses;
       sessions = results.sessions;
-      attendance = results.attendance;
+      attendance = completedAttendance(results);
     } catch (e) {
       console.error('Reports load failed:', e);
       if (!backgroundRefresh) {
@@ -1418,15 +1632,13 @@
       }
 
       // Filter attendance
-      const filtered = attendance.filter(function (a) {
+      let filtered = attendance.filter(function (a) {
         const sid = String(getFirstDefined(a, ['sessionId']) || '');
         const sessionInfo = sessionMap.get(sid) || { courseId: String(getFirstDefined(a, ['courseId']) || ''), date: toDate(getFirstDefined(a, ['time', 'createdAt'])) };
         const courseName = courseMap.get(sessionInfo.courseId) || '';
         const recordDate = sessionInfo.date || toDate(getFirstDefined(a, ['time', 'createdAt']));
-        const normStatus = normalizeStatus(getFirstDefined(a, ['status']));
 
         if (courseSel && courseName !== courseSel) return false;
-        if (statusSel && normStatus.toLowerCase() !== statusSel) return false;
         if ((fromVal || toVal) && !recordDate) return false;
         if (fromVal && recordDate && recordDate < fromVal) return false;
         if (toVal) {
@@ -1436,6 +1648,19 @@
         }
         return true;
       });
+
+      // A status filter selects students; their percentage still uses every
+      // eligible session in the selected course/date range.
+      if (statusSel) {
+        const studentCourseKey = function (entry) {
+          const session = sessionMap.get(String(entry.sessionId || ''));
+          return String(entry.uid || entry.userId || entry.studentId || '') + '||' + String(session?.courseId || entry.courseId || '');
+        };
+        const matchingStudents = new Set(filtered.filter(function (entry) {
+          return String(entry.status).toLowerCase() === statusSel;
+        }).map(studentCourseKey));
+        filtered = filtered.filter(function (entry) { return matchingStudents.has(studentCourseKey(entry)); });
+      }
 
       // Group by student+course
       const groupMap = new Map();
@@ -1610,7 +1835,7 @@
       profileLoadError = error;
     }
 
-    if (!profileData && !backgroundRefresh) {
+    if (!profileData && !backgroundRefresh && !firebaseApi) {
       profileData = buildFallbackProfileData(requestedStudentId);
       dataSource = 'sample';
     }
@@ -1622,7 +1847,7 @@
       if (emailEl) emailEl.textContent = 'N/A';
       updateProfileSummary(buildProfileSummary([]));
       historyBody.innerHTML = '<tr><td colspan="5">Unable to load this student profile.</td></tr>';
-      setProfileSaveStatus('Unable to find this student in Firestore or sample data.', true);
+      setProfileSaveStatus('Unable to find this student in your courses.', true);
       if (enrollmentList) enrollmentList.textContent = 'No enrollment records found.';
       if (profileLoadError) {
         renderRetryRow(historyBody, 5, 'Unable to load this student profile. ' +
@@ -1751,7 +1976,10 @@
         if (!entryKey || !select || !nextStatus) return;
 
         if (dataSource === 'firestore' && firebaseApi && documentId) {
-          writes.push(firebaseApi.writeDocument('attendance', documentId, { status: nextStatus.toLowerCase() }));
+          const entry = history.find(function (item) { return item.entryKey === entryKey; });
+          const payload = entry && entry.inferred ? { ...entry.overrideDocument, status: nextStatus.toLowerCase() }
+            : { status: nextStatus.toLowerCase() };
+          writes.push(firebaseApi.writeDocument('attendance', documentId, payload));
         } else {
           overridesByEntryKey[entryKey] = nextStatus;
           localChanges += 1;
