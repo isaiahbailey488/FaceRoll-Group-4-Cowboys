@@ -34,20 +34,21 @@ async function put(path, data, auth = token('student')) {
   }
   assert.equal((await put('enrollments/course1_student', { uid: 'student', courseId: 'course1', status: 'active' }, 'owner')).status, 200);
   for (const locationStatus of ['in_zone', 'outside_zone', 'not_required', 'not_checked']) {
-    await check({ locationStatus }, 200);
+    await check({ locationStatus }, 403);
   }
-  await check({}, 200); // Existing mobile clients remain compatible.
+  await check({}, 403); // Legacy mobile clients cannot bypass backend verification.
   for (const field of ['latitude', 'longitude', 'accuracy', 'distance', 'coords', 'location', 'position']) {
     await check({ [field]: { latitude: 33.2, longitude: -97.1 } }, 403);
   }
   await check({ method: { latitude: 33.2 } }, 403);
   await check({ locationStatus: 'unknown-result' }, 403);
   assert.equal((await put('users/teacher', { role: 'instructor' }, 'owner')).status, 200);
+  assert.equal((await put('courses/course1', { courseId: 'course1', instructorId: 'teacher' }, 'owner')).status, 200);
   const recordId = 'teacher-location-test_student';
   assert.equal((await put('sessions/teacher-location-test', { courseId: 'course1', status: 'active' }, 'owner')).status, 200);
   const record = { uid: 'student', sessionId: 'teacher-location-test', courseId: 'course1', membershipId: 'course1_student', status: 'present', locationStatus: 'in_zone' };
   assert.equal((await put('attendance/' + recordId, record, token('teacher'))).status, 200);
   assert.equal((await put('attendance/' + recordId, { ...record, latitude: 33.2 }, token('teacher'))).status, 403);
   assert.equal((await put('attendance/' + recordId, { ...record, status: 'late' }, token('teacher'))).status, 200);
-  console.log('Passed: zone statuses, legacy compatibility, coordinate rejection, nested-object rejection, and teacher overrides.');
+  console.log('Passed: student writes blocked, coordinate/nested-object rejection, and instructor attendance overrides.');
 })().catch(error => { console.error(error.message); process.exitCode = 1; });

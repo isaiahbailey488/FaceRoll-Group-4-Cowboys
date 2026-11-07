@@ -19,7 +19,9 @@
       },
       "package": "com.cowboys.faceroll",
       "permissions": [
-        "android.permission.CAMERA"
+        "android.permission.CAMERA",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
       ]
     },
     "web": {
@@ -32,6 +34,20 @@
         "expo-camera",
         {
           "cameraPermission": "FaceRoll uses your camera to scan course invitations, enroll your face, and check in for attendance."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "FaceRoll uses a fresh location sample for classroom check-in. Your coordinates are temporary and are not saved in your attendance history.",
+          "locationAlwaysAndWhenInUsePermission": false,
+          "locationAlwaysPermission": false,
+          "locationFullAccuracyPermission": false,
+          "motionUsagePermission": false,
+          "isIosBackgroundLocationEnabled": false,
+          "isAndroidBackgroundLocationEnabled": false,
+          "isAndroidForegroundServiceEnabled": false,
+          "isAndroidMotionActivityEnabled": false
         }
       ],
       "expo-font",

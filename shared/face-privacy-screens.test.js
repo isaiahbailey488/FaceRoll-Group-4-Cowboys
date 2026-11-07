@@ -19,19 +19,26 @@ function renderScreen(filename, state, unavailable = false) {
   const camera = function CameraView() {};
   const gate = function FacePrivacyGate() {};
   const native = new Proxy({
+    AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
     Dimensions: { get: () => ({ width: 390 }) }, StyleSheet: { create: value => value },
   }, { get: (object, key) => object[key] || key });
   const stubs = {
     react, 'react-native': native,
     'expo-camera': { CameraView: camera, useCameraPermissions: () => [{ granted: false }, () => permissionRequests++] },
-    'expo-router': { useRouter: () => ({}) }, 'expo-status-bar': {}, '@expo/vector-icons': {},
+    'expo-router': { useRouter: () => ({}), useFocusEffect: value => effects.push(value) }, 'expo-status-bar': {}, '@expo/vector-icons': {},
     '../constants/Colors': {}, '../components/ScanTipsCard': {},
     '../components/FacePrivacyGate': gate,
     '../hooks/useFacePrivacy': { useFacePrivacy: () => ({ state, unavailable, profile: null, retry() {} }) },
     '../hooks/useCaptureCamera': { useCaptureCamera: () => ({ screenActive: true, active: false, ready: false }) },
+    '../hooks/useCheckInLocation': { useCheckInLocation: () => ({ state: 'idle', feedback: null,
+      initialCollectionComplete: false, hasPreparedLocation: false, collect() {}, clear() {}, getSample: () => null }) },
+    '../components/CheckInLocationCard': 'CheckInLocationCard',
+    '../components/FaceCaptureGuide': { __esModule: true, default: 'FaceCaptureGuide', FaceCaptureControls: 'FaceCaptureControls',
+      useFaceGuideLayout: () => ({ frame: { left: 80, top: 196, width: 220, height: 286 }, onLayout() {} }) },
     '../services/auth': { getCurrentUser: () => null },
     '../services/attendance': {}, '../services/recognition': {},
     '../shared/face-privacy': require('./face-privacy'),
+    '../shared/checkin-location': require('./checkin-location'),
   };
   const source = fs.readFileSync(path.join(__dirname, '..', 'app', filename), 'utf8');
   const code = ts.transpileModule(source, { compilerOptions: {

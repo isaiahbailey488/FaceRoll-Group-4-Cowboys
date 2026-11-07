@@ -54,7 +54,8 @@ async function main() {
   await write('attendance/session_student', attendance, 'student', 403);
   await write('users/student', { faceEnrolled: true }, 'student', 403);
   await write('users/student', { faceEnrolled: true, faceDataDeletionStatus: 'none' });
-  await write('attendance/session_student', attendance, 'student');
+  await write('attendance/session_student', attendance, 'student', 403);
+  await write('attendance/session_student', { ...attendance, source: 'classroom_camera' }, 'teacher');
   console.log(`Passed ${assertions} opt-out rule checks on emulator port ${port}.`);
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

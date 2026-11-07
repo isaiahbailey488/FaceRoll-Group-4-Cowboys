@@ -12,11 +12,11 @@ const { spawn, spawnSync } = require('node:child_process');
 
 const REPOSITORY_ROOT = path.resolve(__dirname, '..');
 const FIREBASE_PROJECT_ID = 'rollcall-2669b';
-const REQUIRED_PORTS = [4400, 9099, 8080, 5001, 8765, 5055];
+const REQUIRED_PORTS = [4400, 9099, 8080, 5001, 8765, 5055, 9449, 8443, 8081];
 
 function expoStartArguments(args) {
-  const connection = args.includes('--expo-tunnel') ? '--tunnel' : '--lan';
-  return ['expo', 'start', connection, '--clear'];
+  if (args.includes('--expo-tunnel')) throw new Error('Choose HTTPS LAN (--local) or --tailscale.');
+  return ['expo', 'start', '--lan', '--port', '8081', '--go', '--clear'];
 }
 
 async function selectNetworkMode(args, interactive, ask) {
@@ -25,10 +25,10 @@ async function selectNetworkMode(args, interactive, ask) {
   if (modes.length) return modes[0].slice(2);
   if (!interactive || args.includes('--check')) return 'local';
   while (true) {
-    const answer = String(await ask('Demo connection: [1] Local Wi-Fi [2] Tailscale (default 1): ')).trim().toLowerCase();
-    if (['', '1', 'local'].includes(answer)) return 'local';
+    const answer = String(await ask('Connection: [1] HTTPS LAN (default), [2] Tailscale: ')).trim().toLowerCase();
+    if (['', '1', 'local', 'lan'].includes(answer)) return 'local';
     if (['2', 'tailscale'].includes(answer)) return 'tailscale';
-    console.log('Enter 1 for Local or 2 for Tailscale.');
+    console.log('Choose 1 for HTTPS LAN or 2 for Tailscale.');
   }
 }
 
@@ -127,6 +127,7 @@ function loadDemoConfiguration(environment = process.env) {
     python,
     tlsCert: values.FACEROLL_TLS_CERT || path.join(tlsRoot, 'faceroll-server.pem'),
     tlsKey: values.FACEROLL_TLS_KEY || path.join(tlsRoot, 'faceroll-server.key'),
+    tlsCa: values.FACEROLL_TLS_CA || null,
     enrollmentDirectory:
       values.FACEROLL_ENROLLMENT_DIR || path.join(dataRoot, 'enrollments'),
     embeddingKeyFile:
@@ -211,10 +212,7 @@ function assertCommand(command, args, label, options) {
 function certificateSupportsHost(certificatePath, host) {
   const certificate = new crypto.X509Certificate(fs.readFileSync(certificatePath));
   if (Date.parse(certificate.validTo) <= Date.now() + 86400000 || Date.parse(certificate.validFrom) > Date.now()) return false;
-  return String(certificate.subjectAltName || '')
-    .split(',')
-    .map((entry) => entry.trim())
-    .includes(`IP Address:${host}`);
+  return Boolean(net.isIP(host) ? certificate.checkIP(host) : certificate.checkHost(host, { subject: 'never' }));
 }
 
 function isPortOpen(port) {
@@ -235,14 +233,14 @@ function isPortOpen(port) {
   });
 }
 
-async function waitForUrl(url, timeoutMs = 60000, verifyCertificate = false) {
+async function waitForUrl(url, timeoutMs = 60000, verifyCertificate = false, ca) {
   const deadline = Date.now() + timeoutMs;
   const transport = url.startsWith('https:') ? https : http;
   while (Date.now() < deadline) {
     const available = await new Promise(function (resolve) {
       const request = transport.get(
         url,
-        { rejectUnauthorized: verifyCertificate, timeout: 1500 },
+        { rejectUnauthorized: verifyCertificate, ca, timeout: 1500 },
         function (response) {
           response.resume();
           resolve(response.statusCode >= 200 && response.statusCode < 400);
@@ -260,6 +258,22 @@ async function waitForUrl(url, timeoutMs = 60000, verifyCertificate = false) {
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
   throw new Error(`Timed out waiting for ${url}`);
+}
+
+async function waitForHttpsEndpoint(url, timeoutMs = 60000, ca) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const ready = await new Promise(resolve => {
+      const request = https.get(url, { timeout: 1500, rejectUnauthorized: true, ca }, response => {
+        response.resume(); resolve(response.statusCode < 500);
+      });
+      request.on('timeout', () => request.destroy());
+      request.on('error', () => resolve(false));
+    });
+    if (ready) return;
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+  throw new Error(`A trusted HTTPS endpoint did not become ready: ${url}`);
 }
 
 function readJson(url) {
@@ -289,7 +303,7 @@ function ensureDemoCertificate(config, run = commandResult, supports = certifica
   if (config.networkMode === 'tailscale') return;
   if (!net.isIPv4(config.lanAddress)) throw new Error('FACEROLL_DEMO_HOST must be an IPv4 address or auto.');
   const usable = (cert, key) => {
-    try { return fs.existsSync(key) && supports(cert, config.lanAddress); } catch { return false; }
+    try { return fs.existsSync(key) && [config.lanAddress, 'localhost', '127.0.0.1'].every(host => supports(cert, host)); } catch { return false; }
   };
   if (usable(config.tlsCert, config.tlsKey)) return;
   const directory = path.dirname(config.tlsCert);
@@ -324,6 +338,39 @@ function ensureDemoCertificate(config, run = commandResult, supports = certifica
   config.tlsKey = key;
 }
 
+function ensureLanTrust(config, run = commandResult) {
+  if (config.networkMode === 'tailscale') return;
+  if (!config.tlsCa) {
+    const result = run('mkcert', ['-CAROOT']);
+    if (result.error || result.status !== 0) throw new Error('Set FACEROLL_TLS_CA to the trusted LAN CA certificate, or install and configure mkcert.');
+    config.tlsCa = path.join(String(result.stdout).trim(), 'rootCA.pem');
+  }
+  if (!fs.existsSync(config.tlsCa)) throw new Error('The LAN CA certificate is missing. Set FACEROLL_TLS_CA to rootCA.pem.');
+  const ca = new crypto.X509Certificate(fs.readFileSync(config.tlsCa));
+  const leaf = new crypto.X509Certificate(fs.readFileSync(config.tlsCert));
+  if (!ca.ca || Date.parse(ca.validFrom) > Date.now() || Date.parse(ca.validTo) <= Date.now() ||
+      !leaf.checkIssued(ca) || !leaf.verify(ca.publicKey)) {
+    throw new Error('The LAN certificate must be signed by the configured, unexpired local CA.');
+  }
+  // Validate the certificate/key pair before starting any demo services.
+  require('node:tls').createSecureContext({ cert: fs.readFileSync(config.tlsCert), key: fs.readFileSync(config.tlsKey) });
+}
+
+function lanExpoUrl(host) {
+  return `exps://${host}:8081`;
+}
+
+function printLanExpoQr(host) {
+  // Reuse the QR renderer bundled with the installed Expo SDK. Expo's default
+  // native QR still uses exp://, even when Metro itself is serving HTTPS.
+  const cli = require.resolve('@expo/cli/package.json', { paths: [path.dirname(require.resolve('expo/package.json'))] });
+  const { printQRCode } = require(path.join(path.dirname(cli), 'build/src/utils/qr.js'));
+  const url = lanExpoUrl(host);
+  console.log('\nScan this HTTPS LAN QR code in Expo Go:');
+  printQRCode(url).print();
+  console.log(`Secure Expo Go URL: ${url}`);
+}
+
 async function waitForEmulators(url, timeoutMs = 90000, pollMs = 500) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -350,6 +397,7 @@ async function validateConfiguration(config, checkPorts) {
   [config.python, config.tlsCert, config.tlsKey].forEach(function (requiredPath) {
     if (!fs.existsSync(requiredPath)) throw new Error(`Required file not found: ${requiredPath}`);
   });
+  ensureLanTrust(config);
   if (config.networkMode !== 'tailscale' && !certificateSupportsHost(config.tlsCert, config.lanAddress)) {
     throw new Error(
       `The TLS certificate does not include ${config.lanAddress}. Regenerate the demo certificate for this Wi-Fi address or set FACEROLL_DEMO_HOST correctly.`
@@ -393,14 +441,21 @@ function createDemoEnvironment(config) {
   return {
     ...environment,
     FACEROLL_DEMO_MODE: '1',
+    FACEROLL_FIREBASE_MODE: 'emulator',
     FIREBASE_AUTH_EMULATOR_HOST: '127.0.0.1:9099',
     FIRESTORE_EMULATOR_HOST: '127.0.0.1:8080',
     GCLOUD_PROJECT: FIREBASE_PROJECT_ID,
     FIREBASE_PROJECT_ID,
-    FACEROLL_API_HOST: config.networkMode === 'tailscale' ? '127.0.0.1' : '0.0.0.0',
+    FACEROLL_API_HOST: config.networkMode === 'tailscale' ? '127.0.0.1' : config.lanAddress,
     FACEROLL_API_PORT: '5055',
     FACEROLL_TLS_CERT: config.tlsCert,
     FACEROLL_TLS_KEY: config.tlsKey,
+    FACEROLL_HTTPS_HOST: config.lanAddress,
+    FACEROLL_EXPO_TLS: config.networkMode === 'tailscale' ? '' : '1',
+    EXPO_PACKAGER_PROXY_URL: config.networkMode === 'tailscale' ? '' : `https://${config.lanAddress}:8081`,
+    EXPO_NO_QR_CODE: config.networkMode === 'tailscale' ? '' : '1',
+    // Native Node/Expo requests must validate the local CA too. No trust bypass.
+    ...(config.networkMode !== 'tailscale' && config.tlsCa ? { NODE_EXTRA_CA_CERTS: config.tlsCa } : {}),
     FACEROLL_REQUEST_LOGGING: config.requestLogging ? '1' : '0',
     FIREBASE_CLI_DISABLE_UPDATE_CHECK: '1',
     NO_UPDATE_NOTIFIER: '1',
@@ -410,9 +465,12 @@ function createDemoEnvironment(config) {
     DEEPFACE_HOME: config.deepfaceHome,
     EXPO_PUBLIC_RECOGNITION_API_URL: config.recognitionUrl || `https://${config.lanAddress}:5055`,
     REACT_NATIVE_PACKAGER_HOSTNAME: config.lanAddress,
-    EXPO_PUBLIC_FIREBASE_EMULATOR_HOST: config.lanAddress,
-    EXPO_PUBLIC_FIREBASE_AUTH_EMULATOR_PORT: '9099',
-    EXPO_PUBLIC_FIRESTORE_EMULATOR_PORT: '8080',
+    EXPO_PUBLIC_FIREBASE_MODE: 'emulator',
+    EXPO_PUBLIC_FIREBASE_AUTH_EMULATOR_URL: `https://${config.recognitionUrl ? new URL(config.recognitionUrl).hostname : config.lanAddress}:9449`,
+    EXPO_PUBLIC_FIRESTORE_EMULATOR_URL: `https://${config.recognitionUrl ? new URL(config.recognitionUrl).hostname : config.lanAddress}:8443`,
+    EXPO_PUBLIC_FIREBASE_EMULATOR_HOST: '',
+    EXPO_PUBLIC_FIREBASE_AUTH_EMULATOR_PORT: '',
+    EXPO_PUBLIC_FIRESTORE_EMULATOR_PORT: '',
   };
 }
 
@@ -464,6 +522,9 @@ async function stopChild(child) {
 
 async function runDemo() {
   const commandArguments = process.argv.slice(2);
+  if (commandArguments.includes('--expo-tunnel')) {
+    throw new Error('Choose HTTPS LAN (--local) or --tailscale; the public Expo tunnel is not used by this launcher.');
+  }
   const checkOnly = process.argv.includes('--check');
   let prompt;
   let mode;
@@ -558,7 +619,8 @@ async function runDemo() {
       ['-m', 'faceroll_recognition.mobile_api'],
       { cwd: recognitionDirectory, env: environment }
     );
-    await waitForUrl('https://127.0.0.1:5055/health', 180000);
+    const lanCa = mode === 'local' ? fs.readFileSync(config.tlsCa) : undefined;
+    await waitForUrl(mode === 'local' ? `https://${config.lanAddress}:5055/health` : 'https://127.0.0.1:5055/health', 180000, mode === 'local', lanCa);
 
     if (mode === 'tailscale') {
       console.log('Starting private Tailscale HTTPS. If prompted, open the setup link to enable HTTPS.');
@@ -567,6 +629,19 @@ async function runDemo() {
       serve.once('error', (error) => { console.error(error.message); shutdown(1); });
       serve.once('exit', () => { if (!stopping) shutdown(1); });
       await waitForUrl(config.recognitionUrl + '/health', 180000, true);
+      for (const [port, target] of [[9449, 9099], [8443, 8080]]) {
+        const service = startChild(children, `Tailscale Firebase HTTPS ${port}`, config.tailscaleCommand,
+          ['serve', `--https=${port}`, `http://127.0.0.1:${target}`], { env: environment });
+        service.once('error', () => shutdown(1));
+        service.once('exit', () => { if (!stopping) shutdown(1); });
+        await waitForHttpsEndpoint(`https://${new URL(config.recognitionUrl).hostname}:${port}`);
+      }
+    } else {
+      const gateway = startChild(children, 'LAN Firebase HTTPS', process.execPath,
+        ['scripts/emulator-https.js'], { cwd: REPOSITORY_ROOT, env: environment });
+      gateway.once('error', () => shutdown(1));
+      gateway.once('exit', () => { if (!stopping) shutdown(1); });
+      for (const port of [9449, 8443]) await waitForHttpsEndpoint(`https://${config.lanAddress}:${port}`, 60000, lanCa);
     }
 
     startChild(
@@ -582,13 +657,15 @@ async function runDemo() {
     console.log(`Dashboard:        http://127.0.0.1:${hostingPort}`);
     console.log(`Firebase UI:      http://127.0.0.1:${emulatorStatus.ui.port}`);
     console.log(`Connection:       ${mode} (${config.lanAddress})`);
-    console.log(`Expo connection:  ${commandArguments.includes('--expo-tunnel') ? 'tunnel' : 'LAN'}`);
+    console.log(`Expo connection:  ${mode === 'local' ? 'HTTPS LAN' : 'encrypted tailnet'}`);
     console.log(`Recognition API:  ${environment.EXPO_PUBLIC_RECOGNITION_API_URL}`);
     if (mode === 'tailscale') {
       const requiredPorts = commandArguments.includes('--expo-tunnel')
-        ? 'TCP 9099 and 8080'
-        : 'TCP 9099, 8080 and the Expo port';
+        ? 'TCP 443, 9449 and 8443'
+        : 'TCP 443, 9449, 8443 and the Expo port';
       console.log(`Keep Tailscale connected on the phone. Allow phone access to ${requiredPorts} through Windows Firewall.`);
+    } else {
+      console.log('Trust the LAN CA on your phone. Allow TCP 5055, 9449, 8443 and 8081 through Windows Firewall.');
     }
     console.log('Bridge:           http://127.0.0.1:8765');
     console.log('Firebase mode:    local emulators only');
@@ -604,6 +681,12 @@ async function runDemo() {
     expo.once('exit', (code) => {
       if (!stopping) shutdown(code || 0);
     });
+    expo.once('error', () => shutdown(1));
+    if (mode === 'local') {
+      await waitForUrl(`https://${config.lanAddress}:8081/status`, 120000, true, lanCa);
+      printLanExpoQr(config.lanAddress);
+      console.log('Use the secure QR above; the Expo CLI may also display a legacy exp:// address.');
+    }
   } catch (error) {
     console.error(`\nFaceRoll demo failed: ${error.message}`);
     await shutdown(1);
@@ -623,6 +706,8 @@ module.exports = {
   tailscaleConnection,
   configureTailscale,
   ensureDemoCertificate,
+  ensureLanTrust,
+  lanExpoUrl,
   ensureEmbeddingKey,
   createDemoEnvironment,
   dashboardOrigins,

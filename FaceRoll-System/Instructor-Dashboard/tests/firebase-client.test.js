@@ -311,7 +311,7 @@ test('cached instructor snapshots are scoped to the signed-in instructor', funct
       users: [{ id: 'student-a', firstName: 'Student', faceEmbedding: [1, 2, 3] }],
       courses: [{ id: 'course-a' }], sessions: [],
       attendance: [
-        { id: 'attendance-a', courseId: 'course-a', createdAt: '2026-10-04T12:00:00Z', status: 'present' },
+        { id: 'attendance-a', courseId: 'course-a', createdAt: '2026-10-04T12:00:00Z', status: 'present', locationStatus: 'in_zone', location: { latitude: 33 } },
         { id: 'attendance-b', courseId: 'course-b', createdAt: '2026-10-05T12:00:00Z', status: 'late' },
       ],
       enrollments: [],
@@ -323,6 +323,8 @@ test('cached instructor snapshots are scoped to the signed-in instructor', funct
   assert.equal(cached.courses[0].id, 'course-a');
   assert.equal(cached.users[0].faceEmbedding, undefined);
   assert.equal(cached.attendance.length, 2);
+  assert.equal(cached.attendance[0].locationStatus, 'in_zone');
+  assert.equal(cached.attendance[0].location, undefined);
   assert.equal(harness.api.readCachedAttendance('teacher-a', {
     courseIds: ['course-a'], date: '2026-10-04',
   })[0].id, 'attendance-a');

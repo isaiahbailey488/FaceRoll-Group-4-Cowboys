@@ -4,6 +4,7 @@
   const DEFAULT_CENTER = { lat: 33.2108, lng: -97.1473 };
   const DEFAULT_RADIUS_METERS = 15;
   const MAP_ZOOM = 19;
+  const SUGGEST_DELAY_MS = 300;
 
   const firebaseApi = window.FaceRollFirebase;
   const utils = window.FaceRollCourseLocationUtils;
@@ -19,6 +20,9 @@
     currentLocationButton: document.getElementById('current-location-button'),
     currentLocationOptions: document.getElementById('current-location-options'),
     currentLocationStatus: document.getElementById('current-location-status'),
+    currentLocationActions: document.getElementById('current-location-actions'),
+    useCurrentLocationButton: document.getElementById('use-current-location-button'),
+    dismissCurrentLocationButton: document.getElementById('dismiss-current-location-button'),
     searchStatus: document.getElementById('search-status'),
     searchResults: document.getElementById('search-results'),
     mapContainer: document.getElementById('here-map'),
@@ -29,6 +33,7 @@
     longitude: document.getElementById('selected-longitude'),
     saveStatus: document.getElementById('save-status'),
     saveButton: document.getElementById('save-location-button'),
+    restoreButton: document.getElementById('restore-location-button'),
     radiusInput: document.getElementById('radius-meters'),
     radiusValue: document.getElementById('radius-value'),
   };
@@ -47,6 +52,12 @@
     searchService: null,
     marker: null,
     currentLocationMarker: null,
+    currentAccuracyCircle: null,
+    currentLocationCandidate: null,
+    locationRequestId: 0,
+    searchRequestId: 0,
+    suggestionTimer: null,
+    selectionVersion: 0,
     locating: false,
     radiusCircle: null,
     mapReady: false,
@@ -54,6 +65,7 @@
     reverseRequestId: 0,
     saving: false,
     savedSnapshot: null,
+    loadedLocation: null,
     loadGeneration: 0,
   };
 
@@ -100,12 +112,13 @@
   }
 
   function setInteractiveControlsEnabled(enabled) {
-    const courseReady = Boolean(enabled && state.selectedCourse && state.authorized);
+    const courseReady = Boolean(enabled && state.selectedCourse && state.authorized && !state.saving);
     elements.enabledToggle.disabled = !courseReady;
     elements.radiusInput.disabled = !courseReady;
     elements.searchInput.disabled = !courseReady || !state.searchService;
     elements.searchButton.disabled = !courseReady || !state.searchService;
-    elements.currentLocationButton.disabled = !state.mapReady || state.locating;
+    elements.currentLocationButton.disabled = !state.mapReady || state.locating || state.saving;
+    elements.useCurrentLocationButton.disabled = !courseReady || !state.currentLocationCandidate;
     elements.locationCard.classList.toggle('is-disabled', !courseReady);
     updateSaveButton();
   }
@@ -133,6 +146,9 @@
     const validation = utils.validateLocation(getLocationCandidate());
     elements.saveButton.disabled =
       !state.authorized || !state.selectedCourse || state.saving || !validation.valid;
+    const saved = state.savedSnapshot && utils.validateLocation(JSON.parse(state.savedSnapshot));
+    elements.restoreButton.disabled = !state.authorized || !state.selectedCourse || state.saving ||
+      !saved || !saved.valid || (!hasUnsavedChanges() && !state.currentLocationCandidate && !state.locating);
   }
 
   function showSelectedLocation() {
@@ -223,12 +239,17 @@
     });
   }
 
-  async function selectMapPosition(latitude, longitude, initialLabel, recenter) {
+  async function selectMapPosition(latitude, longitude, initialLabel, recenter, keepSearchResults) {
+    if (state.saving) return;
+    cancelSearch(keepSearchResults);
+    cancelLocationPreview();
+    const version = ++state.selectionVersion;
     setLocation(latitude, longitude, initialLabel, recenter);
     setStatus(elements.mapStatus, 'Resolving the selected address...', 'info');
     markUnsaved();
 
     const resolvedLabel = await reverseGeocode(latitude, longitude);
+    if (version !== state.selectionVersion) return;
     if (
       resolvedLabel &&
       state.location &&
@@ -247,14 +268,15 @@
 
   function wireMapEvents() {
     state.map.addEventListener('tap', function (event) {
-      if (!state.authorized || !state.selectedCourse || event.target === state.marker) return;
+      if (!state.authorized || !state.selectedCourse || state.saving ||
+          event.target === state.marker || event.target === state.currentLocationMarker || event.target === state.currentAccuracyCircle) return;
       const pointer = event.currentPointer;
       const geo = state.map.screenToGeo(pointer.viewportX, pointer.viewportY);
       selectMapPosition(geo.lat, geo.lng, '', false);
     });
 
     state.map.addEventListener('dragstart', function (event) {
-      if (event.target === state.marker && state.behavior) {
+      if (!state.saving && event.target === state.marker && state.behavior) {
         state.behavior.disable(window.H.mapevents.Behavior.Feature.PANNING);
         const pointer = event.currentPointer;
         const markerPosition = state.map.geoToScreen(state.marker.getGeometry());
@@ -266,7 +288,7 @@
     });
 
     state.map.addEventListener('drag', function (event) {
-      if (event.target !== state.marker) return;
+      if (state.saving || event.target !== state.marker) return;
       const pointer = event.currentPointer;
       const offset = state.markerOffset || { x: 0, y: 0 };
       const geo = state.map.screenToGeo(
@@ -283,7 +305,7 @@
     });
 
     state.map.addEventListener('dragend', function (event) {
-      if (event.target !== state.marker) return;
+      if (state.saving || event.target !== state.marker) return;
       if (state.behavior) state.behavior.enable(window.H.mapevents.Behavior.Feature.PANNING);
       state.markerOffset = null;
       const position = state.marker.getGeometry();
@@ -346,6 +368,10 @@
         if (state.map) state.map.getViewPort().resize();
       });
       window.addEventListener('pagehide', function () {
+        cancelSearch();
+        cancelLocationPreview();
+        ++state.selectionVersion;
+        ++state.reverseRequestId;
         if (state.map) state.map.dispose();
       });
 
@@ -371,12 +397,27 @@
   function clearSearchResults() {
     elements.searchResults.innerHTML = '';
     elements.searchResults.classList.remove('has-results');
+    elements.searchInput.setAttribute('aria-expanded', 'false');
+  }
+
+  function cancelSearch(keepResults) {
+    ++state.searchRequestId;
+    clearTimeout(state.suggestionTimer);
+    state.suggestionTimer = null;
+    if (!keepResults) clearSearchResults();
+    elements.searchButton.textContent = 'Search';
+    elements.searchButton.disabled = !state.mapReady || !state.selectedCourse || !state.authorized || state.saving;
+  }
+
+  function validPosition(position) {
+    return position && Number.isFinite(position.lat) && Math.abs(position.lat) <= 90 &&
+      Number.isFinite(position.lng) && Math.abs(position.lng) <= 180;
   }
 
   function renderSearchResults(items) {
     clearSearchResults();
     items.forEach(function (item) {
-      if (!item.position) return;
+      if (!validPosition(item.position)) return;
       const button = document.createElement('button');
       const title = document.createElement('strong');
       const subtitle = document.createElement('span');
@@ -396,12 +437,59 @@
           true
         );
       });
+      button.addEventListener('keydown', function (event) {
+        const results = Array.from(elements.searchResults.children);
+        const index = results.indexOf(button);
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+          event.preventDefault();
+          const next = index + (event.key === 'ArrowDown' ? 1 : -1);
+          if (next < 0) elements.searchInput.focus();
+          else if (results[next]) results[next].focus();
+        } else if (event.key === 'Escape') {
+          cancelSearch();
+          elements.searchInput.focus();
+        }
+      });
       elements.searchResults.appendChild(button);
     });
 
     if (elements.searchResults.children.length) {
       elements.searchResults.classList.add('has-results');
+      elements.searchInput.setAttribute('aria-expanded', 'true');
     }
+  }
+
+  function suggestLocations() {
+    cancelSearch();
+    const query = elements.searchInput.value.trim();
+    setStatus(elements.searchStatus, '', 'info');
+    if (query.length < 3 || /^(use )?(my )?current location$/i.test(query) ||
+        !state.searchService || !state.selectedCourse || !state.authorized || state.saving) return;
+    const requestId = state.searchRequestId;
+    const course = state.selectedCourse;
+    state.suggestionTimer = setTimeout(async function () {
+      state.suggestionTimer = null;
+      setStatus(elements.searchStatus, 'Finding address and building suggestions...', 'info');
+      try {
+        const center = state.map.getCenter ? state.map.getCenter() : null;
+        const context = validPosition(center) ? center : state.location
+          ? { lat: state.location.latitude, lng: state.location.longitude } : DEFAULT_CENTER;
+        const items = await new Promise(function (resolve, reject) {
+          state.searchService.autosuggest({ q: query, at: context.lat + ',' + context.lng,
+            limit: 6, lang: 'en-US' }, result => resolve((result && result.items) || []), reject);
+        });
+        if (requestId !== state.searchRequestId || course !== state.selectedCourse || state.saving) return;
+        const usable = items.filter(item => validPosition(item.position));
+        renderSearchResults(usable);
+        setStatus(elements.searchStatus, usable.length
+          ? 'Suggestions near the map area. Check the full address, then choose a match.'
+          : 'No address suggestions found. Add a city or campus, or press Search.', usable.length ? 'info' : 'warning');
+      } catch {
+        if (requestId === state.searchRequestId && course === state.selectedCourse) {
+          setStatus(elements.searchStatus, 'Suggestions are unavailable. Press Search to look up the full address.', 'warning');
+        }
+      }
+    }, SUGGEST_DELAY_MS);
   }
 
   function searchLocations(query) {
@@ -418,7 +506,10 @@
 
   async function handleSearch(event) {
     event.preventDefault();
-    clearSearchResults();
+    cancelSearch();
+    cancelLocationPreview();
+    const requestId = state.searchRequestId;
+    const course = state.selectedCourse;
     const query = String(elements.searchInput.value || '').trim();
     elements.currentLocationOptions.classList.remove('has-results');
     if (/^(use )?(my )?current location$/i.test(query)) {
@@ -442,8 +533,9 @@
 
     try {
       const items = (await searchLocations(query)).filter(function (item) {
-        return item.position && Number.isFinite(item.position.lat) && Number.isFinite(item.position.lng);
+        return validPosition(item.position);
       });
+      if (requestId !== state.searchRequestId || course !== state.selectedCourse || state.saving) return;
       if (!items.length) {
         setStatus(elements.searchStatus, 'No matching locations found. Try a fuller address.', 'warning');
         return;
@@ -454,6 +546,7 @@
         first.position.lat,
         first.position.lng,
         (first.address && first.address.label) || first.title,
+        true,
         true
       );
       setStatus(
@@ -464,19 +557,25 @@
         'success'
       );
     } catch (error) {
-      console.error('HERE geocoding search failed:', error);
+      if (requestId !== state.searchRequestId || course !== state.selectedCourse) return;
       setStatus(
         elements.searchStatus,
         'Location search failed. Check the HERE key and network connection, then try again.',
         'error'
       );
     } finally {
-      elements.searchButton.textContent = 'Search';
-      elements.searchButton.disabled = !state.mapReady || !state.selectedCourse;
+      if (requestId === state.searchRequestId) {
+        elements.searchButton.textContent = 'Search';
+        elements.searchButton.disabled = !state.mapReady || !state.selectedCourse || !state.authorized || state.saving;
+      }
     }
   }
 
   function resetLocationForm() {
+    cancelSearch();
+    cancelLocationPreview();
+    ++state.selectionVersion;
+    ++state.reverseRequestId;
     state.location = null;
     setToggleValue(false);
     setRadiusValue(DEFAULT_RADIUS_METERS);
@@ -488,9 +587,24 @@
     updateMapObjects(false);
   }
 
+  function restoreSavedLocation() {
+    if (state.saving || !state.authorized || !state.selectedCourse || !state.savedSnapshot) return;
+    const saved = JSON.parse(state.savedSnapshot);
+    if (!utils.validateLocation(saved).valid) return;
+    resetLocationForm();
+    state.location = { latitude: saved.latitude, longitude: saved.longitude, addressLabel: saved.addressLabel };
+    setToggleValue(saved.enabled);
+    setRadiusValue(saved.radiusMeters);
+    showSelectedLocation();
+    updateMapObjects(true);
+    setStatus(elements.mapStatus, 'Saved classroom pin and radius restored.', 'success');
+    setStatus(elements.saveStatus, 'Saved location restored. No changes were sent to Firebase.', 'info');
+  }
+
   function loadSelectedCourseLocation(course) {
     resetLocationForm();
     const savedLocation = course && course.location;
+    state.loadedLocation = savedLocation ? Object.assign({}, savedLocation) : null;
     const validation = utils.validateLocation(savedLocation);
 
     if (savedLocation && validation.valid) {
@@ -667,8 +781,10 @@
     const savedCourse = state.selectedCourse;
     const submittedSnapshot = locationSnapshot();
     state.saving = true;
+    cancelSearch();
+    cancelLocationPreview();
     elements.courseSelect.disabled = true;
-    updateSaveButton();
+    setInteractiveControlsEnabled(true);
     const originalButtonLabel = elements.saveButton.querySelector('span').textContent;
     elements.saveButton.querySelector('span').textContent = 'Saving...';
     setStatus(elements.saveStatus, 'Saving classroom location to this course...', 'info');
@@ -685,12 +801,15 @@
 
     try {
       const courseId = getCourseId(savedCourse);
-      await firebaseApi.writeDocument('courses', courseId, { location: locationPayload });
-      savedCourse.location = Object.assign({}, locationPayload, { updatedAt: new Date() });
+      const latestCourse = state.courses.find(course => getCourseId(course) === courseId) || savedCourse;
+      const documentId = latestCourse._documentId || latestCourse.id || courseId;
+      const committed = await firebaseApi.saveCourseLocation(documentId, courseId, state.loadedLocation, locationPayload);
+      state.loadedLocation = committed;
+      savedCourse.location = committed;
       state.savedSnapshot = submittedSnapshot;
       setStatus(
         elements.saveStatus,
-        'Classroom location saved successfully for ' + getCourseName(state.selectedCourse) + '.',
+        'Classroom location saved for ' + getCourseName(state.selectedCourse) + '. Changes apply to the next session. Running sessions keep their saved zone.',
         'success'
       );
       setStatus(elements.mapStatus, 'Saved location and attendance radius are shown on the map.', 'success');
@@ -709,15 +828,56 @@
       state.saving = false;
       elements.courseSelect.disabled = false;
       elements.saveButton.querySelector('span').textContent = originalButtonLabel;
-      updateSaveButton();
+      setInteractiveControlsEnabled(true);
     }
   }
 
-  function showCurrentLocation() {
-    if (!state.mapReady || state.locating) return;
-    elements.currentLocationOptions.classList.remove('has-results');
-    clearSearchResults();
+  function cancelLocationPreview() {
+    ++state.locationRequestId;
+    state.locating = false;
+    state.currentLocationCandidate = null;
+    if (state.map && state.currentLocationMarker) state.map.removeObject(state.currentLocationMarker);
+    if (state.map && state.currentAccuracyCircle) state.map.removeObject(state.currentAccuracyCircle);
+    state.currentLocationMarker = null;
+    state.currentAccuracyCircle = null;
+    elements.currentLocationActions.hidden = true;
+    elements.useCurrentLocationButton.disabled = true;
+    elements.currentLocationButton.textContent = 'Use current location';
+    elements.currentLocationButton.disabled = !state.mapReady || state.saving;
+    setStatus(elements.currentLocationStatus, '', 'info');
+    updateSaveButton();
+  }
+
+  function showLocationPreviewStatus() {
+    const candidate = state.currentLocationCandidate;
+    if (!candidate) return;
+    const accuracy = candidate.accuracy;
+    const poor = accuracy === null || accuracy > state.radiusMeters;
+    const estimate = accuracy === null ? 'This browser did not provide a usable accuracy estimate.'
+      : 'Estimated accuracy: ±' + Math.ceil(accuracy) + ' m; classroom radius: ' + state.radiusMeters + ' m.';
+    setStatus(elements.currentLocationStatus, estimate + (poor
+      ? ' This reading is too imprecise to place the classroom reliably. Search for the building and adjust the pin manually, or retry.'
+      : ' The blue dot is this device’s estimated position; the amber circle shows its accuracy. Review it before choosing Use this position.') +
+      ' The classroom pin has not changed.', poor ? 'warning' : 'info');
+  }
+
+  function useCurrentLocation() {
+    if (!state.currentLocationCandidate || !state.authorized || !state.selectedCourse || state.saving) return;
+    const candidate = state.currentLocationCandidate;
     elements.searchInput.value = 'Current location';
+    selectMapPosition(candidate.latitude, candidate.longitude, 'Current location', true);
+    setStatus(elements.currentLocationStatus, 'Position applied to the draft classroom pin. Adjust it to the room’s center, then Save Classroom Location.', 'info');
+  }
+
+  function showCurrentLocation() {
+    if (!state.mapReady || state.locating || state.saving) return;
+    cancelSearch();
+    cancelLocationPreview();
+    const requestId = state.locationRequestId;
+    const course = state.selectedCourse;
+    const selectionVersion = state.selectionVersion;
+    const current = () => requestId === state.locationRequestId && course === state.selectedCourse &&
+      selectionVersion === state.selectionVersion && !state.saving;
     if (!window.navigator || !window.navigator.geolocation) {
       setStatus(elements.currentLocationStatus, 'Location is unavailable in this browser. Use HTTPS or localhost, or search for an address.', 'error');
       return;
@@ -731,9 +891,10 @@
     function finish() {
       state.locating = false;
       elements.currentLocationButton.disabled = !state.mapReady;
-      elements.currentLocationButton.textContent = 'Current location';
+      elements.currentLocationButton.textContent = 'Use current location';
     }
     function fail(error) {
+      if (!current()) return;
       finish();
       const messages = {
         1: 'Location access was denied. Allow location access in your browser’s site settings, then try again.',
@@ -745,19 +906,31 @@
 
     try {
       window.navigator.geolocation.getCurrentPosition(function (result) {
+        if (!current()) return;
         try {
           const position = { lat: result.coords.latitude, lng: result.coords.longitude };
-          if (!Number.isFinite(position.lat) || !Number.isFinite(position.lng)) throw new Error('Invalid position');
-          if (state.currentLocationMarker) state.map.removeObject(state.currentLocationMarker);
+          if (!validPosition(position)) throw new Error('Invalid position');
+          const accuracy = Number.isFinite(result.coords.accuracy) && result.coords.accuracy >= 0 && result.coords.accuracy <= 20_000_000
+            ? result.coords.accuracy : null;
+          state.currentLocationCandidate = { latitude: position.lat, longitude: position.lng, accuracy };
           const icon = new window.H.map.Icon('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><circle cx="12" cy="12" r="10" fill="#2563eb" stroke="white" stroke-width="3"/></svg>', { anchor: { x: 12, y: 12 } });
           state.currentLocationMarker = new window.H.map.Marker(position, { icon: icon });
           state.currentLocationMarker.setData('current-location');
           state.map.addObjects([state.currentLocationMarker]);
-          selectMapPosition(position.lat, position.lng, 'Current location', true);
+          if (accuracy !== null && accuracy > 0) {
+            state.currentAccuracyCircle = new window.H.map.Circle(position, accuracy, { style: {
+              strokeColor: '#b7791f', lineWidth: 2, fillColor: 'rgba(217, 153, 33, 0.16)',
+            } });
+            state.map.addObjects([state.currentAccuracyCircle]);
+          }
+          const bounds = accuracy > 25 && state.currentAccuracyCircle && state.currentAccuracyCircle.getBoundingBox
+            ? state.currentAccuracyCircle.getBoundingBox() : null;
+          state.map.getViewModel().setLookAtData(bounds ? { bounds } : { position, zoom: MAP_ZOOM }, true);
           finish();
-          const accuracy = Number.isFinite(result.coords.accuracy)
-            ? ' Estimated accuracy: ±' + result.coords.accuracy + ' meters.' : '';
-          setStatus(elements.currentLocationStatus, 'The blue dot shows your current location.' + accuracy + ' Coordinates updated. Save Classroom Location to apply.', 'success');
+          elements.currentLocationActions.hidden = false;
+          elements.useCurrentLocationButton.disabled = !state.authorized || !state.selectedCourse;
+          showLocationPreviewStatus();
+          updateSaveButton();
         } catch (error) {
           fail(error);
         }
@@ -792,25 +965,19 @@
     elements.courseSelect.addEventListener('change', handleCourseChange);
     elements.searchForm.addEventListener('submit', handleSearch);
     elements.currentLocationButton.addEventListener('click', showCurrentLocation);
-    function showLocationSuggestion() {
-      const query = elements.searchInput.value.trim().toLowerCase();
-      elements.currentLocationOptions.classList.toggle('has-results',
-        !query || 'current location'.startsWith(query));
-    }
-    elements.searchInput.addEventListener('focus', showLocationSuggestion);
-    elements.searchInput.addEventListener('input', showLocationSuggestion);
-    elements.searchInput.addEventListener('keydown', function (event) {
-      if (event.key === 'ArrowDown' && elements.currentLocationOptions.classList.contains('has-results')) {
-        event.preventDefault();
-        elements.currentLocationButton.focus();
-      }
-      if (event.key === 'Escape') elements.currentLocationOptions.classList.remove('has-results');
+    elements.useCurrentLocationButton.addEventListener('click', useCurrentLocation);
+    elements.dismissCurrentLocationButton.addEventListener('click', cancelLocationPreview);
+    elements.restoreButton.addEventListener('click', restoreSavedLocation);
+    elements.searchInput.addEventListener('input', function () {
+      cancelLocationPreview();
+      suggestLocations();
     });
-    elements.currentLocationButton.addEventListener('keydown', function (event) {
-      if (event.key === 'Escape') {
-        elements.searchInput.focus();
-        elements.currentLocationOptions.classList.remove('has-results');
+    elements.searchInput.addEventListener('keydown', function (event) {
+      if (event.key === 'ArrowDown' && elements.searchResults.children.length) {
+        event.preventDefault();
+        elements.searchResults.children[0].focus();
       }
+      if (event.key === 'Escape') cancelSearch();
     });
     elements.enabledToggle.addEventListener('click', function () {
       setToggleValue(!state.enabled);
@@ -819,15 +986,13 @@
     elements.radiusInput.addEventListener('input', function () {
       setRadiusValue(elements.radiusInput.value);
       updateMapObjects(false);
+      showLocationPreviewStatus();
       markUnsaved('Attendance radius changed to ' + state.radiusMeters + ' meters. Save to apply.');
     });
     elements.saveButton.addEventListener('click', saveLocation);
     document.addEventListener('click', function (event) {
-      if (!elements.searchForm.contains(event.target)) {
-        elements.currentLocationOptions.classList.remove('has-results');
-      }
-      if (!elements.searchResults.contains(event.target) && event.target !== elements.searchInput) {
-        clearSearchResults();
+      if (!elements.searchForm.contains(event.target) && !elements.searchResults.contains(event.target)) {
+        cancelSearch();
       }
     });
   }

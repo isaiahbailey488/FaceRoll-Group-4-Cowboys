@@ -48,15 +48,18 @@ async function main() {
   await write('courses/course', { instructorId: 'teacher' });
   await write('enrollments/6_course_student', { uid: 'student', courseId: 'course', status: 'active' });
 
-  await session('present'); await attendance('present', 'late', 'student', 403); await attendance('present', 'present');
+  await session('present'); await attendance('present', 'late', 'student', 403); await attendance('present', 'present', 'student', 403);
+  await attendance('present', 'present', 'teacher', 200, { source: 'classroom_camera' });
   await session('late', { gracePeriodMinutes: 1, allowLate: true });
-  await attendance('late', 'present', 'student', 403); await attendance('late', 'late');
+  await attendance('late', 'present', 'student', 403); await attendance('late', 'late', 'student', 403);
+  await attendance('late', 'late', 'teacher', 200, { source: 'classroom_camera' });
   await session('no-late', { gracePeriodMinutes: 1, allowLate: false });
   await attendance('no-late', 'late', 'student', 403); await attendance('no-late', 'present', 'student', 403);
   await session('expired', { attendanceWindowMinutes: 1, allowLate: true });
   await attendance('expired', 'late', 'student', 403, { time: new Date(Date.now() - 5 * 60000).toISOString() });
   await session('unlimited', { attendanceWindowMinutes: 0, allowLate: true }, policy.snapshot({ attendanceWindowMinutes: 0, allowLate: true }, Date.now() - 4 * 3600000));
-  await attendance('unlimited', 'late');
+  await attendance('unlimited', 'late', 'student', 403);
+  await attendance('unlimited', 'late', 'teacher', 200, { source: 'classroom_camera' });
   await session('unlimited-no-late', { attendanceWindowMinutes: 0, gracePeriodMinutes: 1, allowLate: false });
   await attendance('unlimited-no-late', 'late', 'student', 403);
   await session('future', {}, policy.snapshot({}, Date.now() + 3600000));

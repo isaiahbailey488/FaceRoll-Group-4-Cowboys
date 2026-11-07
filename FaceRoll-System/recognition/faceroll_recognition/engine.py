@@ -283,19 +283,54 @@ def generate_embeddings(
     ]
 
 
+def _duplicate_face_detection(
+    first: DetectedFaceEmbedding,
+    second: DetectedFaceEmbedding,
+    image_width: int,
+    image_height: int,
+    settings: RecognitionSettings,
+) -> bool:
+    """Conservative cleanup of redundant detections, not an identity verdict.
+
+    Require nearly identical image coverage AND very close embeddings. Unknown
+    or clipped bounds cannot establish a duplicate. Haar detector scores are not
+    calibrated probabilities and are deliberately not used for this decision.
+    """
+    a, b = first.region, second.region
+    if a is None or b is None:
+        return False
+    if a.is_obviously_clipped(image_width, image_height) or b.is_obviously_clipped(image_width, image_height):
+        return False
+    overlap_width = max(0, min(a.x + a.width, b.x + b.width) - max(a.x, b.x))
+    overlap_height = max(0, min(a.y + a.height, b.y + b.height) - max(a.y, b.y))
+    intersection = overlap_width * overlap_height
+    union = a.width * a.height + b.width * b.height - intersection
+    # These duplicate-only limits do not change the identity-match threshold.
+    if union <= 0 or intersection / union < 0.90:
+        return False
+    return cosine_distance(first.vector, second.vector, settings=settings) <= 0.05
+
+
 def generate_single_embedding(
     image: Any,
     *,
     settings: RecognitionSettings = SETTINGS,
 ) -> Any:
-    """Generate exactly one embedding for enrollment or phone verification."""
+    """Generate one embedding, allowing only strongly supported duplicate boxes."""
 
-    embeddings = generate_embeddings(image, settings=settings)
-    if len(embeddings) > 1:
-        raise MultipleFacesDetectedError(
-            "Exactly one face is required for this recognition operation."
-        )
-    return embeddings[0]
+    detected = generate_detected_embeddings(image, settings=settings)
+    if len(detected) > 1:
+        height, width = image.shape[:2]
+        # Every pair must agree. Comparing only with one representative can
+        # accidentally merge a chain of boxes that spans distinct regions.
+        for index, face in enumerate(detected):
+            for previous in detected[:index]:
+                if not _duplicate_face_detection(face, previous, width, height, settings):
+                    raise MultipleFacesDetectedError(
+                        "Exactly one face is required for this recognition operation."
+                    )
+    # Preserve a real detector-produced vector; never average or invent one.
+    return detected[0].vector
 
 
 def cosine_distance(

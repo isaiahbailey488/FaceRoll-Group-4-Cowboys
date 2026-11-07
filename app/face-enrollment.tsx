@@ -18,6 +18,7 @@ import { useFacePrivacy } from '../hooks/useFacePrivacy';
 import { useCaptureCamera } from '../hooks/useCaptureCamera';
 import FacePrivacyGate from '../components/FacePrivacyGate';
 import ScanTipsCard from '../components/ScanTipsCard';
+import FaceCaptureGuide, { FaceCaptureControls, useFaceGuideLayout } from '../components/FaceCaptureGuide';
 import { getCurrentUser, getFacePrivacyProfile } from '../services/auth';
 import { faceAccessState } from '../shared/face-privacy';
 import {
@@ -30,14 +31,12 @@ import {
 } from '../services/recognition';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const OVAL_WIDTH = SCREEN_WIDTH * 0.55;
-const OVAL_HEIGHT = OVAL_WIDTH * 1.3;
 
 const CAPTURE_STEPS = [
   {
     key: 'front',
     label: 'Forward',
-    instruction: 'Look straight at the camera and keep your full face visible.',
+    instruction: 'Look straight at the camera with your full face inside the oval.',
   },
   {
     key: 'left',
@@ -63,6 +62,7 @@ const emptyCaptures = (): Array<string | null> => [null, null, null];
 
 export default function FaceEnrollmentScreen() {
   const router = useRouter();
+  const guide = useFaceGuideLayout();
   const privacy = useFacePrivacy();
   const cameraRef = useRef<CameraView>(null);
   const redirectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -138,6 +138,7 @@ export default function FaceEnrollmentScreen() {
   };
 
   const handleCapture = async () => {
+    if (showTips) return;
     if (privacy.state !== 'ready') return;
     if (enrollState !== 'idle') return;
     if (!camera.active) { camera.start(); return; }
@@ -341,7 +342,7 @@ export default function FaceEnrollmentScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} onLayout={guide.onLayout}>
       <StatusBar style="light" />
       {camera.active && (enrollState === 'idle' || enrollState === 'capturing') && <CameraView
         ref={cameraRef}
@@ -354,9 +355,10 @@ export default function FaceEnrollmentScreen() {
         }}
       />}
 
+      <FaceCaptureGuide frame={guide.frame} success={isSuccess} />
       <View style={styles.overlay}>
         <SafeAreaView style={styles.header}>
-          <Text style={styles.screenLabel}>Private Face Enrollment</Text>
+          <Text style={styles.screenLabel} numberOfLines={1}>Private Face Enrollment</Text>
           <View style={styles.headerActions}>
             <TouchableOpacity
               style={styles.closeButton}
@@ -403,14 +405,8 @@ export default function FaceEnrollmentScreen() {
           })}
         </View>
 
+        <FaceCaptureControls frame={guide.frame}>
         <View style={styles.guideArea}>
-          <View style={styles.bracketsContainer}>
-            <View style={[styles.bracket, styles.bracketTopLeft]} />
-            <View style={[styles.bracket, styles.bracketTopRight]} />
-            <View style={[styles.bracket, styles.bracketBottomLeft]} />
-            <View style={[styles.bracket, styles.bracketBottomRight]} />
-            <View style={[styles.ovalGuide, isSuccess && styles.ovalGuideSuccess]} />
-          </View>
           <Text style={styles.positionTitle}>
             {enrollState === 'error' && failure
               ? failure.title
@@ -471,16 +467,12 @@ export default function FaceEnrollmentScreen() {
           )}
         </View>
 
-        {showTips && !isBusy && !isSuccess ? (
-          <ScanTipsCard onDismiss={() => setShowTips(false)} />
-        ) : null}
+        </FaceCaptureControls>
       </View>
+      {showTips && camera.screenActive && !isBusy && !isSuccess ? <ScanTipsCard modal onDismiss={() => setShowTips(false)} /> : null}
     </View>
   );
 }
-
-const BRACKET_SIZE = 28;
-const BRACKET_THICK = 3;
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.cameraBackground },
@@ -528,7 +520,7 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 8,
   },
-  screenLabel: { color: Colors.white, fontSize: 13, fontWeight: '600', opacity: 0.9 },
+  screenLabel: { color: Colors.white, fontSize: 13, fontWeight: '600', opacity: 0.9, flex: 1 },
   headerActions: { flexDirection: 'row', gap: 8 },
   closeButton: {
     width: 48,
@@ -546,6 +538,9 @@ const styles = StyleSheet.create({
     paddingTop: 8,
   },
   progressStep: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
@@ -558,57 +553,8 @@ const styles = StyleSheet.create({
   },
   progressStepCaptured: { borderColor: Colors.cameraSuccess },
   progressStepSelected: { borderColor: Colors.white, borderWidth: 2 },
-  progressText: { color: Colors.white, fontSize: 11, fontWeight: '600' },
-  guideArea: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  bracketsContainer: {
-    width: OVAL_WIDTH + 40,
-    height: OVAL_HEIGHT + 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  ovalGuide: {
-    width: OVAL_WIDTH,
-    height: OVAL_HEIGHT,
-    borderRadius: OVAL_WIDTH / 2,
-    borderWidth: 2,
-    borderColor: Colors.cameraGuide,
-    backgroundColor: 'transparent',
-  },
-  ovalGuideSuccess: { borderColor: Colors.cameraSuccess, borderWidth: 3 },
-  bracket: { position: 'absolute', borderColor: Colors.cameraGuide },
-  bracketTopLeft: {
-    top: 0,
-    left: 0,
-    width: BRACKET_SIZE,
-    height: BRACKET_SIZE,
-    borderTopWidth: BRACKET_THICK,
-    borderLeftWidth: BRACKET_THICK,
-  },
-  bracketTopRight: {
-    top: 0,
-    right: 0,
-    width: BRACKET_SIZE,
-    height: BRACKET_SIZE,
-    borderTopWidth: BRACKET_THICK,
-    borderRightWidth: BRACKET_THICK,
-  },
-  bracketBottomLeft: {
-    bottom: 0,
-    left: 0,
-    width: BRACKET_SIZE,
-    height: BRACKET_SIZE,
-    borderBottomWidth: BRACKET_THICK,
-    borderLeftWidth: BRACKET_THICK,
-  },
-  bracketBottomRight: {
-    bottom: 0,
-    right: 0,
-    width: BRACKET_SIZE,
-    height: BRACKET_SIZE,
-    borderBottomWidth: BRACKET_THICK,
-    borderRightWidth: BRACKET_THICK,
-  },
+  progressText: { color: Colors.white, fontSize: 11, fontWeight: '600', flexShrink: 1 },
+  guideArea: { alignItems: 'center', paddingHorizontal: 16 },
   positionTitle: {
     color: Colors.white,
     fontSize: 18,

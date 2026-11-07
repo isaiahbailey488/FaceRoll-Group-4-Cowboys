@@ -1,10 +1,15 @@
 # FaceRoll Mobile Recognition API
 
+All phone-facing endpoints require trusted HTTPS. Emulator and production modes
+cannot be mixed; raw emulator HTTP endpoints are loopback-only. Current check-in,
+privacy, deployment and validation guidance is consolidated in the
+[project README](../README.md#verified-attendance-check-in).
+
 ## Purpose
 
-The Phase 5 API is the authenticated mobile adapter around the shared `Facenet512` recognition core. It supports student enrollment, private one-to-one verification, and enrollment deletion. It does not expose classroom recognition or session-control operations.
+The API is the authenticated mobile adapter around the shared `Facenet512` recognition core. It supports student enrollment, private one-to-one verification, enrollment deletion, and backend-verified attendance check-in. It does not expose classroom recognition or session-control operations.
 
-The mobile application uses this API for three-photo enrollment and private one-to-one verification. The old `backend/app.py` service remains temporarily available only for migration and must not create shared enrollment records.
+The mobile application uses this API for three-photo enrollment and attendance check-in: location only when opted out of facial recognition, face plus location when opted in. The old `backend/app.py` service remains temporarily available only for migration and must not create shared enrollment records.
 
 The Expo app reads the API address from `EXPO_PUBLIC_RECOGNITION_API_URL`. It sends the current Firebase ID token automatically and never places a UID in an enrollment or recognition request body.
 
@@ -58,13 +63,24 @@ The live embedding is compared only with the three samples owned by the authenti
 
 No request body or UID path parameter is accepted. The endpoint deletes only the enrollment belonging to the verified Firebase UID. Repeating the request after deletion returns `404 not_enrolled`.
 
+### `POST /attendance/check-in`
+
+Accepts the versioned session/photo/location contract and atomically finalizes
+attendance after backend authentication, membership, consent, session policy and
+location checks. An enabled saved classroom zone is required in both modes.
+Opted-in students also require enrollment and face verification; opted-out
+students submit `image: null`, with no face reads/inference even during deletion.
+Requires HTTPS and returns only attendance metadata. See the
+[check-in summary](../README.md#verified-attendance-check-in) and canonical
+[request/response schema](../FaceRoll-System/recognition/faceroll_recognition/checkin.schema.json).
+
 ## Local Storage and Privacy
 
 - The default enrollment directory is `%USERPROFILE%\.local\share\faceroll\enrollments` on Windows and `~/.local/share/faceroll/enrollments` on Linux.
 - Set `FACEROLL_ENROLLMENT_DIR` to use a different local directory.
 - Enrollment files contain three validated 512-value embeddings plus schema and identity metadata.
 - Raw images are decoded in request memory and are never written by the API.
-- Embeddings and raw images are never sent to Firebase. Firebase receives only token-verification and student-profile requests.
+- Embeddings, raw images and student coordinates are never sent to Firebase. The combined check-in endpoint reads authorization/session/course metadata and writes attendance plus a private idempotency receipt.
 - Request bodies are limited to 25,000,000 bytes and each encoded image is limited to 8,000,000 characters.
 
 ## Runtime Configuration
@@ -82,7 +98,7 @@ The service recognizes these environment variables:
 | `FIRESTORE_EMULATOR_HOST` | None | Optional Firestore emulator address |
 | `GCLOUD_PROJECT` | None | Project ID required when using Firebase emulators |
 
-The default loopback binding prevents accidental network exposure. Do not transmit Firebase ID tokens or biometric images over an unencrypted LAN connection. Network pairing and encrypted transport remain Phase 10 work.
+The default loopback binding prevents accidental network exposure. Use the HTTPS LAN or Tailscale launcher for phone access. The combined check-in endpoint also rejects cleartext HTTP; production reverse proxies must supply trusted scheme information as described in the [production configuration](../README.md#production-configuration).
 
 When both Firebase emulator variables are set, the API uses anonymous credentials only for the local Firestore emulator. Production Firestore access continues to require normal Firebase Admin credentials.
 

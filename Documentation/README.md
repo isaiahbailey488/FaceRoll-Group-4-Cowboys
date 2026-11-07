@@ -20,6 +20,7 @@ This directory contains the planning, requirements, design, architecture, and te
 - [System Architecture](System-Architecture.md)
 - [Face Recognition Consolidation Roadmap](Face-Recognition-Roadmap.md)
 - [Mobile Recognition API](Mobile-Recognition-API.md)
+- [Current check-in, privacy, production configuration and validation](../README.md#verified-attendance-check-in)
 
 ## Testing
 

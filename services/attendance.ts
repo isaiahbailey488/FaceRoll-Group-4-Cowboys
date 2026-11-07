@@ -1,15 +1,14 @@
 import {
   collection,
-  doc,
   getDocs,
   query,
   where,
   limit as limitDocs,
-  runTransaction,
 } from 'firebase/firestore';
 import { db } from './firebase';
-import { activeCourseIds, membershipId } from '../shared/session-access';
+import { activeCourseIds } from '../shared/session-access';
 import { checkInDecision } from '../shared/session-policy';
+import { courseLocationRequirement, LocationRequirement } from '../shared/checkin-location';
 
 export interface AttendanceRecord {
   id: string;
@@ -27,6 +26,9 @@ export interface Session {
   courseId: string;
   courseName: string;
   startTime: string;
+  locationRequirement?: LocationRequirement;
+  zonePolicyVersion?: number;
+  classroomZone?: unknown;
   gracePeriodMinutes: number;
   policyVersion?: number;
   startedAtMs?: number;
@@ -35,27 +37,6 @@ export interface Session {
   defaultAttendance?: 'present' | 'late' | 'absent';
   checkInClosesAtMs?: number | null;
   status: 'active' | 'closed';
-}
-
-export interface SubmitAttendanceInput {
-  uid: string;
-  sessionId: string;
-  courseId?: string;
-  method?: string;
-  source?: 'phone_face_verification' | 'classroom_camera';
-  status?: 'present' | 'late' | 'absent';
-}
-
-export function buildAttendanceDocumentId(sessionId: string, uid: string): string {
-  const normalizedSessionId = String(sessionId || '').trim();
-  const normalizedUid = String(uid || '').trim();
-  if (!normalizedSessionId || !normalizedUid) {
-    throw new Error('Attendance requires a session ID and Firebase UID.');
-  }
-  if (normalizedSessionId.includes('/') || normalizedUid.includes('/')) {
-    throw new Error('Attendance identity contains an invalid document path.');
-  }
-  return `${normalizedSessionId}_${normalizedUid}`;
 }
 
 function toIsoString(value: any): string {
@@ -164,6 +145,8 @@ export async function getActiveSessions(uid: string): Promise<Session[]> {
         startTime: startIso,
         gracePeriodMinutes: Number(data.gracePeriodMinutes ?? 10),
         policyVersion: data.policyVersion,
+        zonePolicyVersion: data.zonePolicyVersion,
+        classroomZone: data.classroomZone,
         startedAtMs: data.startedAtMs,
         attendanceWindowMinutes: data.attendanceWindowMinutes,
         allowLate: data.allowLate,
@@ -176,101 +159,25 @@ export async function getActiveSessions(uid: string): Promise<Session[]> {
     .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
 
   const uniqueCourseIds = Array.from(new Set(rawActive.map((s) => s.courseId).filter(Boolean)));
-  const courseNameMap = new Map<string, string>();
+  const courseDetails = new Map<string, { name: string; location: LocationRequirement }>();
   await Promise.all(
     uniqueCourseIds.map(async (cid) => {
-      const name = await getCourseNameById(cid);
-      if (name) courseNameMap.set(cid, name);
+      // Location requirements must come from the saved course, never a route
+      // parameter. Ambiguous/missing records cannot silently disable collection.
+      const courses = await getDocs(query(collection(db, 'courses'), where('courseId', '==', cid), limitDocs(2)));
+      const course = courses.size === 1 ? courses.docs[0].data() : null;
+      courseDetails.set(cid, { name: course?.courseName || course?.name || cid,
+        location: courseLocationRequirement(course) });
     })
   );
 
   return rawActive.map((s) => ({
     ...s,
-    courseName: courseNameMap.get(s.courseId) || s.courseId || '',
+    courseName: courseDetails.get(s.courseId)?.name || s.courseId || '',
+    locationRequirement: s.zonePolicyVersion === undefined
+      ? courseDetails.get(s.courseId)?.location || { kind: 'unavailable' }
+      : s.zonePolicyVersion === 1 ? courseLocationRequirement({ location: s.classroomZone }) : { kind: 'unavailable' },
   }));
-}
-
-export async function submitAttendance(
-  uidOrInput: string | SubmitAttendanceInput,
-  sessionId?: string,
-  courseId?: string,
-  status: 'present' | 'late' | 'absent' = 'present',
-  method = 'face recognition',
-  _confidence = 0.95
-): Promise<{ success: boolean; id: string; duplicate?: boolean }> {
-
-  const payload =
-    typeof uidOrInput === 'string'
-      ? {
-          uid: uidOrInput,
-          sessionId: sessionId || '',
-          courseId: courseId || '',
-          status,
-          method,
-          source: 'phone_face_verification' as const,
-        }
-      : {
-          uid: uidOrInput.uid,
-          sessionId: uidOrInput.sessionId,
-          courseId: uidOrInput.courseId || '',
-          status: uidOrInput.status || 'present',
-          method: uidOrInput.method || 'face recognition',
-          source: uidOrInput.source || ('phone_face_verification' as const),
-        };
-
-  const attendanceDocId = buildAttendanceDocumentId(payload.sessionId, payload.uid);
-  const attendanceRef = doc(db, 'attendance', attendanceDocId);
-  const sessionRef = doc(db, 'sessions', payload.sessionId);
-  const membershipDocId = membershipId(payload.courseId, payload.uid);
-  const membershipRef = doc(db, 'enrollments', membershipDocId);
-  const created = await runTransaction(db, async (transaction) => {
-    const existing = await transaction.get(attendanceRef);
-    const sessionSnapshot = await transaction.get(sessionRef);
-    const membershipSnapshot = await transaction.get(membershipRef);
-    if (existing.exists()) {
-      if (existing.data()?.source === 'session_default') {
-        throw Object.assign(new Error('Your instructor has finalized this session. Ask them if your attendance needs to be changed.'),
-          { code: 'attendance_session_closed' });
-      }
-      return false;
-    }
-    const session = sessionSnapshot.data() as any;
-    const membership = membershipSnapshot.data() as any;
-    if (!sessionSnapshot.exists() || session?.status !== 'active' || session?.endTime ||
-        session?.courseId !== payload.courseId) {
-      throw Object.assign(new Error('This attendance session is no longer available.'), { code: 'attendance_session_closed' });
-    }
-    if (!membershipSnapshot.exists() || membership?.uid !== payload.uid ||
-        membership?.courseId !== payload.courseId || membership?.status !== 'active') {
-      throw new Error('You are not enrolled in this course.');
-    }
-
-    const now = Date.now();
-    const decision = checkInDecision(session, now);
-    if (!decision.allowed) {
-      const error = new Error(decision.message) as Error & { code: string };
-      error.code = decision.code || 'attendance_session_closed';
-      throw error;
-    }
-    const nowIso = new Date(now).toISOString();
-
-    transaction.set(attendanceRef, {
-      id: attendanceDocId,
-      uid: payload.uid,
-      userId: payload.uid,
-      sessionId: payload.sessionId,
-      courseId: payload.courseId,
-      membershipId: membershipDocId,
-      status: decision.status,
-      method: payload.method,
-      source: payload.source,
-      time: nowIso,
-      createdAt: nowIso,
-    });
-    return true;
-  });
-
-  return { success: true, id: attendanceDocId, duplicate: !created };
 }
 
 export function formatAttendanceDate(isoDate: string): string {

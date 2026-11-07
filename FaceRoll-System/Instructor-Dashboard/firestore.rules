@@ -82,6 +82,11 @@ service cloud.firestore {
         && hasNoBiometricPayload();
     }
 
+    function priorZoneRevision() {
+      let previous = resource == null ? null : resource.data.get('location', null);
+      return previous is map ? previous.get('revision', 0) : 0;
+    }
+
     function hasValidCourseLocation() {
       return !request.resource.data.keys().hasAny(['location'])
         || (
@@ -92,7 +97,8 @@ service cloud.firestore {
             'addressLabel',
             'enabled',
             'updatedAt',
-            'updatedBy'
+            'updatedBy',
+            'revision'
           ])
           && request.resource.data.location.latitude is number
           && request.resource.data.location.latitude >= -90
@@ -110,6 +116,12 @@ service cloud.firestore {
           && request.resource.data.location.enabled is bool
           && request.resource.data.location.updatedAt is timestamp
           && request.resource.data.location.updatedBy == request.auth.uid
+          && (resource != null && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['location'])
+            || (!request.resource.data.location.keys().hasAny(['revision']) && priorZoneRevision() == 0)
+            || (request.resource.data.location.revision is int
+              && request.resource.data.location.revision >= 1
+              && request.resource.data.location.revision <= 1000000000
+              && request.resource.data.location.revision == priorZoneRevision() + 1))
         );
     }
 
@@ -135,26 +147,14 @@ service cloud.firestore {
         );
     }
 
-    function withinAttendancePolicy(session) {
-      return session.get('policyVersion', 0) != 1
-        || (session.startedAtMs is int
-          && session.gracePeriodMinutes is int
-          && request.time.toMillis() >= session.startedAtMs
-          && (session.checkInClosesAtMs == null
-            || request.time.toMillis() <= session.checkInClosesAtMs)
-          && request.resource.data.status ==
-            (request.time.toMillis() - session.startedAtMs > session.gracePeriodMinutes * 60000
-              ? 'late' : 'present'));
-    }
-
     function sessionAcceptsAttendance(session) {
-      return (session.status == 'active' && !session.keys().hasAny(['endTime'])
-          && (managesCourse(session.courseId) || withinAttendancePolicy(session)))
-        || (managesCourse(session.courseId)
-          && request.resource.data.get('source', '') == 'session_default'
+      // This path is only for course managers. Student check-in policy is
+      // evaluated by the authenticated backend before its Admin SDK write.
+      return managesCourse(session.courseId) && (
+        (session.status == 'active' && !session.keys().hasAny(['endTime']))
+        || (request.resource.data.get('source', '') == 'session_default'
           && session.status in ['closing', 'closed']
-          && request.resource.data.status == session.get('defaultAttendance', 'absent')
-          && managesCourse(session.courseId));
+          && request.resource.data.status == session.get('defaultAttendance', 'absent')));
     }
 
     function isValidAttendanceRecord(recordId) {
@@ -262,14 +262,30 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    function validSessionZone() {
+      return !request.resource.data.keys().hasAny(['zonePolicyVersion', 'classroomZone'])
+        || (request.resource.data.zonePolicyVersion is int
+          && request.resource.data.zonePolicyVersion == 1
+          && request.resource.data.keys().hasAll(['classroomZone'])
+          && request.resource.data.classroomZone == get(/databases/$(database)/documents/courses/$(request.resource.data.courseId)).data.get('location', null));
+    }
+
+    function stableSessionZone() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['zonePolicyVersion', 'classroomZone'])
+        || (!resource.data.keys().hasAny(['zonePolicyVersion', 'classroomZone']) && validSessionZone());
+    }
+
     match /sessions/{sessionId} {
-      allow read: if isSignedIn() && (!isInstructorOrAdmin() || managesCourse(resource.data.courseId));
+      allow read: if isSignedIn() && (resource == null || !isInstructorOrAdmin() || managesCourse(resource.data.courseId));
       allow create: if isInstructorOrAdmin()
         && exists(/databases/$(database)/documents/courses/$(request.resource.data.courseId))
         && get(/databases/$(database)/documents/courses/$(request.resource.data.courseId)).data.instructorId == request.auth.uid
+        && request.resource.data.keys().hasAll(['zonePolicyVersion', 'classroomZone'])
+        && validSessionZone()
         && hasNoBiometricPayload();
       allow update: if isInstructorOrAdmin()
         && request.resource.data.courseId == resource.data.courseId
+        && stableSessionZone()
         && exists(/databases/$(database)/documents/courses/$(resource.data.courseId))
         && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.instructorId == request.auth.uid
         && hasNoBiometricPayload();
@@ -293,6 +309,7 @@ service cloud.firestore {
         && (!request.resource.data.keys().hasAny(['sessionId']) || request.resource.data.sessionId is string)
         && (!request.resource.data.keys().hasAny(['courseId']) || request.resource.data.courseId is string)
         && (!request.resource.data.keys().hasAny(['membershipId']) || request.resource.data.membershipId is string)
+        && (!request.resource.data.keys().hasAny(['attendanceEvidenceId']) || request.resource.data.attendanceEvidenceId is string)
         && (!request.resource.data.keys().hasAny(['status']) || request.resource.data.status is string)
         && (!request.resource.data.keys().hasAny(['method']) || request.resource.data.method is string)
         && (!request.resource.data.keys().hasAny(['source']) || request.resource.data.source is string)
@@ -312,19 +329,24 @@ service cloud.firestore {
         && (resource == null || resource.data.uid == request.auth.uid || managesCourse(resource.data.courseId));
       allow list: if isSignedIn()
         && (resource.data.uid == request.auth.uid || managesCourse(resource.data.courseId));
-      allow create: if hasPrivateAttendanceShape() && (isValidInstructorOverride(recordId)
+      // Students cannot create attendance directly, regardless of source or
+      // claimed location status. Only the backend can finalize phone check-ins.
+      allow create: if managesCourse(request.resource.data.courseId)
+        && hasPrivateAttendanceShape() && (isValidInstructorOverride(recordId)
         || (isValidAttendanceRecord(recordId)
-          && ((managesCourse(request.resource.data.courseId)
-              && (!(request.resource.data.get('source', '') in ['phone_face_verification', 'classroom_camera'])
-                || permitsFacialAttendance(request.resource.data.uid)))
-            || (isSignedIn() && request.resource.data.uid == request.auth.uid
-              && permitsFacialAttendance(request.auth.uid)))));
+          && (!(request.resource.data.get('source', '') in ['phone_face_verification', 'classroom_camera'])
+            || permitsFacialAttendance(request.resource.data.uid))));
       allow update: if managesCourse(resource.data.courseId) && hasNoBiometricPayload()
         && hasPrivateAttendanceShape() && request.resource.data.courseId == resource.data.courseId
         && request.resource.data.sessionId == resource.data.sessionId
         && request.resource.data.uid == resource.data.uid
         && request.resource.data.status in ['present', 'late', 'absent'];
       allow delete: if managesCourse(resource.data.courseId);
+    }
+
+    match /attendanceCheckIns/{recordId} {
+      // Idempotency receipts are created only by the authenticated backend.
+      allow read, write: if false;
     }
 
     match /facialEmbeddings/{uid} {

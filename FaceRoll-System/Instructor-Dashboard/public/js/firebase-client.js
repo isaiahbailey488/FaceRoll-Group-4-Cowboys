@@ -161,14 +161,14 @@
       users: ['id', 'uid', 'userId', 'authUid', 'studentId', 'studentNumber', 'schoolId',
         'email', 'role', 'userType', 'name', 'fullName', 'displayName', 'fname', 'firstName',
         'first_name', 'lname', 'lastName', 'last_name', 'createdAt'],
-      courses: ['id', 'courseId', 'courseName', 'name', 'title', 'code', 'instructorId',
+      courses: ['id', '_documentId', 'courseId', 'courseName', 'name', 'title', 'code', 'instructorId',
         'location', 'createdAt', 'updatedAt'],
       sessions: ['id', 'sessionId', 'courseId', 'startTime', 'endTime', 'date', 'createdAt',
         'status', 'gracePeriodMinutes', 'policyVersion', 'startedAtMs', 'checkInClosesAtMs',
-        'attendanceWindowMinutes', 'allowLate', 'defaultAttendance', 'defaultsApplied'],
+        'attendanceWindowMinutes', 'allowLate', 'defaultAttendance', 'defaultsApplied', 'zonePolicyVersion', 'classroomZone'],
       attendance: ['id', 'sessionId', 'courseId', 'uid', 'userId', 'studentId', 'email',
         'status', 'time', 'createdAt', 'method', 'source', 'studentName', 'displayName',
-        'recognitionLabel', 'recognitionConfidence', 'recognitionDistance'],
+        'recognitionLabel', 'recognitionConfidence', 'recognitionDistance', 'locationStatus'],
       enrollments: ['id', 'courseId', 'course_id', 'uid', 'userId', 'studentUid', 'status',
         'createdAt', 'updatedAt', 'joinedAt', 'leftAt', 'attendancePeriods'],
     };
@@ -583,7 +583,8 @@
       const snapshot = await getSnapshotWithCacheFallback(
         buildCollectionQuery(db, collectionName, options), 'Loading filtered ' + collectionName
       );
-      const rows = snapshotToDocs(snapshot);
+      const rows = collectionName === 'courses'
+        ? snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), _documentId: doc.id })) : snapshotToDocs(snapshot);
       if (collectionName === 'courses') cacheCourseSummaries(getSignedInScope(firebase), rows);
       return rows;
     });
@@ -1152,6 +1153,84 @@
     }
   }
 
+  function locationFingerprint(location) {
+    if (!location) return 'null';
+    const revision = location.revision || 0;
+    const stamp = location.updatedAt;
+    const modified = revision ? null : stamp && typeof stamp.toMillis === 'function' ? stamp.toMillis()
+      : stamp && typeof stamp.seconds === 'number' ? stamp.seconds * 1000 + (stamp.nanoseconds || 0) / 1000000
+      : typeof stamp === 'string' && Number.isFinite(Date.parse(stamp)) ? Date.parse(stamp) : stamp || null;
+    return JSON.stringify([location.latitude, location.longitude, location.radiusMeters, location.enabled,
+      location.addressLabel, revision, modified]);
+  }
+
+  async function saveCourseLocation(documentId, courseId, expectedLocation, location) {
+    const firebase = await waitForFirebaseServices();
+    const user = firebase.auth().currentUser;
+    if (!user) throw new Error('Sign in before saving a classroom zone.');
+    const db = firebase.firestore(), reference = db.collection('courses').doc(documentId);
+    // Freeze pre-upgrade running sessions in the same commit as the edit.
+    // New sessions already capture their zone atomically when created.
+    const sessions = documentId === courseId
+      ? await db.collection('sessions').where('courseId', '==', courseId).get({ source: 'server' }) : { docs: [] };
+    const legacy = sessions.docs.filter(doc => {
+      const data = doc.data();
+      return data.zonePolicyVersion === undefined && ['starting', 'active', 'closing'].includes(data.status);
+    });
+    if (legacy.length > 200) throw new Error('Close older unfinished sessions before editing this classroom zone.');
+    const saved = await db.runTransaction(async transaction => {
+      const snapshot = await transaction.get(reference);
+      const running = [];
+      for (const doc of legacy) running.push(await transaction.get(doc.ref));
+      const course = snapshot.exists ? snapshot.data() : null;
+      if (!course || course.instructorId !== user.uid || (course.courseId || documentId) !== courseId) {
+        throw new Error('This course is unavailable or belongs to another instructor.');
+      }
+      if (locationFingerprint(course.location) !== locationFingerprint(expectedLocation)) {
+        const error = new Error('The classroom zone changed in another tab. Reload this page to review the saved zone before saving again.');
+        error.code = 'zone_conflict'; throw error;
+      }
+      const revision = (course.location && course.location.revision) || 0;
+      if (!Number.isInteger(revision) || revision < 0 || revision >= 1000000000) throw new Error('The classroom zone version is invalid.');
+      const next = Object.assign({}, location, { revision: revision + 1 });
+      for (const session of running) {
+        const data = session.exists ? session.data() : null;
+        if (data && data.courseId === courseId && data.zonePolicyVersion === undefined && ['starting', 'active', 'closing'].includes(data.status)) {
+          transaction.update(session.ref, { zonePolicyVersion: 1, classroomZone: course.location || null });
+        }
+      }
+      transaction.update(reference, { location: next });
+      return next;
+    });
+    invalidateInstructorDataCache('courses', documentId);
+    return saved;
+  }
+
+  async function createSessionWithLocation(documentId, sessionId, data) {
+    const firebase = await waitForFirebaseServices();
+    const user = firebase.auth().currentUser;
+    if (!user) throw new Error('Sign in before starting a session.');
+    const db = firebase.firestore(), courseRef = db.collection('courses').doc(documentId);
+    const sessionRef = db.collection('sessions').doc(sessionId);
+    const created = await db.runTransaction(async transaction => {
+      const courseSnapshot = await transaction.get(courseRef);
+      const sessionSnapshot = await transaction.get(sessionRef);
+      const course = courseSnapshot.exists ? courseSnapshot.data() : null;
+      if (!course || course.instructorId !== user.uid || (course.courseId || documentId) !== data.courseId) {
+        throw new Error('This course is unavailable or belongs to another instructor.');
+      }
+      if (sessionSnapshot.exists) throw new Error('This session already exists. Reload Live Session.');
+      const zone = course.location || null;
+      const allowed = ['latitude', 'longitude', 'radiusMeters', 'enabled', 'addressLabel', 'updatedAt', 'updatedBy', 'revision'];
+      if (zone && Object.keys(zone).some(key => !allowed.includes(key))) throw new Error('Resave the classroom zone before starting a session.');
+      const next = Object.assign({}, data, { zonePolicyVersion: 1, classroomZone: zone });
+      transaction.set(sessionRef, next);
+      return next;
+    });
+    invalidateInstructorDataCache('sessions', sessionId);
+    return created;
+  }
+
   async function createDocumentIfAbsent(collectionName, documentId, data) {
     const db = await waitForFirebase();
     const documentRef = db.collection(collectionName).doc(documentId);
@@ -1277,6 +1356,8 @@
     subscribeDocument,
     subscribeCollections,
     writeDocument,
+    saveCourseLocation,
+    createSessionWithLocation,
     createDocumentIfAbsent,
     deleteDocument,
     signInWithEmail,

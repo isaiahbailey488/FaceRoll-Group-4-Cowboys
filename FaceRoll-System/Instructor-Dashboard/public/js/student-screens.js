@@ -875,6 +875,31 @@
       if (!keepAttendance) renderEmpty();
     }
 
+    function liveAttendanceMethod(entry) {
+      // Use the recorded source, never the student's current privacy preference
+      // or a successful location result, to describe how this entry was made.
+      const labels = {
+        phone_face_verification: 'Facial recognition',
+        classroom_camera: 'Facial recognition',
+        phone_location_verification: 'Location check',
+        instructor_override: 'Instructor override',
+        session_default: 'Session default',
+      };
+      const source = String(entry.source || '').trim().toLowerCase();
+      if (Object.prototype.hasOwnProperty.call(labels, source)) return labels[source];
+      const method = typeof entry.method === 'string' ? entry.method.trim() : '';
+      switch (method.toLowerCase()) {
+        case 'phone face verification':
+        case 'phone face and location verification':
+        case 'classroom camera recognition':
+        case 'face recognition':
+        case 'facial recognition': return 'Facial recognition';
+        case 'phone location verification':
+        case 'location check': return 'Location check';
+        default: return method || 'Not recorded';
+      }
+    }
+
     function renderLiveRows(rows) {
       if (!rows.length) { renderEmpty(); return; }
       const recognized = rows.filter(function (r) { return r.source !== 'session_default' && r.status !== 'Absent'; }).length;
@@ -892,9 +917,7 @@
         const cls = getStatusClass(e.status);
         if (cls) row.children[2].firstElementChild.classList.add(cls);
         row.children[3].textContent = e.recordedTime;
-        row.children[4].textContent = e.locationStatus === 'in_zone' ? 'In zone'
-          : e.locationStatus === 'outside_zone' ? 'Outside zone'
-          : e.locationStatus === 'not_required' ? 'Not required' : 'Not checked';
+        row.children[4].textContent = liveAttendanceMethod(e);
         tbody.appendChild(row);
       });
     }
@@ -1043,7 +1066,7 @@
             const displayName = recognitionName || (user ? getUserDisplayName(user) : 'Recognized Student');
             const row = {
               studentName: displayName,
-              locationStatus: d.locationStatus,
+              method: d.method,
               source: d.source,
               course: courseMap.get(cid) || activeCourseName || 'Unknown Course',
               status: normalizeStatus(getFirstDefined(d, ['status']) || 'present') || 'Present',
@@ -1395,7 +1418,8 @@
         const settings = await readAttendanceSettings();
         const allowedUids = await loadCourseRosterUids(selectedId);
         pendingSessionDocId = sid;
-        await firebaseApi.writeDocument('sessions', sid, {
+        const selectedCourse = ownedCourses.get(selectedId);
+        const pending = await firebaseApi.createSessionWithLocation(selectedCourse._documentId || selectedCourse.id || selectedId, sid, {
           ...policyApi.snapshot(settings, now),
           id: sid, sessionId: sid, courseId: selectedId, status: 'starting',
         });
@@ -1411,7 +1435,7 @@
         }
         bridgeStarted = true;
         const startedAt = started.status.sessionStartedAt > 0 ? started.status.sessionStartedAt * 1000 : Date.now();
-        const active = Object.assign({}, policyApi.snapshot(settings, startedAt), {
+        const active = Object.assign({}, pending, policyApi.snapshot(settings, startedAt), {
           id: sid, sessionId: sid, courseId: selectedId, status: 'active',
         });
         await firebaseApi.writeDocument('sessions', sid, active);

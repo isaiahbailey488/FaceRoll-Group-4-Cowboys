@@ -2,7 +2,7 @@
 
 This folder is the Windows version of the Mac recognition workflow.
 
-- `capture.py` opens the Windows webcam with OpenCV DirectShow, detects faces, and auto-saves a frame as `shared/input.jpg`
+- `capture.py` opens the Windows webcam with OpenCV DirectShow without a preview window, selects face-candidate frames, and auto-saves a frame as `shared/input.jpg`
 - `enroll_student.py` converts enrollment photos into face embeddings stored as JSON
 - `webcam_enroll.py` enrolls one or more students directly from the webcam and labels the detected face in the preview
 - `app.py` polls for `shared/input.jpg`, converts the temporary image into an embedding, and compares it with stored embeddings
@@ -68,7 +68,17 @@ In another PowerShell window:
 py -3.10 capture.py
 ```
 
-Press `q` in the webcam window to quit capture.
+Capture runs without a window by default. Start Session / End Session control the
+camera through the bridge. For a standalone run, Ctrl+C stops capture.
+
+For troubleshooting, run `py -3.10 capture.py --preview`; that window supports
+`q` to quit and Space for manual capture. To enable it for a bridge-run session,
+set `$env:FACEROLL_CAMERA_PREVIEW='1'` before starting the bridge/demo. Remove
+that environment variable to return to the default hidden preview.
+
+Hiding the window does not change detection or identity-matching thresholds.
+"Face candidates" in capture logs means the frame will be checked by the
+recognizer; it does not mean a student was identified or marked present.
 
 ## Student face enrollment
 

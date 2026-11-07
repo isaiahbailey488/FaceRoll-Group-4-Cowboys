@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="./style.css"/>
     <link rel="stylesheet" href="./css/shared-consistency.css?v=20260917-tables"/>
     <link rel="stylesheet" href="./css/course-settings.css?v=20260924-map"/>
-    <link rel="stylesheet" href="./css/courses.css?v=20261015-students-invites-3"/>
+    <link rel="stylesheet" href="./css/courses.css?v=20261106-zone-setup"/>
   <link rel="stylesheet" href="./css/dashboard-theme.css?v=20261029-theme-1">
   </head>
   <body class="body-root course-settings-page instructor-workspace" data-auth-required="true">
@@ -104,7 +104,7 @@
             <div class="settings-card-header location-card-heading">
               <div>
                 <h2 id="attendance-location-heading">Attendance Location</h2>
-                <p>Search for a building or place the marker directly on the map.</p>
+                <p>Find the building, then place the pin near the classroom’s center. Saved changes apply to the next session; running sessions keep their zone.</p>
               </div>
               <div class="verification-toggle-row">
                 <span>
@@ -131,20 +131,29 @@
                     <input
                       type="search"
                       id="location-search-input"
-                      placeholder="Search an address or choose Current location"
+                      placeholder="Building, street address, city or ZIP"
                       autocomplete="off"
+                      aria-controls="search-results"
+                      aria-expanded="false"
+                      aria-describedby="location-search-help"
                       disabled
                     />
                     <button type="submit" id="location-search-button" class="secondary-button" disabled>Search</button>
                   </div>
-                  <div id="current-location-options" class="search-results" aria-label="Location suggestions">
-                    <button type="button" id="current-location-button" class="search-result-button" disabled><strong>Current location</strong><span>Show where you are on the map</span></button>
-                  </div>
+                  <p id="location-search-help" class="control-help">Type at least 3 characters for suggestions. Include the city or campus to narrow the matches. Selecting an address finds the building; adjust the pin for the actual classroom.</p>
                 </form>
                 <div id="search-status" class="compact-status" role="status" aria-live="polite"></div>
                 <div id="search-results" class="search-results" aria-label="Location search results"></div>
 
+                <div id="current-location-options" class="current-location-tools">
+                  <button type="button" id="current-location-button" class="secondary-button" disabled>Use current location</button>
+                  <span class="control-help">Preview this device’s estimated position before changing the classroom pin.</span>
+                </div>
                 <div id="current-location-status" class="compact-status" role="status" aria-live="polite"></div>
+                <div id="current-location-actions" class="current-location-actions" hidden>
+                  <button type="button" id="use-current-location-button" class="secondary-button" disabled>Use this position</button>
+                  <button type="button" id="dismiss-current-location-button" class="secondary-button">Dismiss preview</button>
+                </div>
 
                 <div class="map-shell">
                   <div id="here-map" aria-label="Interactive classroom location map"></div>
@@ -167,12 +176,12 @@
                     <div><dt>Latitude</dt><dd id="selected-latitude">—</dd></div>
                     <div><dt>Longitude</dt><dd id="selected-longitude">—</dd></div>
                   </dl>
-                  <p class="control-help">Click anywhere on the map or drag the marker for a precise adjustment.</p>
+                  <p class="control-help">Click the map or drag the classroom pin to the room’s center. The address is a label; the saved pin and radius determine the check-in zone.</p>
                 </div>
 
                 <fieldset class="control-section radius-fieldset">
                   <legend>Allowed attendance radius</legend>
-                  <p class="control-help" id="radius-help">Students must be within this distance when initiating check-in.</p>
+                  <p class="control-help" id="radius-help">The student’s reported distance from the pin plus GPS accuracy must fit inside this radius. For example, 8 m away with ±9 m accuracy needs 17 m and will not pass a 15 m zone. Place the pin carefully; indoor readings may need a fresh attempt. Student self check-in requires location verification to be enabled and the zone saved.</p>
                   <div class="radius-slider-heading">
                     <label for="radius-meters">Radius</label>
                     <output id="radius-value" for="radius-meters">15 m</output>
@@ -183,7 +192,7 @@
 
                 <div class="privacy-notice">
                   <svg class="notice-icon" aria-hidden="true" focusable="false"><use href="./icons.svg#shield-check"></use></svg>
-                  <p>FaceRoll checks a student’s foreground location only when the student initiates check-in. Precise student coordinates are used temporarily for verification and are not retained.</p>
+                  <p>FaceRoll automatically collects a temporary foreground location reading when a student opens an eligible active check-in. Expired readings are replaced during Check In. Collection stops after a reading; there is no background tracking, and precise student coordinates are not retained.</p>
                 </div>
               </div>
             </div>
@@ -192,6 +201,7 @@
               <div id="save-status" class="inline-status info" role="status" aria-live="polite">
                 Choose a course and classroom location to save.
               </div>
+              <button type="button" id="restore-location-button" class="secondary-button" disabled>Restore saved location</button>
               <button type="button" id="save-location-button" class="primary-button" disabled>
                 <svg class="button-icon" aria-hidden="true" focusable="false"><use href="./icons.svg#save"></use></svg>
                 <span>Save Classroom Location</span>
@@ -213,10 +223,10 @@
     <script defer src="/__/firebase/11.6.0/firebase-auth-compat.js"></script>
     <script defer src="/__/firebase/init.js?useEmulator=true"></script>
     <script defer src="./js/course-location-utils.js?v=20260924-radius"></script>
-    <script defer src="./js/firebase-client.js?v=20261005-auth-cycle-1"></script>
+    <script defer src="./js/firebase-client.js?v=20261106-zone-sessions"></script>
     <script defer src="./js/auth-guard.js?v=20261005-auth-1"></script>
     <script defer src="./js/sidebar-user.js?v=20261029-theme-1"></script>
-    <script defer src="./js/course-location.js?v=20261008-coordinate-precision"></script>
+    <script defer src="./js/course-location.js?v=20261106-zone-sessions"></script>
     <script defer src="./js/manage-courses.js?v=20261015-students-invites-3"></script>
     <script defer src="./js/courses-page.js?v=20260915-2"></script>
     <script type="module" src="./js/course-deletion.mjs?v=20261015-students-invites-3"></script>

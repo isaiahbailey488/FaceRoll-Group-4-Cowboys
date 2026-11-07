@@ -13,6 +13,7 @@ const {
   tailscaleConnection,
   configureTailscale,
   ensureDemoCertificate,
+  lanExpoUrl,
   ensureEmbeddingKey,
   createDemoEnvironment,
   dashboardOrigins,
@@ -23,12 +24,15 @@ const {
   waitForEmulators,
 } = require('./demo.js');
 
-test('demo selects LAN normally and Expo tunnel only when requested', function () {
-  assert.deepEqual(expoStartArguments([]), ['expo', 'start', '--lan', '--clear']);
-  assert.deepEqual(
-    expoStartArguments(['--expo-tunnel']),
-    ['expo', 'start', '--tunnel', '--clear']
-  );
+test('demo pins the Expo Go port and rejects the public tunnel', function () {
+  assert.deepEqual(expoStartArguments([]), ['expo', 'start', '--lan', '--port', '8081', '--go', '--clear']);
+  assert.throws(() => expoStartArguments(['--expo-tunnel']), /HTTPS LAN/);
+});
+
+test('the public Expo tunnel is rejected before starting services', () => {
+  const tunnel = spawnSync(process.execPath, [path.join(__dirname, 'demo.js'), '--expo-tunnel', '--check'], { encoding: 'utf8', windowsHide: true });
+  assert.equal(tunnel.status, 1);
+  assert.match(tunnel.stderr, /Choose HTTPS LAN/);
 });
 
 test('invitation API trusts the actual dashboard port on loopback and its selected network', () => {
@@ -40,10 +44,12 @@ test('invitation API trusts the actual dashboard port on loopback and its select
   assert.ok(dashboardOrigins('100.100.1.2', 5003).split(',').includes('http://100.100.1.2:5003'));
 });
 
-test('network prompt defaults local, accepts Tailscale, and flags bypass prompting', async () => {
+test('network prompt defaults to HTTPS LAN and flags bypass prompting', async () => {
   assert.equal(await selectNetworkMode([], true, async () => ''), 'local');
+  assert.equal(await selectNetworkMode([], true, async () => '1'), 'local');
   assert.equal(await selectNetworkMode([], true, async () => '2'), 'tailscale');
   const noPrompt = () => { throw new Error('Unexpected prompt'); };
+  assert.equal(await selectNetworkMode(['--local'], false, noPrompt), 'local');
   assert.equal(await selectNetworkMode(['--tailscale'], false, noPrompt), 'tailscale');
   assert.equal(await selectNetworkMode(['--check'], true, noPrompt), 'local');
   assert.equal(await selectNetworkMode([], false, noPrompt), 'local');
@@ -65,7 +71,7 @@ test('certificate refresh caches each IP, preserves original files, and handles 
   try {
     for(const file of ['rootCA.pem','rootCA-key.pem','original.pem','original.key']) fs.writeFileSync(path.join(directory,file),'original');
     const config=()=>({lanAddress:'192.168.1.71',tlsCert:path.join(directory,'original.pem'),tlsKey:path.join(directory,'original.key')});
-    const supports=(file,host)=>fs.readFileSync(file,'utf8')===host;
+    const supports=(file,host)=>['localhost','127.0.0.1'].includes(host) || fs.readFileSync(file,'utf8')===host;
     let generated=0;
     const run=(_command,args)=>{
       if(args[0]==='-CAROOT') return {status:0,stdout:directory};
@@ -88,10 +94,14 @@ test('Tailscale uses detected addresses and rejects disconnected clients or exis
   const config = configureTailscale({ lanAddress: '192.168.1.5' }, runner);
   const env = createDemoEnvironment(config);
   assert.equal(env.EXPO_PUBLIC_RECOGNITION_API_URL, 'https://demo.tail123.ts.net');
-  assert.equal(env.EXPO_PUBLIC_FIREBASE_EMULATOR_HOST, '100.100.1.2');
+  assert.equal(env.EXPO_PUBLIC_FIREBASE_EMULATOR_HOST, '');
+  assert.equal(env.EXPO_PUBLIC_FIREBASE_AUTH_EMULATOR_URL, 'https://demo.tail123.ts.net:9449');
+  assert.equal(env.EXPO_PUBLIC_FIRESTORE_EMULATOR_URL, 'https://demo.tail123.ts.net:8443');
   assert.equal(env.REACT_NATIVE_PACKAGER_HOSTNAME, '100.100.1.2');
   assert.equal(env.FACEROLL_API_HOST, '127.0.0.1');
   assert.equal(env.FIRESTORE_EMULATOR_HOST, '127.0.0.1:8080');
+  assert.equal(env.FACEROLL_EXPO_TLS, '');
+  assert.equal(env.EXPO_PACKAGER_PROXY_URL, '');
   assert.throws(() => configureTailscale({}, (command, args) => ({ status: 0,
     stdout: JSON.stringify(args[0] === 'status' ? tailStatus : { TCP: { 443: {} } }) })), /not be overwritten/);
 });
@@ -176,6 +186,7 @@ test('demo environment removes cloud credentials and forces every client local',
       lanAddress: '192.168.1.223',
       tlsCert: '/tls/server.pem',
       tlsKey: '/tls/server.key',
+      tlsCa: '/tls/rootCA.pem',
       enrollmentDirectory: '/data/enrollments',
       embeddingKeyFile: '/keys/embedding-storage.key',
       deepfaceHome: '/data/models',
@@ -183,8 +194,18 @@ test('demo environment removes cloud credentials and forces every client local',
     assert.equal(environment.GOOGLE_APPLICATION_CREDENTIALS, undefined);
     assert.equal(environment.FIREBASE_AUTH_EMULATOR_HOST, '127.0.0.1:9099');
     assert.equal(environment.FIRESTORE_EMULATOR_HOST, '127.0.0.1:8080');
-    assert.equal(environment.EXPO_PUBLIC_FIREBASE_EMULATOR_HOST, '192.168.1.223');
+    assert.equal(environment.EXPO_PUBLIC_FIREBASE_MODE, 'emulator');
+    assert.equal(environment.EXPO_PUBLIC_FIREBASE_EMULATOR_HOST, '');
+    assert.equal(environment.EXPO_PUBLIC_FIREBASE_AUTH_EMULATOR_URL, 'https://192.168.1.223:9449');
+    assert.equal(environment.EXPO_PUBLIC_FIRESTORE_EMULATOR_URL, 'https://192.168.1.223:8443');
     assert.equal(environment.EXPO_PUBLIC_RECOGNITION_API_URL, 'https://192.168.1.223:5055');
+    assert.equal(environment.FACEROLL_API_HOST, '192.168.1.223');
+    assert.equal(environment.FACEROLL_HTTPS_HOST, '192.168.1.223');
+    assert.equal(environment.FACEROLL_EXPO_TLS, '1');
+    assert.equal(environment.EXPO_PACKAGER_PROXY_URL, 'https://192.168.1.223:8081');
+    assert.equal(environment.EXPO_NO_QR_CODE, '1');
+    assert.equal(environment.NODE_EXTRA_CA_CERTS, '/tls/rootCA.pem');
+    assert.equal(lanExpoUrl('192.168.1.223'), 'exps://192.168.1.223:8081');
     assert.equal(environment.FACEROLL_EMBEDDING_KEY_FILE, '/keys/embedding-storage.key');
     assert.equal(environment.FACEROLL_REQUEST_LOGGING, '0');
     assert.equal(environment.FIREBASE_CLI_DISABLE_UPDATE_CHECK, '1');

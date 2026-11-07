@@ -1,6 +1,9 @@
-import Constants from 'expo-constants';
+import { runtimeConfig } from './runtime-config';
 import { File } from 'expo-file-system';
+import { fetch as secureFetch } from 'expo/fetch';
 import { auth } from './firebase';
+import { CheckInRequest, CheckInSuccess, validateCheckInRequest, validateCheckInSuccess } from '../shared/checkin-contract';
+import { isSampleFresh, LocationCaptureError, locationFeedback } from '../shared/checkin-location';
 
 const REQUEST_TIMEOUT_MS = 120_000;
 const ENROLLMENT_SAMPLE_COUNT = 3;
@@ -60,40 +63,7 @@ export function discardTemporaryCameraFile(uri?: string): void {
 }
 
 export function configuredApiUrl(): string {
-  const publicEnvironmentUrl = process.env.EXPO_PUBLIC_RECOGNITION_API_URL;
-  const extra = Constants?.expoConfig?.extra as
-    | { recognitionApiUrl?: string }
-    | undefined;
-  const manifestExtra = (Constants as any)?.manifest?.extra as
-    | { recognitionApiUrl?: string }
-    | undefined;
-  const value =
-    publicEnvironmentUrl ||
-    extra?.recognitionApiUrl ||
-    manifestExtra?.recognitionApiUrl ||
-    '';
-  const normalized = value.trim().replace(/\/+$/, '');
-
-  if (!normalized) {
-    throw new RecognitionApiError(
-      'recognition_api_not_configured',
-      'The recognition server address is not configured. Set EXPO_PUBLIC_RECOGNITION_API_URL before starting Expo.'
-    );
-  }
-  if (!/^https?:\/\//i.test(normalized)) {
-    throw new RecognitionApiError(
-      'invalid_recognition_api_url',
-      'The recognition server address must begin with http:// or https://.'
-    );
-  }
-  const safeDevelopmentHttp = /^http:\/\/(127\.0\.0\.1|localhost|10\.0\.2\.2)(:\d+)?$/i;
-  if (normalized.toLowerCase().startsWith('http://') && !safeDevelopmentHttp.test(normalized)) {
-    throw new RecognitionApiError(
-      'insecure_recognition_api_url',
-      'Face photographs and Firebase tokens require HTTPS outside a local simulator.'
-    );
-  }
-  return normalized;
+  return runtimeConfig.apiUrl;
 }
 
 const CONNECTION_ERROR_CODES = new Set([
@@ -102,11 +72,43 @@ const CONNECTION_ERROR_CODES = new Set([
   'http_502',
   'http_503',
   'http_504',
+  'check_in_unavailable', 'check_in_timeout',
 ]);
+
+const CHECK_IN_MESSAGES: Record<string, string> = {
+  check_in_unavailable: 'Check-in could not be confirmed. Check your connection and retry. If it was already accepted, the original record will be kept.',
+  check_in_timeout: 'Check-in could not be confirmed in time. Check Recent Activity or retry; an accepted record will not be replaced.',
+  check_in_cancelled: 'Check-in was cancelled. Check Recent Activity if the request had already been sent.',
+  invalid_check_in_request: 'The check-in request could not be prepared. Try checking in again; location is collected automatically when needed.',
+  invalid_check_in_response: 'The server did not confirm a valid attendance result. Check Recent Activity before retrying.',
+  identity_mismatch: 'The response did not match your account and selected class. Reopen check-in and try again.',
+  membership_required: 'You are not actively enrolled in this course. Refresh your courses or ask your instructor for help.',
+  course_unavailable: 'This course is unavailable. Reopen Check-In or ask your instructor for help.',
+  attendance_session_closed: 'This class session has ended. Ask your instructor if your attendance needs to be recorded.',
+  attendance_session_changed: 'This class session changed. Close and reopen Check-In before trying again.',
+  attendance_session_not_started: 'This class session has not started. Wait for your instructor, then reopen Check-In.',
+  attendance_policy_invalid: 'The session settings are unavailable. Ask your instructor to restart the session.',
+  attendance_window_closed: 'The check-in window has closed. Ask your instructor for help.',
+  attendance_late_disabled: 'The grace period has ended and late check-ins are disabled. Ask your instructor for help.',
+  attendance_already_recorded: 'Attendance is already recorded for this class. Check Recent Activity or ask your instructor about the recorded status.',
+  attendance_record_conflict: 'The attendance record has changed. Check Recent Activity or ask your instructor for help.',
+  face_required: 'Facial recognition is on. Enroll your face if needed, then reopen Check-In to take a photo. Classroom location is collected automatically.',
+  face_not_allowed: 'Facial recognition is off. Reopen check-in to submit location only, without a photo.',
+};
+const LOCATION_CODES = new Set(['location_required', 'location_policy_invalid', 'location_mocked', 'location_stale',
+  'location_future', 'location_inaccurate', 'location_outside_zone', 'location_uncertain', 'location_unverified', 'location_unavailable']);
+const KNOWN_API_CODES = new Set([...Object.keys(CHECK_IN_MESSAGES), ...LOCATION_CODES,
+  'authentication_required', 'student_required', 'not_enrolled', 'facial_recognition_opted_out',
+  'face_deletion_pending', 'face_preference_changed', 'face_preference_unavailable',
+  'no_face_detected', 'multiple_faces_detected', 'invalid_face_image', 'request_too_large',
+  'authentication_unavailable', 'face_not_recognized', 'recognition_unavailable', 'recognition_timeout']);
 
 // Server-provided message text is never shown to students; every code maps to
 // app-authored copy so internal details cannot leak into the UI.
 function messageForError(code: string): string {
+  if (CHECK_IN_MESSAGES[code]) return CHECK_IN_MESSAGES[code];
+  if (LOCATION_CODES.has(code)) return locationFeedback(new LocationCaptureError(code)).hint;
+  if (code === 'face_not_recognized') return NOT_RECOGNIZED_FEEDBACK.hint;
   if (CONNECTION_ERROR_CODES.has(code)) {
     return "Can't reach FaceRoll right now. Check your connection and try again.";
   }
@@ -128,7 +130,7 @@ function messageForError(code: string): string {
     case 'no_face_detected':
       return "We couldn't find your face. Center it in the oval and move to better light.";
     case 'multiple_faces_detected':
-      return 'We see more than one person. Make sure only you are in the frame.';
+      return 'More than one face was detected. Make sure only you are in the full camera view and try again with better lighting.';
     case 'invalid_face_image':
       return "The photo wasn't clear. Hold still and try again.";
     case 'request_too_large':
@@ -159,6 +161,10 @@ export const NOT_RECOGNIZED_FEEDBACK: FaceScanFeedback = {
 };
 
 function titleForError(code: string): string | null {
+  if (LOCATION_CODES.has(code)) return locationFeedback(new LocationCaptureError(code)).title;
+  if (code === 'face_not_recognized') return NOT_RECOGNIZED_FEEDBACK.title;
+  if (code === 'attendance_already_recorded') return 'Attendance already recorded';
+  if (code.startsWith('attendance_') || code === 'course_unavailable' || code === 'membership_required') return 'Check-in unavailable';
   if (CONNECTION_ERROR_CODES.has(code)) return 'Connection problem';
   switch (code) {
     case 'no_face_detected':
@@ -191,7 +197,8 @@ async function authenticatedRequest<T>(
   path: string,
   method: 'POST' | 'DELETE',
   body?: Record<string, unknown>,
-  timeoutMs = REQUEST_TIMEOUT_MS
+  timeoutMs = REQUEST_TIMEOUT_MS,
+  options: { signal?: AbortSignal; expectedUid?: string; beforeSend?: () => void } = {}
 ): Promise<{ data: T; authenticatedUid: string }> {
   const startedAt = Date.now();
   const currentUser = auth.currentUser;
@@ -205,8 +212,20 @@ async function authenticatedRequest<T>(
 
   const apiUrl = configuredApiUrl();
   const controller = new AbortController();
+  const checkIn = path === '/attendance/check-in';
+  const timeoutCode = checkIn ? 'check_in_timeout' : 'recognition_timeout';
+  const unavailableCode = checkIn ? 'check_in_unavailable' : 'recognition_unavailable';
   let timedOut = false;
   let timeout: ReturnType<typeof setTimeout>;
+  const assertCurrent = () => {
+    if (options.signal?.aborted) throw new RecognitionApiError('check_in_cancelled', messageForError('check_in_cancelled'));
+    if (auth.currentUser?.uid !== currentUser.uid || (options.expectedUid && options.expectedUid !== currentUser.uid)) {
+      throw new RecognitionApiError('identity_mismatch', messageForError('identity_mismatch'));
+    }
+    if (timedOut) throw new RecognitionApiError(timeoutCode, messageForError(timeoutCode));
+  };
+  assertCurrent();
+  let cancelRequest: (() => void) | undefined;
 
   logRecognitionStage('request_started', { method, path });
 
@@ -229,12 +248,7 @@ async function authenticatedRequest<T>(
       path,
       elapsedMs: Date.now() - startedAt,
     });
-    if (timedOut) {
-      throw new RecognitionApiError(
-        'recognition_timeout',
-        messageForError('recognition_timeout')
-      );
-    }
+    assertCurrent();
 
     const serializedBody = body ? JSON.stringify(body) : undefined;
     logRecognitionStage('request_payload_ready', {
@@ -242,19 +256,19 @@ async function authenticatedRequest<T>(
       bodyCharacters: serializedBody?.length ?? 0,
       elapsedMs: Date.now() - startedAt,
     });
-    if (timedOut) {
-      throw new RecognitionApiError(
-        'recognition_timeout',
-        messageForError('recognition_timeout')
-      );
-    }
+    assertCurrent();
+    options.beforeSend?.();
 
     logRecognitionStage('request_sending', {
       path,
       elapsedMs: Date.now() - startedAt,
     });
-    const response = await fetch(`${apiUrl}${path}`, {
+    // Expo's native adapter enforces redirect:error on iOS/Android. React
+    // Native's XHR-based global fetch ignores that option.
+    const response = await secureFetch(`${apiUrl}${path}`, {
       method,
+      redirect: 'error',
+      credentials: 'omit',
       headers: {
         Accept: 'application/json',
         Authorization: `Bearer ${idToken}`,
@@ -270,8 +284,9 @@ async function authenticatedRequest<T>(
       elapsedMs: Date.now() - startedAt,
     });
     const payload = (await response.json().catch(() => ({}))) as T & ApiErrorPayload;
+    assertCurrent();
     if (!response.ok) {
-      const code = payload.error || `http_${response.status}`;
+      const code = typeof payload?.error === 'string' && KNOWN_API_CODES.has(payload.error) ? payload.error : `http_${response.status}`;
       throw new RecognitionApiError(
         code,
         messageForError(code),
@@ -291,15 +306,24 @@ async function authenticatedRequest<T>(
       });
       reject(
         new RecognitionApiError(
-          'recognition_timeout',
-          messageForError('recognition_timeout')
+          timeoutCode,
+          messageForError(timeoutCode)
         )
       );
     }, timeoutMs);
   });
 
+  const cancellation = new Promise<never>((_, reject) => {
+    cancelRequest = () => {
+      controller.abort();
+      reject(new RecognitionApiError('check_in_cancelled', messageForError('check_in_cancelled')));
+    };
+    options.signal?.addEventListener('abort', cancelRequest, { once: true });
+    if (options.signal?.aborted) cancelRequest();
+  });
+
   try {
-    return await Promise.race([requestOperation(), deadline]);
+    return await Promise.race([requestOperation(), deadline, cancellation]);
   } catch (error: any) {
     logRecognitionStage('request_failed', {
       path,
@@ -309,17 +333,41 @@ async function authenticatedRequest<T>(
     if (error instanceof RecognitionApiError) throw error;
     if (timedOut || error?.name === 'AbortError') {
       throw new RecognitionApiError(
-        'recognition_timeout',
-        messageForError('recognition_timeout')
+        timeoutCode,
+        messageForError(timeoutCode)
       );
     }
     throw new RecognitionApiError(
-      'recognition_unavailable',
-      messageForError('recognition_unavailable')
+      unavailableCode,
+      messageForError(unavailableCode)
     );
   } finally {
     clearTimeout(timeout!);
+    if (cancelRequest) options.signal?.removeEventListener('abort', cancelRequest);
   }
+}
+
+/** One authoritative request; never writes attendance from the phone. */
+export async function checkInAttendance(input: CheckInRequest, options: {
+  expectedUid: string; expectedCourseId: string; signal?: AbortSignal;
+}): Promise<CheckInSuccess> {
+  let payload: CheckInRequest;
+  try { payload = validateCheckInRequest(input); }
+  catch { throw new RecognitionApiError('invalid_check_in_request', messageForError('invalid_check_in_request')); }
+  const { data, authenticatedUid } = await authenticatedRequest<unknown>('/attendance/check-in', 'POST',
+    { ...payload }, REQUEST_TIMEOUT_MS, { ...options, beforeSend: () => {
+      if (payload.location && !isSampleFresh(payload.location, Date.now())) {
+        throw new RecognitionApiError('location_stale', messageForError('location_stale'));
+      }
+    } });
+  let result: CheckInSuccess;
+  try { result = validateCheckInSuccess(data); }
+  catch { throw new RecognitionApiError('invalid_check_in_response', messageForError('invalid_check_in_response')); }
+  if (result.sessionId !== payload.sessionId || result.courseId !== options.expectedCourseId ||
+      result.attendanceId !== `${payload.sessionId}_${authenticatedUid}`) {
+    throw new RecognitionApiError('identity_mismatch', messageForError('identity_mismatch'));
+  }
+  return result;
 }
 
 export async function enrollFace(images: readonly string[]): Promise<EnrollmentResult> {

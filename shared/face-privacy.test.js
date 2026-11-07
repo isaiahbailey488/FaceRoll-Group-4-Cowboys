@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { faceAccessState, optOutUpdate, deletionMessage, LOCATION_CHECK_IN_PENDING } = require('./face-privacy');
+const { faceAccessState, checkInAccessState, optOutUpdate, deletionMessage, LOCATION_CHECK_IN_PENDING } = require('./face-privacy');
 
 test('camera consent waits for a profile and denies opt-out or pending cleanup', () => {
   assert.equal(faceAccessState(null), 'loading');
@@ -29,5 +29,13 @@ test('invalid revisions are rejected and pending copy never claims completed del
   assert.throws(() => optOutUpdate({ optOutFlag: false, faceConsentRevision: -1 }, true));
   assert.match(deletionMessage('pending'), /pending/);
   assert.match(deletionMessage('deleted'), /have been deleted/);
-  assert.match(LOCATION_CHECK_IN_PENDING, /not available yet/);
+  assert.match(LOCATION_CHECK_IN_PENDING, /without a photo/);
+});
+
+test('check-in preference requires face enrollment only for opted-in students', () => {
+  assert.equal(checkInAccessState(null), 'loading'); assert.equal(checkInAccessState({}), 'loading');
+  assert.equal(checkInAccessState({ optOutFlag: true, faceEnrolled: false, faceDataDeletionStatus: 'pending' }), 'location_only');
+  assert.equal(checkInAccessState({ optOutFlag: false, faceEnrolled: false }), 'enrollment_required');
+  assert.equal(checkInAccessState({ optOutFlag: false, faceEnrolled: true }), 'face_location');
+  assert.equal(checkInAccessState({ optOutFlag: false, faceEnrolled: true, faceDataDeletionStatus: 'pending' }), 'deletion_pending');
 });

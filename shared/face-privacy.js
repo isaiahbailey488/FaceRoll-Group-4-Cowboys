@@ -31,6 +31,13 @@ function deletionMessage(status) {
     : 'Facial recognition is off. Deletion is pending until your recognition computers reconnect. You can retry deletion here.';
 }
 
-const LOCATION_CHECK_IN_PENDING = 'Location-based check-in is still under development and is not available yet.';
+function checkInAccessState(profile) {
+  if (!profile || typeof profile.optOutFlag !== 'boolean') return 'loading';
+  if (profile.optOutFlag) return 'location_only';
+  if (profile.faceDataDeletionStatus === 'pending') return 'deletion_pending';
+  return profile.faceEnrolled === true ? 'face_location' : 'enrollment_required';
+}
 
-module.exports = { faceAccessState, optOutUpdate, deletionMessage, LOCATION_CHECK_IN_PENDING };
+const LOCATION_CHECK_IN_PENDING = 'Facial recognition is off. Open Check-In for an active class. Your classroom location is collected automatically; tap Check In with Location to submit attendance without a photo or face enrollment. Your instructor must enable a valid classroom zone. Face data deletion does not block location-only check-in.';
+
+module.exports = { faceAccessState, checkInAccessState, optOutUpdate, deletionMessage, LOCATION_CHECK_IN_PENDING };

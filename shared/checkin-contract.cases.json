@@ -1,0 +1,25 @@
+{
+  "request": {"schemaVersion":1,"sessionId":"session_test","image":"aW1hZ2U=","location":{"latitude":33,"longitude":-97,"accuracyMeters":5,"capturedAtMs":1793898000000,"mocked":null}},
+  "success": {"schemaVersion":1,"success":true,"attendanceId":"session_test_student","sessionId":"session_test","courseId":"course","status":"present","locationStatus":"in_zone","recordedAt":"2026-11-05T17:00:00.000Z","duplicate":false},
+  "invalidRequests": [
+    {"name":"client identity", "path":["uid"], "value":"other-student"},
+    {"name":"client course", "path":["courseId"], "value":"other-course"},
+    {"name":"client attendance status", "path":["status"], "value":"present"},
+    {"name":"client zone result", "path":["locationStatus"], "value":"in_zone"},
+    {"name":"unknown schema", "path":["schemaVersion"], "value":2},
+    {"name":"boolean version", "path":["schemaVersion"], "value":true},
+    {"name":"path traversal", "path":["sessionId"], "value":"../other"},
+    {"name":"identifier newline", "path":["sessionId"], "value":"session\n"},
+    {"name":"image URL", "path":["image"], "value":"https://example.test/image.jpg"},
+    {"name":"empty image", "path":["image"], "value":""},
+    {"name":"malformed image", "path":["image"], "value":"????"},
+    {"name":"latitude bounds", "path":["location","latitude"], "value":91},
+    {"name":"longitude bounds", "path":["location","longitude"], "value":-181},
+    {"name":"coordinate string", "path":["location","latitude"], "value":"33"},
+    {"name":"negative accuracy", "path":["location","accuracyMeters"], "value":-1},
+    {"name":"boolean accuracy", "path":["location","accuracyMeters"], "value":true},
+    {"name":"fractional timestamp", "path":["location","capturedAtMs"], "value":1.5},
+    {"name":"invalid mock signal", "path":["location","mocked"], "value":"false"},
+    {"name":"client-selected radius", "path":["location","radiusMeters"], "value":1000}
+  ]
+}

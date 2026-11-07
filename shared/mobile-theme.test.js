@@ -89,10 +89,11 @@ for (const filename of ['app/face-enrollment.tsx', 'app/attendance-checkin.tsx']
     assert.equal(styles.permissionButtonText.color, Colors.white);
     assert.equal(styles.container.backgroundColor, Colors.cameraBackground);
     assert.equal(styles.overlay.backgroundColor, 'transparent');
-    assert.equal(styles.ovalGuide.backgroundColor, 'transparent');
-    assert.equal(styles.ovalGuide.borderColor, Colors.cameraGuide);
+    const guide = stylesFor('components/FaceCaptureGuide.tsx');
+    assert.equal(guide.ovalGuide.backgroundColor, 'transparent');
+    assert.equal(guide.ovalGuide.borderColor, Colors.cameraGuide);
     assert.equal(styles.captureButton.backgroundColor, Colors.white);
-    assert.equal(styles.ovalGuideSuccess.borderColor, Colors.cameraSuccess);
+    assert.equal(guide.ovalGuideSuccess.borderColor, Colors.cameraSuccess);
     assert.equal(styles.statusTextError.color, Colors.cameraError);
   });
 }

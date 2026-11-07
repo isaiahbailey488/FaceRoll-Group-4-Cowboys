@@ -73,6 +73,11 @@ function page(data) {
       data[collection].set(id, { ...(data[collection].get(id) || {}), ...copy(changes), id });
       data.writes.push({ collection, id, changes: copy(changes) }); notify(collection, id);
     },
+    createSessionWithLocation: async (courseId, id, value) => {
+      const course = data.courses.find(row => row.id === courseId);
+      const next = { ...copy(value), zonePolicyVersion: 1, classroomZone: copy(course.location || null) };
+      data.sessions.set(id, next); data.writes.push({ collection: 'sessions', id, changes: copy(next) }); return next;
+    },
     createDocumentIfAbsent: async (collection, id, value) => {
       if (data.failDefault === value.uid) { data.failDefault = null; throw new Error('temporary default failure'); }
       if (data[collection].has(id)) return false;

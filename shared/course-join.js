@@ -1,5 +1,6 @@
 'use strict';
 const { validateQrPayload } = require('./course-contracts');
+const { httpsOrigin } = require('./transport-config');
 
 function parseInvitation(raw) {
   try {
@@ -44,9 +45,10 @@ function createJoinFlow(request, onChange) {
 
 async function requestCourseInvitation(baseUrl, user, action, token, fetcher = fetch) {
   if (!user) throw new Error('Sign in before joining a course.');
-  const url = new URL(baseUrl);
-  const local = ['localhost', '127.0.0.1', '10.0.2.2'].includes(url.hostname);
-  if ((url.protocol !== 'https:' && !(url.protocol === 'http:' && local)) || url.origin !== baseUrl) {
+  let origin;
+  try { origin = httpsOrigin(baseUrl, 'Course server URL'); }
+  catch { throw new Error('The course server address is invalid.'); }
+  if (origin !== baseUrl) {
     throw new Error('The course server address is invalid.');
   }
   if (!['resolve', 'join'].includes(action)) throw new Error('Invalid course action.');

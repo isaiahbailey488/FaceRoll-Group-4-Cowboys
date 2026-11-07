@@ -170,6 +170,29 @@ body:has(#manageCoursesPanel[open]) {
   border-color: #fecaca;
 }
 
+.course-location-section .current-location-tools,
+.course-location-section .current-location-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-top: 0.65rem;
+}
+
+.course-location-section .current-location-tools .control-help {
+  flex: 1 1 220px;
+  margin: 0;
+}
+
+.course-location-section .current-location-actions[hidden] {
+  display: none;
+}
+
+.course-location-section .search-result-button:focus-visible {
+  outline: 3px solid var(--fr-green, #2f8544);
+  outline-offset: -3px;
+}
+
 @media (max-width: 520px) {
   .manage-courses-list .course-list-item {
     align-items: stretch;

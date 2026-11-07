@@ -98,7 +98,7 @@ export default function ProfileScreen() {
   const handleOptOutToggle = (value: boolean) => {
     if (value) {
       Alert.alert('Turn Off Facial Recognition?',
-        'This stops facial recognition and permanently deletes your saved facial embeddings from registered recognition computers when they are online. You will need fresh enrollment if you enable it again. Location-based check-in is not available yet.',
+        'This stops facial recognition and permanently deletes your saved facial embeddings from registered recognition computers when they are online. You can check in using your classroom location without a photo. You will need fresh enrollment if you enable facial recognition again.',
         [{ text: 'Cancel', style: 'cancel' }, { text: 'Turn Off and Delete', style: 'destructive', onPress: () => { void saveOptOut(true); } }]);
     } else {
       void saveOptOut(false);
@@ -301,7 +301,7 @@ export default function ProfileScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.settingLabel}>Opt Out of Facial Recognition</Text>
                 <Text style={styles.settingSubLabel}>
-                  Turn off facial recognition and delete your saved facial embeddings.
+                  Turn on for location-only check-in and deletion of your saved facial data. With facial recognition on, check-in requires your face and location.
                 </Text>
               </View>
             </View>

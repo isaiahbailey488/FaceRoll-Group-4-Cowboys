@@ -12,8 +12,10 @@ class CourseDeleteTests(unittest.TestCase):
             ('enrollments','member'): {'courseId':'COURSE','uid':'student','status':'active'},
             ('sessions','session'): {'courseId':'COURSE','status':'closed'},
             ('attendance','attendance'): {'courseId':'COURSE','uid':'student'},
+            ('attendanceCheckIns','receipt'): {'courseId':'COURSE','uid':'student'},
             ('courses','other'): {'courseId':'OTHER','instructorId':'teacher'},
             ('attendance','other'): {'courseId':'OTHER','uid':'student'},
+            ('attendanceCheckIns','other'): {'courseId':'OTHER','uid':'student'},
         })
         mutate_invitation('teacher', self.db, self.db.transact, 'COURSE', 'create')
 
@@ -23,6 +25,7 @@ class CourseDeleteTests(unittest.TestCase):
         self.assertFalse(any(value.get('courseId')=='COURSE' for value in self.db.data.values()))
         self.assertIn(('courses','other'),self.db.data)
         self.assertIn(('attendance','other'),self.db.data)
+        self.assertIn(('attendanceCheckIns','other'),self.db.data)
 
     def test_non_owner_and_student_cannot_delete(self):
         self.db.data['users','other']={'role':'instructor'}

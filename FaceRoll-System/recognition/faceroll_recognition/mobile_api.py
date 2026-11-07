@@ -28,6 +28,8 @@ from .errors import (
 from .schemas import ENROLLMENT_SAMPLE_COUNT, EnrollmentRecord
 from .storage import MobileEnrollmentStore
 from .face_privacy import FacePrivacyError, FacePrivacyService, FirebaseFaceProfiles, consent_revision
+from .attendance import AttendanceError, check_in, firebase_attendance_boundary, now_ms
+from .checkin_contract import CheckInContractError, validate_check_in_request
 
 
 API_VERSION = "1.0.0"
@@ -69,8 +71,14 @@ def _firebase_project_id() -> str | None:
 def _firebase_app_options() -> dict[str, str] | None:
     """Use an explicit project in emulator mode without requiring cloud credentials."""
 
-    if not (os.getenv("FIREBASE_AUTH_EMULATOR_HOST") or os.getenv("FIRESTORE_EMULATOR_HOST")):
-        return None
+    from .runtime_config import firebase_environment
+    try:
+        mode = firebase_environment()
+    except ValueError as error:
+        raise DependencyUnavailableError('Firebase environment configuration is inconsistent.') from error
+    if mode == 'production':
+        project_id = _firebase_project_id()
+        return {"projectId": project_id} if project_id else None
     project_id = _firebase_project_id()
     if not project_id:
         raise DependencyUnavailableError(
@@ -177,6 +185,7 @@ class FirebaseStudentTokenVerifier:
 
 def _firestore_client(admin_firestore: Any) -> Any:
     """Create a production or explicitly emulator-only Firestore client."""
+    _firebase_app_options()  # Also validate if another component initialized Admin.
 
     if not os.getenv("FIRESTORE_EMULATOR_HOST"):
         return admin_firestore.client()
@@ -274,6 +283,8 @@ def create_mobile_app(
     max_request_bytes: int = DEFAULT_MAX_REQUEST_BYTES,
     max_image_characters: int = DEFAULT_MAX_IMAGE_CHARACTERS,
     privacy_service: FacePrivacyService | None = None,
+    attendance_boundary: Callable | None = None,
+    checkin_clock: Callable[[], int] = now_ms,
 ) -> Flask:
     """Create the mobile API with replaceable boundaries for focused testing."""
 
@@ -288,6 +299,7 @@ def create_mobile_app(
     verifier = token_verifier or FirebaseStudentTokenVerifier()
     owns_privacy_service = privacy_service is None
     privacy = privacy_service or FacePrivacyService(enrollment_store, FirebaseFaceProfiles())
+    attendance_database = attendance_boundary or firebase_attendance_boundary
 
     app = Flask(__name__)
     from .invitations import invitation_blueprint
@@ -314,6 +326,8 @@ def create_mobile_app(
     @app.before_request
     def log_request_started() -> None:
         g.faceroll_started_at = time.monotonic()
+        if request.path == '/attendance/check-in':
+            g.checkin_received_at_ms = checkin_clock()
         log_request_stage(
             "request_started",
             method=request.method,
@@ -323,6 +337,8 @@ def create_mobile_app(
 
     @app.after_request
     def log_request_completed(response: Response) -> Response:
+        if request.path == '/attendance/check-in':
+            response.headers['Cache-Control'] = 'no-store'
         started_at = getattr(g, "faceroll_started_at", None)
         elapsed_ms = (
             round((time.monotonic() - started_at) * 1000)
@@ -561,18 +577,98 @@ def create_mobile_app(
                 500, "internal_error", "Enrollment could not be deleted."
             )
 
+    @app.post('/attendance/check-in')
+    @student_required
+    def attendance_check_in(student: AuthenticatedStudent):
+        payload = None
+        try:
+            # A reverse proxy must supply trusted scheme information through
+            # deployment middleware; arbitrary forwarded headers are not trusted.
+            if not request.is_secure:
+                raise AttendanceError(400, 'https_required')
+            if request.args:
+                raise CheckInContractError()
+            payload = validate_check_in_request(request.get_json(silent=True))
+            if payload['image'] is not None and len(payload['image']) > max_image_characters:
+                raise CheckInContractError()
+
+            def verify_request():
+                recognized = True
+                if not student.opted_out:
+                    privacy.check(student.uid, student.consent_revision, existing=True)
+                    record = enrollment_store.load(student.uid)
+                    decoded = image_decoder(payload['image'])
+                    try:
+                        vector = embedding_generator(decoded)
+                    finally:
+                        del decoded
+                    try:
+                        recognized = verify_embedding(vector, record.enrolled_vectors).recognized
+                    finally:
+                        vector = None
+                # Recheck revoked/disabled tokens and consent after slow inference.
+                current = verifier.verify(_bearer_token())
+                if current.uid != student.uid:
+                    raise AuthenticationError('Firebase identity changed during check-in.')
+                if (current.opted_out != student.opted_out or current.consent_revision != student.consent_revision
+                        or (not student.opted_out and current.deletion_pending)):
+                    raise FacePrivacyError('face_preference_changed')
+                if not student.opted_out:
+                    privacy.check(student.uid, student.consent_revision, existing=True)
+                return recognized
+
+            client, transact = attendance_database()
+            result = check_in(student, payload, client, transact, verify_request,
+                server_id=privacy.server_id, received_at_ms=g.checkin_received_at_ms, clock=checkin_clock)
+            response = jsonify(result)
+            response.headers['Cache-Control'] = 'no-store'
+            return response
+        except RequestEntityTooLarge:
+            raise
+        except CheckInContractError:
+            return _error_response(400, 'invalid_check_in_request', 'Invalid check-in payload.')
+        except AttendanceError as error:
+            if error.code in ('location_outside_zone', 'location_uncertain', 'location_inaccurate'):
+                return _error_response(403, 'location_unverified', 'Location could not be verified. Refresh and try again, or ask your instructor for help.')
+            return _error_response(error.status, error.code, str(error))
+        except AuthenticationError:
+            return _error_response(401, 'authentication_required', 'Sign in again before checking in.')
+        except StudentAuthorizationError:
+            return _error_response(403, 'student_required', 'Only authenticated student accounts may check in.')
+        except FacePrivacyError as error:
+            return _error_response(403, error.code, 'Facial recognition is disabled or your preference changed.')
+        except EnrollmentNotFoundError:
+            return _error_response(404, 'not_enrolled', 'Fresh face enrollment is required.')
+        except InvalidImageError as error:
+            return _error_response(422, _face_image_error_code(error), 'Use a clear photo containing exactly one face.')
+        except (DependencyUnavailableError, StorageError):
+            return _error_response(503, 'check_in_unavailable', 'Check-in is temporarily unavailable. Try again.')
+        except RecognitionCoreError:
+            return _error_response(503, 'recognition_unavailable', 'Face verification is temporarily unavailable.')
+        except Exception:
+            # Do not log exception text or tracebacks: dependencies can include
+            # image/position payloads in their exceptions.
+            app.logger.error('Attendance check-in could not be completed.')
+            return _error_response(503, 'check_in_unavailable', 'Check-in is temporarily unavailable. Try again.')
+        finally:
+            payload = None
+
     return app
 
 
 def main() -> None:
     """Run a local development server; production deployment should use WSGI."""
 
+    from .runtime_config import firebase_environment
+    firebase_environment()
     host = os.getenv("FACEROLL_API_HOST", "127.0.0.1")
     port = int(os.getenv("FACEROLL_API_PORT", "5055"))
     tls_cert = os.getenv("FACEROLL_TLS_CERT")
     tls_key = os.getenv("FACEROLL_TLS_KEY")
     if bool(tls_cert) != bool(tls_key):
         raise RuntimeError("FACEROLL_TLS_CERT and FACEROLL_TLS_KEY must be configured together.")
+    if not tls_cert and host not in ('127.0.0.1', 'localhost', '::1'):
+        raise RuntimeError('A network-facing API requires TLS. Bind a reverse-proxy backend to loopback.')
     ssl_context = (tls_cert, tls_key) if tls_cert and tls_key else None
     create_mobile_app().run(host=host, port=port, debug=False, ssl_context=ssl_context)
 

@@ -1,5 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { connectFirestoreEmulator, getFirestore } from 'firebase/firestore';
+import { initializeFirestore, getFirestore } from 'firebase/firestore';
+import { runtimeConfig } from './runtime-config';
 import {
   connectAuthEmulator,
   initializeAuth,
@@ -19,7 +20,10 @@ const firebaseConfig = {
   measurementId: 'G-97VJMSSGKJ',
 };
 
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+// Separate persistence keys prevent emulator sessions being restored in production.
+const appName = `faceroll-${runtimeConfig.mode}`;
+const app = getApps().some(existing => existing.name === appName)
+  ? getApp(appName) : initializeApp(firebaseConfig, appName);
 
 let _auth: any;
 try {
@@ -35,43 +39,25 @@ try {
 }
 
 export const auth = _auth;
-export const db = getFirestore(app);
-
-type FaceRollGlobal = typeof globalThis & {
-  __faceRollFirebaseEmulatorsConnected?: boolean;
-};
-
-function parseEmulatorPort(value: string | undefined, fallback: number): number {
-  const parsed = Number(value || fallback);
-  return Number.isInteger(parsed) && parsed > 0 && parsed <= 65535 ? parsed : fallback;
-}
-
-function connectConfiguredEmulators(): void {
-  const host = String(process.env.EXPO_PUBLIC_FIREBASE_EMULATOR_HOST || '').trim();
-  if (!host) return;
-  if (!/^[a-zA-Z0-9.-]+$/.test(host)) {
-    throw new Error(
-      'EXPO_PUBLIC_FIREBASE_EMULATOR_HOST must be a hostname or IP address without http:// or a port.'
-    );
+if (auth.emulatorConfig) {
+  const existing = auth.emulatorConfig;
+  const origin = `${existing.protocol}://${existing.host}${existing.port ? ':' + existing.port : ''}`;
+  if (runtimeConfig.mode !== 'emulator' || origin !== runtimeConfig.authEmulatorUrl) {
+    throw new Error('Firebase transport settings changed. Fully close the app and restart Expo.');
   }
-
-  const sharedGlobal = globalThis as FaceRollGlobal;
-  if (sharedGlobal.__faceRollFirebaseEmulatorsConnected) return;
-
-  const authPort = parseEmulatorPort(
-    process.env.EXPO_PUBLIC_FIREBASE_AUTH_EMULATOR_PORT,
-    9099
-  );
-  const firestorePort = parseEmulatorPort(
-    process.env.EXPO_PUBLIC_FIRESTORE_EMULATOR_PORT,
-    8080
-  );
-
-  connectAuthEmulator(auth, `http://${host}:${authPort}`, { disableWarnings: true });
-  connectFirestoreEmulator(db, host, firestorePort);
-  sharedGlobal.__faceRollFirebaseEmulatorsConnected = true;
+}
+if (runtimeConfig.mode === 'emulator' && !auth.emulatorConfig) {
+  connectAuthEmulator(auth, runtimeConfig.authEmulatorUrl!, { disableWarnings: true });
 }
 
-connectConfiguredEmulators();
+// connectFirestoreEmulator disables TLS for ordinary hosts. Use the documented
+// custom-host settings for the HTTPS gateway; real Auth emulator tokens are sent.
+export const db = runtimeConfig.mode === 'emulator'
+  ? initializeFirestore(app, {
+      host: new URL(runtimeConfig.firestoreEmulatorUrl!).host,
+      ssl: true,
+      experimentalForceLongPolling: true,
+    })
+  : getFirestore(app);
 
 export default app;

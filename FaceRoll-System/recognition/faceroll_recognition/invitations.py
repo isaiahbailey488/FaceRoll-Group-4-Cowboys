@@ -258,7 +258,7 @@ def delete_course(uid, client, transact, course_id):
         # is intentionally atomic so no orphaned roster or invitation remains.
         related = []
         sessions = []
-        for collection_name in ('enrollments', 'sessions', 'attendance', 'courseInvitations'):
+        for collection_name in ('enrollments', 'sessions', 'attendance', 'attendanceCheckIns', 'courseInvitations'):
             snapshots = list(client.collection(collection_name)
                              .where('courseId', '==', course_id).limit(450).stream(transaction=tx))
             related.extend(snapshots)

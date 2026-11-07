@@ -52,6 +52,10 @@ class FirebaseEmulatorConfigurationTests(unittest.TestCase):
         with patch.dict("os.environ", {}, clear=True):
             self.assertIsNone(_firebase_app_options())
 
+    def test_production_can_select_a_project_without_anonymous_emulator_credentials(self):
+        with patch.dict('os.environ', {'FACEROLL_FIREBASE_MODE': 'production', 'FIREBASE_PROJECT_ID': 'production-project'}, clear=True):
+            self.assertEqual(_firebase_app_options(), {'projectId': 'production-project'})
+
 
 def unit_vector(index):
     vector = np.zeros(512, dtype=np.float32)

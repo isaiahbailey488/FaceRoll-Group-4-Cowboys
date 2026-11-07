@@ -188,6 +188,76 @@ class EmbeddingGenerationTests(unittest.TestCase):
                 generate_embeddings(self.image)
 
 
+class SingleFaceDuplicateTests(unittest.TestCase):
+    def setUp(self):
+        self.image = np.ones((400, 400, 3), dtype=np.uint8)
+        FakeDeepFace.error = None
+        FakeDeepFace.calls = []
+
+    def detection(self, x=100, y=100, w=100, h=120, vector=None):
+        return {"embedding": (unit_vector() if vector is None else vector).tolist(),
+                "facial_area": {"x": x, "y": y, "w": w, "h": h}}
+
+    def generate(self, results):
+        FakeDeepFace.results = results
+        with patch("faceroll_recognition.engine.DeepFace", FakeDeepFace):
+            return generate_single_embedding(self.image)
+
+    def test_duplicate_boxes_on_same_face_return_an_original_vector(self):
+        near = unit_vector() + unit_vector(1) * 0.1
+        result = self.generate([self.detection(), self.detection(x=101, y=102, vector=near)])
+        np.testing.assert_array_equal(result, unit_vector())
+        self.assertEqual(FakeDeepFace.calls[0]['detector_backend'], 'opencv')
+        self.assertTrue(FakeDeepFace.calls[0]['enforce_detection'])
+
+    def test_same_embedding_in_separate_regions_is_still_multiple_faces(self):
+        with self.assertRaises(MultipleFacesDetectedError):
+            self.generate([self.detection(), self.detection(x=250)])
+
+    def test_overlapping_boxes_with_different_embeddings_are_not_merged(self):
+        for x in (100, 101):
+            with self.subTest(x=x), self.assertRaises(MultipleFacesDetectedError):
+                self.generate([self.detection(), self.detection(x=x, vector=unit_vector(1))])
+
+    def test_merely_similar_identity_embeddings_do_not_establish_a_duplicate(self):
+        # This pair passes the normal 0.30 identity threshold, but is too
+        # different to justify collapsing two detections into one face.
+        similar = unit_vector() + unit_vector(1) * 0.5
+        with self.assertRaises(MultipleFacesDetectedError):
+            self.generate([self.detection(), self.detection(vector=similar)])
+
+    def test_partial_overlap_or_nested_small_detection_is_not_a_duplicate(self):
+        for other in (self.detection(x=115), self.detection(x=125, y=125, w=40, h=40)):
+            with self.subTest(other=other['facial_area']), self.assertRaises(MultipleFacesDetectedError):
+                self.generate([self.detection(), other])
+
+    def test_missing_invalid_or_clipped_bounds_cannot_hide_another_face(self):
+        missing = self.detection()
+        del missing['facial_area']
+        malformed = self.detection()
+        malformed['facial_area']['x'] = 'invalid'
+        for other in (missing, malformed, self.detection(x=0), self.detection(w=0),
+                      self.detection(w=-1), self.detection(x=350)):
+            with self.subTest(other=other.get('facial_area')), self.assertRaises(MultipleFacesDetectedError):
+                self.generate([self.detection(), other])
+
+    def test_overlapping_chain_cannot_merge_two_different_regions(self):
+        # The middle box overlaps both neighbours strongly; the outer boxes
+        # do not agree. Test the middle first to catch representative-only NMS.
+        with self.assertRaises(MultipleFacesDetectedError):
+            self.generate([self.detection(x=104), self.detection(x=100), self.detection(x=108)])
+
+    def test_duplicate_pair_does_not_hide_a_third_separate_face(self):
+        with self.assertRaises(MultipleFacesDetectedError):
+            self.generate([self.detection(), self.detection(x=101), self.detection(x=250)])
+
+    def test_general_embedding_generation_still_preserves_all_classroom_faces(self):
+        FakeDeepFace.results = [self.detection(), self.detection(x=101)]
+        with patch("faceroll_recognition.engine.DeepFace", FakeDeepFace):
+            self.assertEqual(len(generate_detected_embeddings(self.image)), 2)
+            self.assertEqual(len(generate_embeddings(self.image)), 2)
+
+
 class EmbeddingValidationTests(unittest.TestCase):
     def test_valid_embedding_becomes_float32(self):
         vector = validate_embedding(unit_vector().astype(np.float64))

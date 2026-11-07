@@ -33,5 +33,8 @@ faceroll-recognition-api = "faceroll_recognition.mobile_api:main"
 where = ["."]
 include = ["faceroll_recognition*"]
 
+[tool.setuptools.package-data]
+faceroll_recognition = ["checkin.schema.json"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -22,6 +22,38 @@ For the complete project overview, mobile setup, system architecture, and shared
 - Configure a per-course classroom location and attendance radius with HERE Maps
 - Adjust the radius with a keyboard-accessible slider from 1–15 meters in 1-meter steps (default: 15 meters)
 
+## Classroom zone setup
+
+Choose a course, then type at least three characters in the building/address
+field for HERE suggestions near the map area. Include the city or campus to
+narrow the matches. Suggestions do not move the classroom pin until selected.
+The existing Search button still displays the first match and lets you choose
+another result. Adjust the pin near the classroom's center before saving.
+
+**Use current location** previews a blue device-position dot and an amber
+accuracy circle. The classroom pin stays unchanged until **Use this position**
+is clicked. Poor or missing accuracy produces a warning and manual-placement
+guidance. Applying a preview changes only the draft; **Save Classroom Location**
+is still required. Preview coordinates are discarded on dismissal, course
+changes or leaving the page.
+
+**Restore saved location** resets the draft pin, address label, radius and
+verification switch to the latest successfully saved/loaded zone without
+writing to Firebase. It is disabled when no valid saved zone exists. Pending
+search/location results cannot overwrite a restored zone or a different course.
+
+The radius stays within 1–15 meters. Student self check-in needs an enabled,
+saved zone, and the backend requires the unrounded distance from the pin plus
+the phone's reported accuracy to fit inside the saved radius. Address text is
+a label; it does not replace the saved coordinate check.
+
+Zone saves detect conflicting edits from other tabs and retain the actual
+Firestore course document ID. Running sessions keep their saved classroom zone;
+edits apply to the next session, as stated in the editor and save message.
+Student check-in collects location automatically and replaces stale readings during
+Check In, without manual refresh controls or boundary measurements.
+See the [check-in summary](../../README.md#verified-attendance-check-in).
+
 ## Class QR Invitations
 
 On **Students**, choose **Invite Students** above the roster. A popup opens with the roster's selected course, or the first available course when viewing All Courses. Instructors can switch classes inside the popup without changing the roster's filters or layout. The window loads the current invitation from the server, including after a refresh, sign-in, or device change. Viewing or refreshing an invitation never generates a replacement or restarts its expiration. Course deletion remains in course management on **Courses**.
@@ -168,6 +200,6 @@ Live Session displays only `attendance.locationStatus`: `in_zone` → In zone, `
 
 The dashboard Firestore rules allow only attendance metadata and these optional status values. They reject latitude, longitude, location objects, accuracy, and other unlisted fields, including nested objects in the allowed text fields. The saved course location is the classroom's zone configuration, not a student's position.
 
-Mobile integration is separate and has not been changed: it must perform a foreground check at check-in and send only the zone result, never student coordinates, distance, accuracy, or position history. Rules validate the record shape; they cannot prove that a client-supplied zone result is truthful. Deploy the dashboard rules with this update before relying on storage restrictions. The separate repository-root rules file is unchanged and does not contain these restrictions.
+The mobile app sends a temporary foreground sample and, only when facial recognition is enabled, its face photo over HTTPS to the authenticated backend, which verifies the current classroom zone and finalizes attendance. Students cannot create, update or delete attendance directly in Firestore, even by claiming a valid zone result or an instructor/camera source. Both the repository-root and dashboard rule files now enforce the same policy and metadata-only attendance shape. Course-owning instructors and administrators retain their attendance workflows; backend idempotency receipts remain private to the Admin SDK. See [check-in enforcement and rollout](../../README.md#verified-attendance-check-in).
 
-To verify the privacy rules locally, start a separate Firestore emulator using the cached emulator JAR with `--host 127.0.0.1 --port 8181 --websocket_port 9181 --project_id demo-faceroll-location --rules firestore.rules` from this dashboard directory. Then run `node scripts/test-location-rules.cjs`. The test is pinned to that isolated local project and exercises valid statuses, older clients without a status, rejected coordinate fields/nested objects, and instructor attendance overrides.
+Run `npm run test:step5:emulator` from the repository root to test both rule files with isolated Auth/Firestore emulators, real ID tokens and Admin transactions. This covers denied student writes, source spoofing, private receipts, coordinate rejection, ownership, and instructor camera/manual/default workflows. The older focused privacy probe remains available: start an isolated Firestore emulator using the cached emulator JAR with `--host 127.0.0.1 --port 8181 --websocket_port 9181 --project_id demo-faceroll-location --rules firestore.rules` from this dashboard directory, then run `node scripts/test-location-rules.cjs`. Student writes with or without location status must now be denied.

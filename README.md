@@ -4,13 +4,13 @@ FaceRoll is a facial-recognition attendance system for students and instructors.
 
 ## How FaceRoll Works
 
-1. A student creates an account in the mobile app and enrolls their face.
+1. A student creates an account, joins a course, and chooses whether to use facial recognition. Face enrollment is required only when facial recognition is enabled.
 2. An instructor manages courses and starts an attendance session from the web dashboard.
-3. FaceRoll recognizes participating students and creates attendance records.
+3. Students check in with face plus classroom location, or location only when opted out. Instructor classroom-camera recognition and manual attendance are also available.
 4. Firebase synchronizes users, courses, sessions, and attendance between the student and instructor experiences.
 5. Students review recent activity, while instructors monitor sessions, correct records, and export reports.
 
-Students who opt out of facial recognition remain visible in the instructor roster, and instructors can update their attendance manually.
+Students who opt out need no face enrollment or check-in photo. Both mobile modes require an enabled classroom zone; instructors can correct attendance manually.
 
 ## System Components
 
@@ -28,7 +28,7 @@ Firebase Authentication manages student and instructor accounts, while Cloud Fir
 
 ### Mobile Recognition API
 
-The authenticated Python API under `FaceRoll-System/recognition` receives three-photo enrollment and one-photo verification requests from the mobile app. It uses the shared `Facenet512` core and stores only local embeddings.
+The authenticated Python API under `FaceRoll-System/recognition` handles three-photo enrollment and backend-verified attendance check-in. It uses the shared `Facenet512` core, keeps encrypted embeddings locally, and stores attendance metadata in Firestore without raw photos or student coordinates.
 
 ### Instructor Recognition Bridge
 
@@ -41,7 +41,7 @@ The local Python bridge connects the instructor dashboard to the computer's webc
 - Register and sign in with Firebase Authentication
 - Manage a profile and facial-recognition preferences
 - Enroll a face using three guided device-camera captures
-- Check in through authenticated one-to-one face verification
+- Check in with authenticated face plus location verification, or location only when opted out
 - View recent attendance activity
 
 ### Instructor Dashboard
@@ -124,17 +124,53 @@ firebase deploy --only firestore
 
 ## Run the Student Mobile App
 
-Configure the authenticated recognition API before starting Expo. For an Android Studio emulator on Linux or Windows:
+Use the HTTPS LAN development launcher with the laptop and phone on the same Wi-Fi:
 
 ```bash
-export EXPO_PUBLIC_RECOGNITION_API_URL=http://10.0.2.2:5055
 npm install
-npx expo start
+npm run demo -- --local
 ```
 
-The special Android emulator address `10.0.2.2` routes to the development computer's loopback interface. Copy `.env.example` to the ignored `.env` file if you prefer persistent local development configuration.
+The launcher configures HTTPS for recognition, Firebase Auth, Firestore and Expo/Metro, including secure WebSockets. It prints a secure `exps://` QR code. The phone must trust the local certificate authority; see [LAN certificate setup](scripts/DEMO.md). Raw Firebase emulators bind only to laptop loopback. `npm run demo -- --tailscale` remains available when local certificate trust or campus Wi-Fi prevents a LAN connection.
 
-Physical devices must use an HTTPS API address trusted by the device. FaceRoll intentionally rejects plain LAN HTTP because recognition requests contain a Firebase token and temporary face photographs.
+### Verified Attendance Check-In
+
+| Saved preference | Mobile check-in requirements |
+|---|---|
+| Facial recognition off | Active course membership/session and a fresh verified classroom location. No face enrollment, camera prompt or photo, including while face-data deletion is pending. |
+| Facial recognition on | The same location/session requirements plus face enrollment and a matching photo. |
+
+- Open Check-In and choose the course under the student name. Location is collected automatically once the session and saved preference are ready. A bounded foreground collection uses only new readings, settles briefly for better accuracy, and stops before the reading is used. A still-fresh reading can be reused for face retakes; the next Check In attempt automatically replaces an expired or rejected reading. There is no manual location refresh, idle polling or background tracking.
+- Face enrollment captures Forward, Slightly Left and Slightly Right, then submits all three photos. Camera screens share a fixed oval and a blocking, scrollable **Before you scan** popup. The full photo is used; cropping to the oval is not implemented. Check-in keeps the camera open for retryable face errors and stops it on success, exit, backgrounding or consent/account changes. Resuming after backgrounding is explicit; enrollment stops the camera after the third capture for review.
+- `POST /attendance/check-in` requires HTTPS and a Firebase bearer token. The strict version-1 body contains only `schemaVersion`, `sessionId`, `image` and `location`; opted-out students send `image: null`. The canonical request/response schema is [checkin.schema.json](FaceRoll-System/recognition/faceroll_recognition/checkin.schema.json), shared by the JavaScript and Python validators. The backend derives identity, course, consent, status and zone from trusted data rather than client claims.
+- For opted-in students, the backend compares the photo embedding with that student's enrollment before evaluating classroom-zone admission. The final Firestore transaction rechecks membership, consent and session policy, then records attendance atomically. Duplicate receipts preserve the original accepted result; instructor, classroom-camera and session-default records are not overwritten. Students cannot create, update or delete attendance directly under either Firestore rule set.
+- Instructors position the HERE map pin and save an enabled zone; address text is only a label. The current radius is 1?15 metres, and admission requires the unrounded distance plus reported accuracy to fit inside it. Sessions freeze the saved zone at start; edits apply to the next session and the editor explains this. Saves reject stale edits from other tabs. Indoor location may not satisfy the zone and cannot reliably distinguish adjacent classrooms or floors; instructor manual corrections remain available.
+- The client accepts samples for 15 seconds; the server independently checks 30-second receipt freshness, accuracy, clock tolerance and reported mock-location status. Collection is bounded to 25 seconds with a three-second settling period. Students receive simple retry/settings guidance without distance, accuracy or boundary measurements. Phone-reported GPS and photos are not device attestation or face-liveness checks.
+- Photos, query embeddings and coordinates are temporary verification data, never attendance fields or application logs. Enrollment embeddings remain encrypted locally. Face opt-out disables recognition immediately and requests deletion; re-enabling waits for deletion and requires fresh enrollment. Method labels show **Facial recognition**, **Location check**, or the instructor/default method as appropriate.
+
+Instructor sessions restore after refresh/navigation and use local calendar dates. Attendance settings are captured when a session starts; the default attendance status applies at session end only to students without a record. Instructors are restricted to their own courses. Historical attendance percentages use membership dates, or the student's first recorded check-in for legacy memberships without a date.
+
+### Production Configuration
+
+Use `.env.example` for development and `.env.production.example` when preparing a native production build. Set `EXPO_PUBLIC_FIREBASE_MODE=production` with a trusted HTTPS API URL and no emulator URLs/legacy host. Set backend `FACEROLL_FIREBASE_MODE=production`, remove `FIREBASE_AUTH_EMULATOR_HOST`, `FIRESTORE_EMULATOR_HOST` and `FACEROLL_DEMO_MODE`, and use normal Firebase Admin credentials/workload identity. Release builds reject emulator mode.
+
+Keep Admin credentials, embedding keys and TLS private keys out of `EXPO_PUBLIC` variables. Restrict the WSGI backend port and correctly configure the trusted HTTPS reverse proxy if TLS terminates there; arbitrary client-forwarded headers must not bypass HTTPS enforcement. Keep both checked-in rule files consistent, reload the current rules in emulators, and explicitly deploy/review the intended Firebase project's rules before production. Emulator testing does not verify the deployed rules or production phone connectivity.
+
+### Check-In Validation
+
+| Check | Command from repository root |
+|---|---|
+| Mobile regression checks | `node --test shared/*.test.js` |
+| TypeScript | `npx tsc --noEmit` |
+| Recognition backend (activate its virtual environment first) | `python -m pytest FaceRoll-System/recognition/tests -q` |
+| Isolated backend transactions and both rule sets | `npm run test:step2:emulator` |
+| Auth/Firestore HTTPS SDK transport | `npm run test:step1:https` |
+| Real Metro HTTPS/bundle/WSS | `npm run test:lan:https` |
+| Combined HTTPS/Firebase rehearsal | `npm run test:step6` |
+
+The isolated Firebase checks require Java and the Firebase CLI, use disposable test data and synthetic face/location inputs, and leave saved demo records alone. Generated reports belong under ignored `build/` output rather than committed documentation. The latest recorded mobile run passed 199 tests and TypeScript; the recorded backend run passed 269 tests with 12 skips. These are separate runs, not proof of a physical-phone or production pass.
+
+On iPhone, trusted Safari health access, Expo Go login/course loading and location-only attendance succeeded. Rehearse the updated face-plus-location flow, wrong face and retakes, denied/reduced permissions and services off, stale readings, outside/uncertain locations, duplicates, session closure, Present/Late/default/manual results, and cancellation on background/navigation/account/consent changes. Check native camera/location behavior and agreement between Recent Activity and the dashboard. Use a new session for negative admission tests: an existing accepted receipt may return without repeating face/location checks. Keep any recorded outcomes free of photos, coordinates, tokens and embeddings. Physical checks of the latest automatic flow and a production smoke test remain pending; staff-registration and password-reset changes remain deferred for the local demo.
 
 ### Mobile Visual Theme
 
@@ -156,12 +192,11 @@ rebuild the native launch screen).
 Run `node --test shared/mobile-theme.test.js` to verify palette consistency,
 screen styles, attendance indicators, and text contrast.
 
-Run `npm start`, connect the phone and computer to the same Wi-Fi, and scan
-the Expo QR code with Expo Go (Android) or the Camera app (iOS, then open in
-Expo Go). Sign in normally to review the screens using real account data. Check-In,
-Join a Course, Profile & Settings, and pull-to-refresh retain their existing behavior.
-Attendance records require Firebase access; camera verification also requires
-the recognition API configuration described below.
+Use the demo launcher's secure QR for phone testing. Standalone `npm start`
+requires the trusted HTTPS application endpoints to be configured beforehand;
+never substitute plaintext phone endpoints. Sign in to review Home, Check-In,
+Join a Course, Profile & Settings, and Help & FAQ. Native permission/plugin changes
+require a new installed build; Expo Go uses its own native permission prompts.
 
 ### Run the Mobile Recognition API
 
@@ -182,7 +217,7 @@ export GOOGLE_APPLICATION_CREDENTIALS=/secure/path/firebase-service-account.json
 python -m faceroll_recognition.mobile_api
 ```
 
-The API defaults to `http://127.0.0.1:5055`. It derives student identity from the verified Firebase token, requires a Firestore student profile, accepts exactly three enrollment images, and never persists raw photographs. See [`Documentation/Mobile-Recognition-API.md`](Documentation/Mobile-Recognition-API.md) for emulator configuration and the complete endpoint contract.
+Direct API startup defaults to loopback `http://127.0.0.1:5055` for local tools; phone access and attendance check-in require the trusted HTTPS launcher or a correctly configured HTTPS deployment. It derives student identity from the verified Firebase token, requires a Firestore student profile, accepts exactly three enrollment images, and never persists raw photographs. See [`Documentation/Mobile-Recognition-API.md`](Documentation/Mobile-Recognition-API.md) for emulator configuration and the complete endpoint contract.
 
 ## Run the Instructor Dashboard
 
@@ -250,7 +285,7 @@ Supporting project materials are organized in the following locations:
 - [`Documentation/`](Documentation/README.md) contains the system architecture, user manual, and locations for the SRS, design documents, and maintenance plan.
 - [`Testing/`](Testing/README.md) contains repeatable system test cases and the test-results log.
 
-The current suite contains manual end-to-end tests because FaceRoll depends on cameras, mobile devices, Firebase, Docker, and platform-specific recognition services. Before a release or course submission, run the relevant cases in `Testing/Test-Cases.md` and record the environment and results in `Testing/Test-Results.md`. Tests that have not been executed must remain marked `Not Run`.
+Automated checks are listed under [Check-In Validation](#check-in-validation). Manual end-to-end tests also remain necessary because FaceRoll depends on cameras, mobile devices, Firebase, Docker, and platform-specific recognition services. Before a release or course submission, run the relevant cases in `Testing/Test-Cases.md` and record the environment and results in `Testing/Test-Results.md`. Tests that have not been executed must remain marked `Not Run`.
 
 ## Student App Routes
 
@@ -287,9 +322,9 @@ The current suite contains manual end-to-end tests because FaceRoll depends on c
 ### The mobile app cannot reach the recognition API
 
 - Confirm `EXPO_PUBLIC_RECOGNITION_API_URL` was set before Expo started.
-- Use `http://10.0.2.2:5055` from an Android Studio emulator.
+- Configure explicit emulator/production mode and trusted HTTPS URLs; legacy HTTP simulator URLs are rejected.
 - Confirm the shared API's `/health` endpoint is available on port `5055`.
-- Use a device-trusted HTTPS endpoint for physical phones; plain LAN HTTP is blocked.
+- For HTTPS LAN, trust the local CA and allow ports 5055, 9449, 8443 and 8081 from the phone. For Tailscale, keep it connected and allow ports 443, 9449, 8443 and 8081.
 
 ### The instructor live session cannot start
 

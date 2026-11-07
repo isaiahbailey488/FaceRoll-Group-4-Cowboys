@@ -22,8 +22,8 @@ class Ref:
     def __init__(self, db, path):
         self.db, self.path = db, path
 
-    def get(self, transaction):
-        if transaction.writing:
+    def get(self, transaction=None):
+        if transaction is not None and transaction.writing:
             raise AssertionError('Read after write')
         return Snapshot(self.db.data.get(self.path), self)
 
@@ -43,8 +43,8 @@ class Collection:
         self.count = count
         return self
 
-    def stream(self, transaction):
-        if transaction.writing:
+    def stream(self, transaction=None):
+        if transaction is not None and transaction.writing:
             raise AssertionError('Read after write')
         return [Snapshot(v, Ref(self.db, (collection, key))) for (collection, key), v in self.db.data.items()
                 if collection == self.name and v.get(self.field) == self.value][:self.count]
